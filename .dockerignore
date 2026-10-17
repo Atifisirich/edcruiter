@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+client_secret*.json
+pg-password.txt
+*.pem
+npm-debug.log*
+public/uploads
+data/uploads
+data/store.json
+

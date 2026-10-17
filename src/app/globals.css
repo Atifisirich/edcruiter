@@ -1,0 +1,391 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 0.875rem;
+  --text-sm: 1rem;
+  --text-base: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.625rem;
+  --text-3xl: 2rem;
+  --text-4xl: 2.5rem;
+  --text-5xl: 3.25rem;
+  --text-6xl: 4rem;
+}
+
+:root {
+  /* =========================================================================
+     EDCRUITER BRIGHT ACADEMIC DESIGN SYSTEM & COLOR PALETTE
+     ========================================================================= */
+
+  /* Primary Brand Tokens (Royal Blue, Indigo & Emerald) */
+  --brand-blue: #2563eb;
+  --brand-blue-hover: #1d4ed8;
+  --brand-indigo: #4f46e5;
+  --brand-purple: #7c3aed;
+  --brand-pink: #ec4899;
+  --brand-green: #16a34a;
+  --brand-amber: #d97706;
+  --brand-cyan: #06b6d4;
+
+  /* Bright Clean Canvas Tokens */
+  --bg-main: #f8fafc;
+  --bg-subtle: #f1f5f9;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --text-main: #0f172a;
+  --text-body: #334155;
+  --text-muted: #64748b;
+
+  /* Recruiter Workspace Sidebar Tokens (Deep Navy / Obsidian) */
+  --sidebar-bg: #0c101d;
+  --sidebar-border: #1e293b;
+  --sidebar-text: #f8fafc;
+  --sidebar-muted: #94a3b8;
+
+  /* Status Badges */
+  --status-success-bg: #ecfdf5;
+  --status-success-text: #047857;
+  --status-success-border: #a7f3d0;
+  
+  --status-warning-bg: #fffbeb;
+  --status-warning-text: #b45309;
+  --status-warning-border: #fde68a;
+  
+  --status-danger-bg: #fff1f2;
+  --status-danger-text: #be123c;
+  --status-danger-border: #fecdd3;
+
+  --badge-brand-bg: #eef2ff;
+  --badge-brand-text: #4338ca;
+  --badge-brand-border: #c7d2fe;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #334155;
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: #0f172a;
+}
+
+/* Primary Action Buttons */
+.brand-primary-btn {
+  background: linear-gradient(135deg, #4f46e5 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.25);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-primary-btn *, .burgundy-gradient-btn * {
+  color: #ffffff !important;
+}
+
+.brand-primary-btn:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #1d4ed8 100%) !important;
+  box-shadow: 0 6px 20px 0 rgba(37, 99, 235, 0.35);
+  transform: translateY(-2px);
+}
+
+.brand-primary-btn:active {
+  transform: translateY(0);
+}
+
+/* WhatsApp CTA Button */
+.whatsapp-btn {
+  background-color: #16a34a !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 4px 14px 0 rgba(22, 163, 74, 0.25);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.whatsapp-btn:hover {
+  background-color: #15803d !important;
+  box-shadow: 0 6px 20px 0 rgba(22, 163, 74, 0.35);
+  transform: translateY(-2px);
+}
+
+/* Secondary Button System */
+.secondary-nav-btn {
+  background-color: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  transition: all 0.2s ease;
+}
+
+.secondary-nav-btn:hover {
+  border-color: #4f46e5;
+  color: #4f46e5;
+  background-color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.1);
+}
+
+/* Card Hover Elevation */
+.card-hover-lift {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 28px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.03);
+}
+
+/* Glowing Gradient Frame */
+.video-stroked {
+  position: relative;
+  border-radius: 28px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.video-stroked::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 3px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    #faa6f0 0%,
+    #8a90d5 50%,
+    #38bdf8 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Kita-style hero product theater */
+.hero-product-frame {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  border-radius: 34px;
+  padding: 2px;
+  background: #ffffff;
+  box-shadow:
+    0 24px 60px -20px rgba(79, 70, 229, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.hero-product-beam {
+  position: absolute;
+  inset: -45%;
+  z-index: 0;
+  background: conic-gradient(
+    from var(--hero-beam-angle, 0deg),
+    transparent 0%,
+    #faa6f0 12%,
+    #6366f1 22%,
+    #38bdf8 32%,
+    transparent 42%,
+    transparent 100%
+  );
+  animation: hero-beam-spin 8s linear infinite;
+  pointer-events: none;
+}
+
+.hero-product-frame > :not(.hero-product-beam) {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-mesh-layer {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 12% 20%, rgba(251, 146, 196, 0.75) 0%, transparent 42%),
+    radial-gradient(ellipse at 88% 18%, rgba(96, 165, 250, 0.7) 0%, transparent 44%),
+    radial-gradient(ellipse at 50% 100%, rgba(253, 224, 71, 0.55) 0%, transparent 48%),
+    radial-gradient(ellipse at 70% 55%, rgba(167, 139, 250, 0.65) 0%, transparent 40%),
+    linear-gradient(180deg, #f8f5ff 0%, #eef4ff 100%);
+  background-size: 140% 140%;
+  animation: hero-mesh-drift 14s ease-in-out infinite;
+}
+
+.hero-concentric {
+  background-image: repeating-radial-gradient(
+    circle at 50% 28%,
+    rgba(99, 102, 241, 0.08) 0 1px,
+    transparent 1px 48px
+  );
+}
+
+@keyframes hero-beam-spin {
+  to {
+    --hero-beam-angle: 360deg;
+  }
+}
+
+@property --hero-beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes hero-mesh-drift {
+  0%, 100% {
+    background-position: 0% 40%, 100% 20%, 50% 100%, 70% 50%, 0% 0%;
+  }
+  50% {
+    background-position: 20% 60%, 80% 40%, 40% 80%, 55% 40%, 0% 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-product-beam,
+  .hero-mesh-layer,
+  .animate-marquee,
+  .animate-float,
+  .animate-float-reverse {
+    animation: none !important;
+  }
+}
+
+/* Marquee Ticker Animation */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 25s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Float & Ambient Keyframes */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(12px) rotate(-1deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(1000%);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 7s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite;
+}
+
+/* Background Patterns */
+.bg-dot-pattern {
+  background-image: radial-gradient(rgba(99, 102, 241, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-grid-pattern {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(99, 102, 241, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+}
+
+.bg-mesh-glow {
+  background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08) 0%, rgba(248, 250, 252, 0) 70%),
+              radial-gradient(circle at 100% 50%, rgba(236, 72, 153, 0.05) 0%, rgba(248, 250, 252, 0) 50%),
+              radial-gradient(circle at 0% 80%, rgba(14, 165, 233, 0.06) 0%, rgba(248, 250, 252, 0) 50%);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

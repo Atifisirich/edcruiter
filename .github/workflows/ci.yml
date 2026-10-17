@@ -1,0 +1,52 @@
+name: CI
+
+# Runs on every push and pull request. Nothing here deploys anything — it's
+# the minimum gate that would have caught the regressions this hardening
+# pass fixed by hand: no test suite existed before, so a change to the
+# scoring engine or the auth layer had no automated check at all.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:coverage
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+        # A newly-published advisory shouldn't fail every PR before anyone
+        # has had a chance to react to it — this step is informational only.
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values so the build doesn't fail on missing env at build
+          # time — Next collects these at request time via process.env, not
+          # at build time, but a few modules construct clients at import
+          # time and would otherwise throw during the build's module graph
+          # evaluation.
+          GEMINI_API_KEY: 'build-placeholder'
+          AUTH_SECRET: 'build-placeholder-please-override-in-deploy'
+          WHATSAPP_TOKEN_KEY: 'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
