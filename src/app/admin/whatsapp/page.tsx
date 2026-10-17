@@ -73,7 +73,10 @@ export default function WhatsAppHiringPage() {
       .then((r) => r.json())
       .then((d) => {
         const s: School | undefined = d.school;
-        if (!s) return;
+        if (!s) {
+          setError(d.error || 'Could not load your school.');
+          return;
+        }
         setSchool(s);
         const wa = s.whatsapp_hiring;
         if (wa) {
