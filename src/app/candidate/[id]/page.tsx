@@ -659,10 +659,27 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               <div className="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto border border-indigo-200">
                 <Award className="w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Assessment complete</h3>
+              <h3 className="text-2xl font-black text-slate-900">Well done, you&apos;ve finished</h3>
               <p className="text-sm text-slate-600 max-w-md mx-auto">
-                Your five-stage test has been submitted. The school will review your profile in the recruiter workspace. You can close this tab.
+                Thank you for your time. {schoolName || 'The school'} now has everything it needs to review your application.
               </p>
+              <ol className="text-left text-xs space-y-2 max-w-md mx-auto pt-2">
+                {[
+                  ['The school reviews your answers and videos.', 'People at the school read every application. AI only helps them.'],
+                  ['If you are shortlisted, you get an interview invite.', 'On WhatsApp and on this page, with the time and a meeting link.'],
+                  ['Interviews happen in up to three short rounds.', 'Subject lead, then principal, then management.'],
+                ].map(([title, detail], i) => (
+                  <li key={title} className="flex gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="w-6 h-6 shrink-0 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-[11px]">{i + 1}</span>
+                    <span><strong className="block text-slate-900">{title}</strong><span className="text-slate-500">{detail}</span></span>
+                  </li>
+                ))}
+              </ol>
+              {candidate.invite_code && (
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  To check back later, sign in with your phone or email and your code <strong className="font-mono text-slate-700">{candidate.invite_code}</strong>.
+                </p>
+              )}
               <div className="pt-2">
                 <Link
                   href="/jobs"
@@ -691,6 +708,34 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               <p className="text-xs text-slate-500">
                 Personal details, academic qualifications, teaching experience & resume dossier for institutional verification.
               </p>
+            </div>
+
+            {/* What to expect — set expectations before a teacher commits an hour */}
+            <div className="glass-card p-6 sm:p-8 rounded-3xl border border-indigo-100 bg-indigo-50/50 space-y-4 shadow-sm">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Before you begin</p>
+                <h3 className="text-base font-black text-slate-900">What to expect — about 60 to 75 minutes in total</h3>
+              </div>
+              <ol className="grid sm:grid-cols-5 gap-2 text-[11px]">
+                {[
+                  ['1. Your profile', '5–10 min'],
+                  ['2. Written test', '30–40 min'],
+                  ['3. Teaching demo', 'up to 5 min on camera'],
+                  ['4. Classroom scenario', 'up to 2 min on camera'],
+                  ['5. School policies', '2 min'],
+                ].map(([title, time]) => (
+                  <li key={title} className="p-3 rounded-2xl bg-white border border-indigo-100">
+                    <strong className="block text-slate-900">{title}</strong>
+                    <span className="text-slate-500">{time}</span>
+                  </li>
+                ))}
+              </ol>
+              <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-700 list-disc list-inside">
+                <li><strong>Take a break between stages.</strong> Each stage is saved when you submit it.</li>
+                <li>Use a <strong>laptop or desktop</strong> with a camera and microphone, in a quiet room.</li>
+                <li>To come back later, sign in with your phone or email and the code shown above.</li>
+                <li><strong>People at the school make every decision.</strong> AI only helps them review.</li>
+              </ul>
             </div>
 
             {/* Stage 1 Form Card */}
@@ -1232,30 +1277,21 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       {/* Active Tab Violation & Fullscreen Exit Alert Modal */}
       {showTabViolationModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="max-w-md w-full bg-white p-8 rounded-3xl border-2 border-rose-600 shadow-2xl space-y-5 text-center">
-            <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto border border-rose-500/40 animate-pulse">
+          <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-amber-200 shadow-2xl space-y-5 text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
               <AlertTriangle className="w-8 h-8" />
             </div>
 
             <div className="space-y-2">
-              <div className="inline-block px-3 py-1 rounded-full bg-rose-950 text-rose-400 text-[10px] font-mono font-bold border border-rose-800">
-                PROCTORING WARNING • STRIKE {proctoringWarnings}
-              </div>
-              <h3 className="text-xl font-black text-slate-900">Tab Switch / Window Exit Detected!</h3>
+              <h3 className="text-xl font-black text-slate-900">You left the test window</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                You switched away from the proctored test window or exited fullscreen mode. This violation has been recorded with a timestamp on your institutional assessment report.
+                {proctoringWarnings <= 1
+                  ? "That's okay if it was an accident, like a notification. Please stay on this page until you submit this stage."
+                  : `This has happened ${proctoringWarnings} times. Each time is noted for the school, so please stay on this page until you submit.`}
               </p>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-left text-xs space-y-1">
-              <div className="flex justify-between text-slate-500">
-                <span>Integrity Score:</span>
-                <span className="font-bold text-rose-400 font-mono">{proctoringTrustScore}%</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Total Violations:</span>
-                <span className="font-bold text-rose-400 font-mono">{proctoringWarnings} / 3 Strikes</span>
-              </div>
+              <p className="text-[11px] text-slate-500">
+                The school sees these notes alongside your answers. A person reviews them, so one slip will not cost you the job.
+              </p>
             </div>
 
             <button
@@ -1266,9 +1302,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   document.documentElement.requestFullscreen().catch(() => {});
                 }
               }}
-              className="w-full py-3.5 rounded-2xl font-bold text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 rounded-2xl font-bold text-xs brand-primary-btn shadow-xl flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Return to Fullscreen Test Room</span>
+              <span>Back to my test</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -1286,7 +1322,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Before you start</p>
               <h3 className="text-2xl sm:text-3xl font-black text-slate-900">Your five-stage teacher test</h3>
               <p className="text-sm text-slate-600 leading-relaxed max-w-xl mx-auto">
-                Profile is saved. The next four stages are timed, on camera, and in fullscreen. Read this once, then begin.
+                Profile is saved. The next four stages take about 45–60 minutes, in fullscreen with your camera on. You can take a break between stages — each one is saved when you submit it.
               </p>
             </div>
             <ol className="grid sm:grid-cols-2 gap-3 text-left text-xs">

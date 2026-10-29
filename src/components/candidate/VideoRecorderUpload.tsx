@@ -39,6 +39,7 @@ export default function VideoRecorderUpload({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const lastRecordingRef = useRef<{ blob: Blob; filename: string } | null>(null);
+  const prepTimerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const videoStreamRef = useRef<MediaStream | null>(null);
@@ -364,6 +365,7 @@ export default function VideoRecorderUpload({
         return s - 1;
       });
     }, 1000);
+    prepTimerRef.current = timer;
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -427,7 +429,25 @@ export default function VideoRecorderUpload({
               <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-center p-6">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Preparation time</p>
                 <p className="text-4xl font-black text-white font-mono mt-2">{prepLeft}s</p>
-                <p className="text-xs text-slate-300 mt-2 max-w-sm">Read the question. Face the camera. Recording starts on its own when this timer ends. You do not need to press record.</p>
+                <p className="text-xs text-slate-300 mt-2 max-w-sm">Read the question and face the camera. Recording starts by itself when the timer ends, or start it yourself when you&apos;re ready.</p>
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 text-[11px] font-bold">
+                  {hasAudioTrack ? <Mic className="w-3.5 h-3.5 text-emerald-300" /> : <MicOff className="w-3.5 h-3.5 text-rose-400" />}
+                  <span className="text-white">
+                    {!hasAudioTrack ? 'Microphone not found — check permissions' : audioLevel > 5 ? 'Microphone is picking you up' : 'Say something to test your microphone'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (prepTimerRef.current) window.clearInterval(prepTimerRef.current);
+                    prepTimerRef.current = null;
+                    setPrepLeft(0);
+                    startRecording();
+                  }}
+                  className="mt-4 px-5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-xs cursor-pointer hover:bg-slate-100"
+                >
+                  I&apos;m ready — start recording now
+                </button>
               </div>
             )}
             {isRecording && (
