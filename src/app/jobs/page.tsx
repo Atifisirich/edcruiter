@@ -27,116 +27,8 @@ interface MarketplaceJob {
   description: string;
 }
 
-const MARKETPLACE_JOBS: MarketplaceJob[] = [
-  {
-    id: 'job_001',
-    title: 'Senior PGT Physics Faculty (Grades 11–12)',
-    school_name: 'Sample School',
-    school_type: 'CBSE & Cambridge International',
-    subject: 'Physics',
-    segment: 'Senior Secondary (11-12)',
-    board: 'CBSE / Cambridge IGCSE',
-    location: 'Hyderabad, Telangana',
-    branch: 'Manneguda Campus',
-    experience_required: '3 – 6 Years',
-    salary_range: '₹7.8 – ₹9.5 LPA',
-    posted_date: '2d ago',
-    is_urgent: true,
-    is_verified: true,
-    perks: ['Campus Housing', '100% Child Tuition Waiver', 'AC Staff Transport'],
-    description: 'Lead Senior Secondary physics cohorts with an emphasis on conceptual first-principles, laboratory mechanics, and Cambridge A-Level preparation.'
-  },
-  {
-    id: 'job_002',
-    title: 'TGT Mathematics Lead & Olympiad Mentor',
-    school_name: 'Sample School',
-    school_type: 'CBSE Affiliated Senior School',
-    subject: 'Mathematics',
-    segment: 'Secondary (9-10)',
-    board: 'CBSE Curriculum',
-    location: 'Hyderabad, Telangana',
-    branch: 'Tukkuguda Campus',
-    experience_required: '4 – 7 Years',
-    salary_range: '₹6.5 – ₹8.2 LPA',
-    posted_date: '3d ago',
-    is_urgent: false,
-    is_verified: true,
-    perks: ['AC Transport', 'PF + Gratuity', 'Math Conclave Sponsorship'],
-    description: 'Mentor secondary students in geometric proofs, algebraic scaffolding, and competitive mathematics with an interactive pedagogical approach.'
-  },
-  {
-    id: 'job_003',
-    title: 'Cambridge IGCSE Biology & Life Sciences Specialist',
-    school_name: 'Sample School',
-    school_type: 'Cambridge International School',
-    subject: 'Biology',
-    segment: 'Secondary (9-10)',
-    board: 'Cambridge IGCSE',
-    location: 'Vikarabad, Telangana',
-    branch: 'Vikarabad Campus',
-    experience_required: '2 – 5 Years',
-    salary_range: '₹6.0 – ₹7.5 LPA',
-    posted_date: '5d ago',
-    is_urgent: false,
-    is_verified: true,
-    perks: ['Relocation Allowance', 'Cambridge Certification Support', 'Health Cover'],
-    description: 'Conduct inquiry-based biology sessions following Cambridge 0610 syllabus with hands-on microscope practicals and ecological case studies.'
-  },
-  {
-    id: 'job_004',
-    title: 'English Literature & Pedagogy Department Head',
-    school_name: 'Sample School',
-    school_type: 'CBSE & Cambridge Group',
-    subject: 'English',
-    segment: 'Middle & Secondary (6-10)',
-    board: 'CBSE & Cambridge',
-    location: 'Hyderabad, Telangana',
-    branch: 'Manneguda Campus',
-    experience_required: '5 – 8 Years',
-    salary_range: '₹8.5 – ₹10.5 LPA',
-    posted_date: '1w ago',
-    is_urgent: true,
-    is_verified: true,
-    perks: ['Leadership Allowance', 'Medical Cover', 'Child Education Subsidy'],
-    description: 'Guide middle and secondary English teachers, oversee curriculum pacing, and lead student elocution and creative writing clubs.'
-  },
-  {
-    id: 'job_005',
-    title: 'PGT Chemistry & Senior Lab Coordinator',
-    school_name: 'Sample School',
-    school_type: 'CBSE Senior Secondary',
-    subject: 'Chemistry',
-    segment: 'Senior Secondary (11-12)',
-    board: 'CBSE Curriculum',
-    location: 'Hyderabad, Telangana',
-    branch: 'Tukkuguda Campus',
-    experience_required: '3 – 6 Years',
-    salary_range: '₹7.5 – ₹9.0 LPA',
-    posted_date: '4d ago',
-    is_urgent: false,
-    is_verified: true,
-    perks: ['PF + ESI', 'Annual Health Check', 'Staff Daycare'],
-    description: 'Supervise CBSE class 11-12 practical laboratory sessions and deliver in-depth organic, inorganic, and physical chemistry coursework.'
-  },
-  {
-    id: 'job_006',
-    title: 'Computer Science & AI Curriculum Educator',
-    school_name: 'Sample School',
-    school_type: 'Cambridge & CBSE Network',
-    subject: 'Computer Science',
-    segment: 'Middle & Secondary (6-10)',
-    board: 'CBSE & Cambridge',
-    location: 'Vikarabad, Telangana',
-    branch: 'Vikarabad Campus',
-    experience_required: '2 – 4 Years',
-    salary_range: '₹6.0 – ₹8.0 LPA',
-    posted_date: '2d ago',
-    is_urgent: false,
-    is_verified: true,
-    perks: ['High-Speed Campus Workstation', 'Upskilling Stipend', 'Transport'],
-    description: 'Introduce middle and secondary school students to Python programming, computational thinking, robotics, and basic artificial intelligence.'
-  }
-];
+// Only real vacancies schools have published. A hardcoded list of sample
+// jobs used to be mixed in, so teachers could apply to postings that did not exist.
 
 const POPULAR_SUBJECTS = ['ALL', 'Physics', 'Mathematics', 'Biology', 'Chemistry', 'English', 'Computer Science'];
 
@@ -174,7 +66,7 @@ export default function JobsMarketplacePage() {
       .catch(() => {});
   }, []);
 
-  const catalog = [...schoolJobs, ...MARKETPLACE_JOBS.filter((sample) => !schoolJobs.some((j) => j.id === sample.id))];
+  const catalog = schoolJobs;
 
   const filteredJobs = catalog.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

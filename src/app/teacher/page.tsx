@@ -7,23 +7,17 @@ import {
   Briefcase, KeyRound, ArrowRight, GraduationCap, Link2, BookOpen, ShieldCheck
 } from 'lucide-react';
 
-import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
-
-async function resolveInvite(raw: string): Promise<string | null> {
+// Pasting a link goes straight to that page (the candidate gate asks for a
+// login if needed). A bare code is one of the two login factors, so it goes to
+// the login screen rather than being exchanged for a candidate ID here — the
+// old lookup that did that was an unauthenticated API returning the full
+// candidate record to anyone holding a code.
+function resolveInvite(raw: string): string | null {
   const t = raw.trim();
   if (!t) return null;
   const urlMatch = t.match(/\/candidate\/([a-zA-Z0-9_-]+)/i);
-  if (urlMatch) return urlMatch[1];
-  if (t.startsWith('cand_')) return t;
-  try {
-    const res = await fetch(`/api/candidates?school_id=${SLOKA_SCHOOL_ID}&invite_code=${encodeURIComponent(t)}`);
-    const data = await res.json();
-    if (data.candidate?.id) return data.candidate.id;
-  } catch {
-    /* fall through */
-  }
-  if (/^(SAMPLE|EDC|SLOKA)-/i.test(t)) return 'cand_sloka_001';
-  return null;
+  if (urlMatch) return `/candidate/${urlMatch[1]}`;
+  return '/candidate/login';
 }
 
 export default function TeacherWorkspacePage() {
@@ -40,13 +34,13 @@ export default function TeacherWorkspacePage() {
 
   const startTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = await resolveInvite(invite);
-    if (!id) {
+    const target = resolveInvite(invite);
+    if (!target) {
       setInviteError('Paste the WhatsApp invite link or the test code your school sent.');
       return;
     }
     setInviteError(null);
-    router.push(`/candidate/${id}`);
+    router.push(target);
   };
 
   return (

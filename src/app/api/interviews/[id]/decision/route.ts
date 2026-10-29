@@ -76,7 +76,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           status: decision === 'accepted' ? 'cleared' as const : 'rejected' as const,
           notes: entry.reason,
           reviewer_name: entry.reviewer_name,
-          rating: decision === 'accepted' ? 5 : 1,
           gmeet_link: interview.meeting_link,
           completed_at: entry.decided_at
         };
@@ -85,7 +84,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       interview_decisions: nextLog,
       [clearanceKey]: clearanceUpdate,
       shortlist_status: decision === 'rejected' ? 'rejected' : candidate.shortlist_status,
-      status: decision === 'rejected' ? 'rejected' : round === 'management' && decision === 'accepted' ? 'hired' : candidate.status
+      // A management acceptance approves the offer; the candidate is only
+      // 'hired' once the offer letter is actually dispatched (OfferLetterModal).
+      // Marking them hired here hid them from the reviewer page's
+      // "offer not yet sent" list the moment the COO accepted.
+      status: decision === 'rejected' ? 'rejected' : candidate.status
     });
 
     db.updateScheduledInterview(interview.id, { status: 'completed' });

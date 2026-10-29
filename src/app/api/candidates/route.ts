@@ -17,21 +17,11 @@ export async function GET(req: NextRequest) {
     const subject = searchParams.get('subject') || undefined;
     const segment = searchParams.get('segment') || undefined;
     const status = searchParams.get('status') || undefined;
-    const invite = searchParams.get('invite_code');
-
-    // The invite_code lookup is how a fresh WhatsApp link resolves before any
-    // session exists, so it stays unauthenticated — but it may only ever
-    // return the single matching candidate, never the school's full list.
-    if (invite) {
-      const schoolId = searchParams.get('school_id') || SLOKA_SCHOOL_ID;
-      const all = db.getCandidatesBySchool(schoolId);
-      const match = all.find(
-        (c) => (c.invite_code || '').toUpperCase() === invite.trim().toUpperCase() || c.id === invite.trim()
-      );
-      return NextResponse.json({ candidate: match || null, candidates: match ? [match] : [] });
-    }
-
-    // Every other read is the school's candidate list — staff of that school only.
+    // Staff of that school only. There used to be an unauthenticated
+    // ?invite_code= branch here that returned the full candidate record
+    // (phone, email, DOB, salary, resume link) to anyone holding a code, with
+    // no rate limit — and the code plus the returned ID is a complete login.
+    // Magic links and /candidate/login replaced every use of it.
     const ctx = await requireSchoolAccess(searchParams.get('school_id'));
     const candidates = db.getCandidatesBySchool(ctx.schoolId, { branchId, subject, segment, status });
     return NextResponse.json({ candidates });

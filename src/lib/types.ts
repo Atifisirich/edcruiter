@@ -323,7 +323,7 @@ export interface Candidate {
   rejected_by_candidate_reason?: string;
   rm_clearance?: {
     status: 'cleared' | 'rejected' | 'pending';
-    rating: number; // 1-5
+    rating?: number; // 1-5, only when an interviewer actually gave one
     notes: string;
     gmeet_link?: string;
     completed_at?: string;
@@ -331,7 +331,7 @@ export interface Candidate {
   };
   ih_clearance?: {
     status: 'cleared' | 'rejected' | 'pending';
-    rating: number; // 1-5
+    rating?: number; // 1-5, only when an interviewer actually gave one
     notes: string;
     gmeet_link?: string;
     completed_at?: string;

@@ -102,7 +102,6 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
   // Stage 5: HR Policy Agreement
   const [hrNoticeConfirmed, setHrNoticeConfirmed] = useState<boolean>(false);
-  const [hrHoursConfirmed, setHrHoursConfirmed] = useState<boolean>(false);
   const [hrSafeguardingConfirmed, setHrSafeguardingConfirmed] = useState<boolean>(false);
   const [hrCustomStatement, setHrCustomStatement] = useState<string>('');
 
@@ -416,15 +415,14 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           written_submission: situationalNotes || 'Classroom scenario video submitted.'
         };
       } else if (stageKey === 'hr_policy_briefing') {
-        if (!hrNoticeConfirmed || !hrHoursConfirmed || !hrSafeguardingConfirmed) {
+        if (!hrNoticeConfirmed || !hrSafeguardingConfirmed) {
           alert('Please confirm all HR policy conditions to complete the assessment.');
           setSubmitting(false);
           return;
         }
         submissionData = {
           written_submission: `HR Policy Confirmation:
-- 60-Day Notice Period Acknowledged: ${hrNoticeConfirmed ? 'YES' : 'NO'}
-- School Timings (7:45 AM - 3:45 PM) Acknowledged: ${hrHoursConfirmed ? 'YES' : 'NO'}
+- School policies accepted (${schoolPolicies.length ? schoolPolicies.map((p) => p.title).join(', ') : 'none published yet'}): ${hrNoticeConfirmed ? 'YES' : 'NO'}
 - Child Safeguarding Code of Conduct Signed: ${hrSafeguardingConfirmed ? 'YES' : 'NO'}
 - Additional Statement: ${hrCustomStatement || 'None'}`
         };
@@ -1129,24 +1127,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                         className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <div>
-                        <strong className="text-slate-900 block">60-Day Academic Notice Period Commitment</strong>
+                        <strong className="text-slate-900 block">
+                          {schoolPolicies.length > 0 ? "I accept this school's policies shown above" : "I agree to follow the school's HR policies"}
+                        </strong>
                         <span className="text-slate-500 text-[11px]">
-                          I confirm that I will give a minimum 60-day notice period to ensure zero mid-session disruption to student learning.
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3 cursor-pointer hover:border-indigo-300 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={hrHoursConfirmed}
-                        onChange={e => setHrHoursConfirmed(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <div>
-                        <strong className="text-slate-900 block">Working Hours & Campus Presence (7:45 AM – 3:45 PM)</strong>
-                        <span className="text-slate-500 text-[11px]">
-                          I agree to regular working hours, staff briefing attendance, and school duties.
+                          {schoolPolicies.length > 0
+                            ? 'Including its notice period, working hours, and the other terms in each policy.'
+                            : 'This school has not published its policies here yet. They will be shared with you before any offer.'}
                         </span>
                       </div>
                     </label>

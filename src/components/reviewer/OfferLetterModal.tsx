@@ -156,9 +156,7 @@ export default function OfferLetterModal({
                 </div>
                 <h2 className="text-xl font-black text-zinc-900 tracking-tight">{schoolName || '— school name unavailable —'}</h2>
               </div>
-              <p className="text-[11px] text-zinc-500">
-                CBSE & Cambridge Affiliated • Central Administrative Secretariat, Hyderabad
-              </p>
+              {targetBranchName && <p className="text-[11px] text-zinc-500">{targetBranchName}</p>}
             </div>
             <div className="text-right text-[11px] text-zinc-500 space-y-0.5">
               <div><strong>Ref No:</strong> {refNumber}</div>
@@ -171,21 +169,21 @@ export default function OfferLetterModal({
             <div className="font-bold text-zinc-900">To,</div>
             <div className="text-sm font-black text-zinc-900">{candidate.name}</div>
             <div className="text-zinc-600">Email: {candidate.email} | Phone: {candidate.phone}</div>
-            <div className="text-zinc-600">Designation: Senior Faculty – {candidate.applied_subject} ({candidate.applied_segment})</div>
+            <div className="text-zinc-600">Designation: Teacher – {candidate.applied_subject} ({candidate.applied_segment})</div>
             <div className="text-zinc-600">Campus Assignment: {targetBranchName || '— campus not set —'}</div>
           </div>
 
           {/* Subject & Offer Opening */}
           <div className="space-y-3">
             <div className="font-bold text-zinc-900 text-xs border-l-4 border-orange-600 pl-3 py-0.5 bg-orange-50/50">
-              Subject: Letter of Appointment for the Position of Senior Faculty ({candidate.applied_subject})
+              Subject: Letter of Appointment for the Position of Teacher ({candidate.applied_subject})
             </div>
             <p>
               Dear <strong>{candidate.name}</strong>,
             </p>
             <p>
               On behalf of the Board of Directors and the Academic Selection Committee of <strong>{schoolName || '— school name unavailable —'}</strong>, 
-              we are pleased to offer you the position of <strong>Senior Faculty in {candidate.applied_subject}</strong> ({candidate.applied_segment}). 
+              we are pleased to offer you the position of <strong>Teacher of {candidate.applied_subject}</strong> ({candidate.applied_segment}). 
               This offer is made pursuant to your pedagogical evaluation, 5-minute micro-teaching demonstration, and comprehensive multi-tier interviews.
             </p>
           </div>
@@ -237,9 +235,7 @@ export default function OfferLetterModal({
             </h4>
             <ul className="list-disc pl-5 space-y-1.5 text-zinc-700">
               <li><strong>Effective Joining Date:</strong> {joiningDate || '— not set —'}.</li>
-              <li><strong>Probation Period:</strong> 6 months from the date of joining.</li>
-              <li><strong>Working Hours:</strong> Reporting time is 7:45 AM to 3:45 PM on all school working days.</li>
-              <li><strong>Notice Period:</strong> 60 calendar days (to ensure zero mid-term disruption to student learning).</li>
+              <li><strong>Probation, working hours and notice period:</strong> as set out in {schoolName || 'the school'}&apos;s HR policies, which you accepted during your assessment.</li>
               <li><strong>Child Safeguarding & POCSO:</strong> Strict compliance with the school&apos;s zero-tolerance safeguarding code.</li>
             </ul>
           </div>

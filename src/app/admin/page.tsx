@@ -375,10 +375,10 @@ export default function SchoolAdminWorkspace() {
                     onChange={e => setSingleCandidateData({...singleCandidateData, target_branch_id: e.target.value})}
                     className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
                   >
-                    <option value="" disabled>Select campus…</option>
-                    <option value="branch_manneguda">Manneguda Campus (CBSE &amp; Cambridge)</option>
-                    <option value="branch_tukkuguda">Tukkuguda Campus (CBSE)</option>
-                    <option value="branch_vikarabad">Vikarabad Campus (Cambridge IGCSE)</option>
+                    <option value="" disabled>{school?.branches?.length ? 'Select campus…' : 'No campuses set up for this school yet'}</option>
+                    {(school?.branches || []).map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}{b.location ? ` (${b.location})` : ''}</option>
+                    ))}
                   </select>
                 </div>
 

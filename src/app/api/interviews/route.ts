@@ -14,6 +14,11 @@ const ROUND_LABEL: Record<InterviewRound, string> = {
   management: 'Management',
 };
 
+const PREVIOUS_ROUND: Partial<Record<InterviewRound, InterviewRound>> = {
+  principal: 'subject_lead',
+  management: 'principal',
+};
+
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('en-IN', {
     weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
@@ -81,6 +86,22 @@ export async function POST(req: NextRequest) {
 
     const candidate = db.getCandidateById(ctx.schoolId, candidate_id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found at this school.' }, { status: 404 });
+
+    // Rounds run in order: subject lead, then principal, then management. A
+    // later round may only be scheduled once the one before it was accepted.
+    if (candidate.status === 'rejected') {
+      return NextResponse.json({ error: 'This candidate has already been declined.' }, { status: 409 });
+    }
+    const previous = PREVIOUS_ROUND[round as InterviewRound];
+    if (previous) {
+      const last = [...(candidate.interview_decisions || [])].reverse().find((d) => d.round === previous);
+      if (last?.decision !== 'accepted') {
+        return NextResponse.json(
+          { error: `The ${ROUND_LABEL[previous]} round must be accepted before scheduling the ${ROUND_LABEL[round as InterviewRound]} round.` },
+          { status: 409 }
+        );
+      }
+    }
 
     // The assigned person must be real staff at this school — not a free-text
     // name, which is what let anyone "be" the subject lead before.

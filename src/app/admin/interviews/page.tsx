@@ -76,7 +76,11 @@ export default function LeadershipInterviewsPage() {
     const d = latestDecision(c, round);
     if (view === 'accepted') return d?.decision === 'accepted';
     if (view === 'declined') return d?.decision === 'rejected';
-    return !d && (c.shortlist_status === 'shortlisted' || c.status === 'passed' || c.status === 'in_progress');
+    if (d) return false;
+    // Only candidates who passed the previous round are waiting for this one.
+    const previous = round === 'principal' ? 'subject_lead' : round === 'management' ? 'principal' : null;
+    if (previous && latestDecision(c, previous)?.decision !== 'accepted') return false;
+    return c.status !== 'rejected' && (c.shortlist_status === 'shortlisted' || c.status === 'passed' || c.status === 'in_progress');
   };
 
   const list = candidates.filter(inRound);

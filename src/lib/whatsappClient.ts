@@ -33,6 +33,10 @@ export type TemplateName =
   | 'application_outcome';
 
 export const TEMPLATE_CATALOG: Record<TemplateName, { bodyParams: number; hasUrlButton: boolean; category: 'UTILITY' }> = {
+  // {{1}} name, {{2}} school, {{3}} subject, {{4}} application ID (the invite
+  // code). The approved wording must not call {{4}} a "sign-in code" or
+  // "reference": Meta's template classifier treated that phrasing as an
+  // Authentication message and refused it as Utility.
   assessment_invite: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
   stage_reminder: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
   shortlisted: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
