@@ -317,6 +317,8 @@ export interface Candidate {
   offer_letter_sent_at?: string;
   /** School rejected the candidate */
   rejected_by_school_at?: string;
+  /** When the candidate was told their application was declined (sent at most once). */
+  outcome_notified_at?: string;
   rejected_by_school_reason?: string;
   /** Candidate declined the role / offer */
   rejected_by_candidate_at?: string;

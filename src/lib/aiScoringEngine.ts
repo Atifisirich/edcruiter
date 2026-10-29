@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, FileState, createPartFromUri, type Part } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { AIScoringContract, HRPolicyDocument, RubricTemplate, QuestionnaireItem, CurriculumGuidelines, StageResult } from './types';
@@ -176,6 +176,48 @@ function detectPlagiarismSignatures(text: string): { risk: 'low' | 'moderate' | 
 }
 
 // Helper to prepare local video/audio file as Gemini inlineData part
+// Gemini caps an inline request at about 20 MB, and base64 adds a third, so
+// anything above this goes through the Files API instead. A 5-minute webcam
+// recording is typically 40-60 MB — the old inline-only path silently skipped
+// it, so the "video" stage was scored from placeholder text alone.
+const INLINE_MEDIA_MAX_BYTES = 14 * 1024 * 1024;
+const UPLOADED_MEDIA_MAX_BYTES = 150 * 1024 * 1024;
+
+type PreparedMedia = { part: Part; uploadedName?: string };
+
+async function prepareMediaPart(mediaUrl?: string): Promise<PreparedMedia | null> {
+  if (!mediaUrl || !ai) return null;
+  const inline = prepareLocalMediaPart(mediaUrl);
+  if (inline) return { part: inline };
+
+  try {
+    if (!mediaUrl.startsWith(UPLOADS_URL_PREFIX)) return null;
+    const absPath = safeUploadPath(mediaUrl.slice(UPLOADS_URL_PREFIX.length));
+    if (!absPath || !fs.existsSync(absPath)) return null;
+    const size = fs.statSync(absPath).size;
+    if (size <= INLINE_MEDIA_MAX_BYTES || size > UPLOADED_MEDIA_MAX_BYTES) return null;
+
+    const ext = path.extname(absPath).toLowerCase();
+    const mimeType = ext === '.mp4' ? 'video/mp4' : ext === '.mov' ? 'video/quicktime' : 'video/webm';
+    let file = await ai.files.upload({ file: absPath, config: { mimeType } });
+
+    // Uploaded video is processed asynchronously; wait until it can be used.
+    const deadline = Date.now() + 120_000;
+    while (file.state === FileState.PROCESSING && file.name && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      file = await ai.files.get({ name: file.name });
+    }
+    if (file.state !== FileState.ACTIVE || !file.uri) {
+      if (file.name) ai.files.delete({ name: file.name }).catch(() => {});
+      return null;
+    }
+    return { part: createPartFromUri(file.uri, file.mimeType || mimeType), uploadedName: file.name };
+  } catch (err) {
+    console.warn('Could not upload candidate video for multimodal analysis:', err);
+    return null;
+  }
+}
+
 function prepareLocalMediaPart(mediaUrl?: string): { inlineData: { mimeType: string; data: string } } | null {
   if (!mediaUrl || mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
     return null;
@@ -196,8 +238,8 @@ function prepareLocalMediaPart(mediaUrl?: string): { inlineData: { mimeType: str
 
     if (fs.existsSync(absPath)) {
       const fileStats = fs.statSync(absPath);
-      // Only process files under 25MB directly via inlineData
-      if (fileStats.size <= 25 * 1024 * 1024) {
+      // Small files only; larger ones go through prepareMediaPart's upload path
+      if (fileStats.size <= INLINE_MEDIA_MAX_BYTES) {
         const fileBuffer = fs.readFileSync(absPath);
         const base64Data = fileBuffer.toString('base64');
         const ext = path.extname(absPath).toLowerCase();
@@ -425,14 +467,14 @@ Output ONLY valid JSON with this exact schema:
       `;
 
       // 4. Check if local video media part is available for Multimodal Analysis
-      const mediaPart = prepareLocalMediaPart(input.media_url);
+      const prepared = isVideoStage ? await prepareMediaPart(input.media_url) : null;
       const requestContents: any[] = [];
       let multimodalAnalyzed = false;
 
-      if (mediaPart) {
-        requestContents.push(mediaPart);
+      if (prepared) {
+        requestContents.push(prepared.part);
         requestContents.push({
-          text: `[MULTIMODAL VIDEO SUBMISSION ATTACHED]: Watch and listen to the candidate's recorded video. Analyze their vocal clarity, tone, body language, and teaching presence.\n\n${cotPrompt}`
+          text: `[MULTIMODAL VIDEO SUBMISSION ATTACHED]: Watch and listen to the candidate's recorded video. Judge their teaching: clarity of explanation, pacing, checking for understanding, and how they engage a class. Do NOT score or comment on appearance, accent, skin colour, gender, age, disability, or the room and equipment they record in — only on teaching.\n\n${cotPrompt}`
         });
         multimodalAnalyzed = true;
       } else {
@@ -442,22 +484,32 @@ Output ONLY valid JSON with this exact schema:
       const primaryModel = input.modelId || 'gemini-3.5-flash';
       let response;
       try {
-        response = await ai.models.generateContent({
-          model: primaryModel,
-          contents: requestContents
-        });
-      } catch (mErr) {
-        if (input.skipModelFallback) {
-          throw new NamedModelEvalError(
-            mErr instanceof Error ? mErr.message : 'Gemini request failed',
-            primaryModel
-          );
+        try {
+          response = await ai.models.generateContent({
+            model: primaryModel,
+            contents: requestContents
+          });
+        } catch (mErr) {
+          if (input.skipModelFallback) {
+            throw new NamedModelEvalError(
+              mErr instanceof Error ? mErr.message : 'Gemini request failed',
+              primaryModel
+            );
+          }
+          response = await ai.models.generateContent({
+            model: 'gemini-flash-lite-latest',
+            contents: requestContents
+          });
         }
-        response = await ai.models.generateContent({
-          model: 'gemini-flash-lite-latest',
-          contents: requestContents
-        });
+      } finally {
+        // Candidate video shouldn't sit on Google's side longer than needed.
+        if (prepared?.uploadedName) ai.files.delete({ name: prepared.uploadedName }).catch(() => {});
       }
+
+      // A video stage scored without the video is scored on placeholder text;
+      // say so and send it to a person rather than presenting it as a verdict.
+      const videoMissed = isVideoStage && !multimodalAnalyzed;
+      const videoMissedNote = 'The video could not be analysed automatically. A person should watch it before relying on this score.';
 
       const usage = (response as { usageMetadata?: GeminiUsageSnapshot }).usageMetadata;
       input.onUsage?.(usage);
@@ -484,10 +536,12 @@ Output ONLY valid JSON with this exact schema:
           ...parsed,
           scoring_mode: 'gemini' as const,
           // A borderline tone term does not change the score, but the reviewer is told.
-          overall_flag: misconductCheck.needsReview ? 'needs_review' : parsed.overall_flag,
-          identified_gaps: misconductCheck.needsReview && misconductCheck.reason
-            ? [...(parsed.identified_gaps ?? []), misconductCheck.reason]
-            : parsed.identified_gaps,
+          overall_flag: misconductCheck.needsReview || videoMissed ? 'needs_review' : parsed.overall_flag,
+          identified_gaps: [
+            ...(parsed.identified_gaps ?? []),
+            ...(misconductCheck.needsReview && misconductCheck.reason ? [misconductCheck.reason] : []),
+            ...(videoMissed ? [videoMissedNote] : []),
+          ],
           plagiarism_risk: plagiarismResult.risk,
           plagiarism_reason: plagiarismResult.reason,
           discrepancy_alert: crossStageDiscrepancy,

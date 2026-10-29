@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { InterviewDecision, InterviewRound } from '@/lib/types';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 
 const ROUND_LABEL: Record<InterviewRound, string> = {
   subject_lead: 'Subject Lead',
@@ -93,6 +94,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     db.updateScheduledInterview(interview.id, { status: 'completed' });
 
+    // Tell a declined candidate the outcome (once, kindly, no internal reason).
+    const candidateNotified = decision === 'rejected' && body.notify_candidate !== false
+      ? await notifyCandidateDeclined(ctx.schoolId, candidate.id)
+      : undefined;
+
     db.addAuditLog({
       id: `audit_${Date.now()}`,
       school_id: ctx.schoolId,
@@ -105,7 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       timestamp: new Date().toISOString()
     });
 
-    return NextResponse.json({ success: true, candidate: updated, decision: entry });
+    return NextResponse.json({ success: true, candidate: db.getCandidateById(ctx.schoolId, candidate.id) || updated, decision: entry, candidate_notified: candidateNotified });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to record decision' }, { status: 500 });
   }

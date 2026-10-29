@@ -42,7 +42,8 @@ export const TEMPLATE_CATALOG: Record<TemplateName, { bodyParams: number; hasUrl
   shortlisted: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
   round_scheduled: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
   offer_released: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
-  application_outcome: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
+  // {{1}} name, {{2}} school, {{3}} subject. No button: nothing left to open.
+  application_outcome: { bodyParams: 3, hasUrlButton: false, category: 'UTILITY' },
 };
 
 export class WhatsAppConfigError extends Error {}

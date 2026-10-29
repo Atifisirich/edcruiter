@@ -4,6 +4,7 @@ import { evaluateStageWithAI, isMisappliedHrPolicyScore } from '@/lib/aiScoringE
 import { isScoredStage } from '@/lib/scoredStages';
 import { Candidate, StageResult } from '@/lib/types';
 import { authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
+import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 
 /**
  * Fields a candidate may set about themselves — the stage-1 profile capture.
@@ -102,13 +103,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'No permitted fields in update.' }, { status: 400 });
     }
 
+    const before = db.getCandidateById(access.schoolId, id);
     const updated = db.updateCandidate(access.schoolId, id, updates);
     if (!updated) {
       return NextResponse.json({ error: 'Failed to update candidate' }, { status: 404 });
     }
 
+    // Staff just declined this candidate: let them know instead of leaving
+    // them waiting. Staff can opt out per request with notify_candidate: false.
+    let candidateNotified;
+    const newlyDeclined = access.kind !== 'candidate' && !!updates.rejected_by_school_at && !before?.rejected_by_school_at;
+    if (newlyDeclined && body.notify_candidate !== false) {
+      candidateNotified = await notifyCandidateDeclined(access.schoolId, id);
+    }
+
     const enriched = db.getCandidateById(access.schoolId, id) || updated;
-    return NextResponse.json({ success: true, candidate: enriched });
+    return NextResponse.json({ success: true, candidate: enriched, candidate_notified: candidateNotified });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to update candidate profile' }, { status: 500 });
   }
