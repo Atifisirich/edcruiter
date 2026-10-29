@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { School, User, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import { candidateMatchesIdentifier } from './candidateMatch';
+import { createCoalescedWriter } from './coalescedWriter';
 import { SLOKA_DEFAULT_SCHOOL, DEFAULT_USERS, SLOKA_HR_POLICIES, DEFAULT_RUBRIC_TEMPLATES, DEFAULT_QUESTIONNAIRES, SLOKA_SCHOOL_ID } from './defaultData';
 
 interface DatabaseSchema {
@@ -37,7 +38,24 @@ function ensureDataDirExists() {
   }
 }
 
+// A real deployment starts empty. The demo school, its staff accounts
+// (superadmin@edcruiter.ai and friends) and fake audit entries exist for local
+// development only — on a live site they would be seeded accounts that
+// whoever controls those email addresses could sign in as. Set
+// SEED_DEMO_DATA=true to get the demo content anywhere else.
+function shouldSeedDemoData(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_DATA === 'true';
+}
+
 function getInitialDatabase(): DatabaseSchema {
+  if (!shouldSeedDemoData()) {
+    return {
+      schools: [], users: [], candidates: [], stageResults: [], proctoringEvents: [],
+      hrPolicies: [], rubrics: DEFAULT_RUBRIC_TEMPLATES, questionnaires: [], auditLogs: [],
+      jobs: [], assessmentPacks: [], whatsappMessages: [], messagingConsents: [],
+      messageWindows: [], uploadOwners: [], deletionRequests: [], scheduledInterviews: []
+    };
+  }
   const sampleCandidates: Candidate[] = [];
   const sampleStageResults: StageResult[] = [];
   const sampleProctoringEvents: ProctoringEvent[] = [];
@@ -107,7 +125,10 @@ class DB {
         if (!this.data.deletionRequests) this.data.deletionRequests = [];
         if (!this.data.scheduledInterviews) this.data.scheduledInterviews = [];
       } catch (err) {
-        console.error('Failed to parse db store file, initializing fresh store:', err);
+        // Never overwrite a store we could not read: set it aside so the data
+        // can still be recovered, then start fresh.
+        console.error('Failed to parse db store file, setting it aside and starting fresh:', err);
+        try { fs.renameSync(DB_FILE, `${DB_FILE}.unreadable.${Date.now()}`); } catch { /* best effort */ }
         this.data = getInitialDatabase();
         this.save();
       }
@@ -115,18 +136,30 @@ class DB {
       this.data = getInitialDatabase();
       this.save();
     }
+    this.ensureBootstrapSuperAdmin();
   }
 
-  // Serializes writes so two concurrent requests can no longer read-modify-write
-  // over each other and silently drop one mutation. Each save waits for the
-  // previous one to finish before it stringifies `this.data`, which is what
-  // makes the ordering safe — not just the atomic rename below.
-  private writeQueue: Promise<void> = Promise.resolve();
-
-  private save(): Promise<void> {
-    this.writeQueue = this.writeQueue.then(() => this.writeNow());
-    return this.writeQueue;
+  // A live site starts with no accounts, so the platform owner is named by
+  // environment variable. Idempotent: does nothing once that user exists.
+  private ensureBootstrapSuperAdmin() {
+    const email = (process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+    if (!email) return;
+    if (this.data.users.some((u) => u.email.toLowerCase() === email)) return;
+    this.data.users.push({
+      id: `user_super_${Date.now()}`,
+      school_id: null,
+      name: 'Platform Administrator',
+      email,
+      role: 'SUPER_ADMIN'
+    } as User);
+    this.save();
   }
+
+  // One write at a time, and changes made during a write are folded into a
+  // single follow-up write of the latest state (see coalescedWriter.ts) —
+  // important when the data folder is cloud storage, which can't take a full
+  // rewrite per change.
+  private save = createCoalescedWriter(() => this.writeNow());
 
   private async writeNow() {
     ensureDataDirExists();

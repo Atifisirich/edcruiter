@@ -31,6 +31,11 @@ export async function GET(request: NextRequest) {
     if (!payload?.sub || !payload.email) {
       return fail('google_signin_failed');
     }
+    // Roles are looked up by email, so an email Google has not verified must
+    // never be accepted — someone could otherwise claim an admin's address.
+    if (payload.email_verified !== true) {
+      return fail('google_signin_failed');
+    }
 
     const token = createSessionToken({
       sub: payload.sub,
