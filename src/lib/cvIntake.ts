@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { logAiUsage } from './aiUsage';
 import { looksLikePdf, normalizeCvExtraction, type CvIntakeContext, type CvLead, type RawCvExtraction } from './cvLead';
 
 function buildPrompt(ctx: CvIntakeContext): string {
@@ -46,6 +47,7 @@ export async function readCv(buffer: Buffer, filename: string, ctx: CvIntakeCont
         contents,
         config: { responseMimeType: 'application/json', temperature: 0 }
       });
+      logAiUsage('cv-intake', response, model);
       text = (response.text || '').trim();
       if (text) break;
     } catch (err) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logAiUsage } from '@/lib/aiUsage';
 import fs from 'fs';
 import { db } from '@/lib/db';
 import { reconcileResumeWithClaims } from '@/lib/aiResumeAnalyzer';
@@ -163,6 +164,7 @@ Output ONLY valid JSON:
           });
         }
 
+        logAiUsage('cv-audit', response);
         const responseText = response.text ? response.text.trim() : '';
         const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         report = JSON.parse(cleanJson);

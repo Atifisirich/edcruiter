@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { logAiUsage } from './aiUsage';
 import type { AssessmentPack } from './types';
 import { buildFallbackPack } from './buildAssessmentPack';
 
@@ -99,6 +100,7 @@ async function askModel(ai: GoogleGenAI, prompt: string): Promise<Record<string,
         contents: prompt,
         config: { responseMimeType: 'application/json', temperature: 0.6 }
       });
+      logAiUsage('test-writing', response, model);
       const text = (response.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
       const parsed = JSON.parse(text);
       if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;

@@ -1,4 +1,5 @@
 import { GoogleGenAI, FileState, createPartFromUri, type Part } from '@google/genai';
+import { logAiUsage } from './aiUsage';
 import fs from 'fs';
 import path from 'path';
 import { AIScoringContract, HRPolicyDocument, RubricTemplate, QuestionnaireItem, CurriculumGuidelines, StageResult } from './types';
@@ -505,6 +506,8 @@ Output ONLY valid JSON with this exact schema:
         // Candidate video shouldn't sit on Google's side longer than needed.
         if (prepared?.uploadedName) ai.files.delete({ name: prepared.uploadedName }).catch(() => {});
       }
+
+      logAiUsage(`stage:${input.stage}`, response, primaryModel);
 
       // A video stage scored without the video is scored on placeholder text;
       // say so and send it to a person rather than presenting it as a verdict.
