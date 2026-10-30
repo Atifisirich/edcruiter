@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { sendTemplateMessage } from '@/lib/whatsappClient';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { createCandidateMagicLinkToken } from '@/lib/session';
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'whatsapp-invite', { max: 100, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

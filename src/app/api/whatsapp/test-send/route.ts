@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { resolveCredentials, sendHelloWorld, WhatsAppConfigError } from '@/lib/whatsappClient';
-import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'whatsapp-test-send', { max: 10, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

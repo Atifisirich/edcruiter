@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { analyzeResumeWithAIAsync } from '@/lib/aiResumeAnalyzer';
-import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx = await requireSchoolAccess(body.school_id);
+    assertSchoolActive(ctx.schoolId);
     const school_id = ctx.schoolId;
 
     const rl = checkRateLimit(req, 'resume-reanalyze', { max: 30, windowMs: 60 * 60_000 });

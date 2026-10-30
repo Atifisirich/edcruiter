@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { PublicVacancy } from '@/lib/types';
-import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { authErrorResponse, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
     const rl = checkRateLimit(req, 'generate-job', { max: 30, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Generation limit reached for this hour.' }, { status: 429 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { db } from '@/lib/db';
 import { HRPolicyDocument } from '@/lib/types';
-import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
 
     if (body.generate) {
+      assertSchoolActive(ctx.schoolId);
       const rl = checkRateLimit(req, 'hr-policy-generate', { max: 20, windowMs: 60 * 60_000 });
       if (!rl.allowed) {
         return NextResponse.json({ error: 'Generation limit reached for this hour.' }, { status: 429 });

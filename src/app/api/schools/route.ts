@@ -4,6 +4,7 @@ import { School } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { formatWhatsAppDisplay, toWhatsAppE164 } from '@/lib/whatsapp';
 import { authErrorResponse, auditAsStaff, requireNewSignup, requireSchoolAccess, requireStaff } from '@/lib/auth';
+import { stripProtectedSchoolFields } from '@/lib/schoolStatus';
 
 export async function GET(req: NextRequest) {
   try {
@@ -76,7 +77,9 @@ export async function POST(req: NextRequest) {
       curricula: curricula || ['CBSE'],
       stages_config: SLOKA_DEFAULT_STAGES,
       created_at: new Date().toISOString(),
-      status: 'active',
+      // A school that signed itself up waits for the platform owner to approve
+      // it; one the platform owner creates is approved from the start.
+      status: founderEmail ? 'onboarding' : 'active',
       shortlist_bands: shortlist_bands || undefined,
       hr_policy_answers: hr_policy_answers || undefined,
       whatsapp_hiring: wa
@@ -138,7 +141,10 @@ export async function PUT(req: NextRequest) {
 
     const ctx = await requireSchoolAccess(school_id, { minRole: 'SCHOOL_ADMIN' });
 
-    const updated = db.updateSchool(ctx.schoolId, updates);
+    // Only the platform owner may change `status` (the approval switch) and a
+    // few identity fields; a school admin sending status: 'active' used to
+    // approve their own school.
+    const updated = db.updateSchool(ctx.schoolId, stripProtectedSchoolFields(updates || {}, ctx.isSuperAdmin));
     if (!updated) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }

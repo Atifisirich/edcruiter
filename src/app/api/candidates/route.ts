@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { makeInviteCode } from '@/lib/inviteCode';
-import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { CANDIDATE_COOKIE, createCandidateToken } from '@/lib/session';
 
@@ -171,6 +171,11 @@ export async function POST(req: NextRequest) {
     // default) is used as-is.
     const school_id = staffCtx ? resolveSchoolId(staffCtx, requestedSchoolId) : requestedSchoolId;
 
+    // Public applications only go to a school that exists and has been approved
+    // — otherwise applicants (and their personal data) pile up against a school
+    // nobody is reviewing, or one that does not exist at all.
+    if (!staffCtx) assertSchoolActive(school_id);
+
     const newCandidate: Candidate = {
       id: newCandidateId(),
       school_id,
@@ -192,7 +197,7 @@ export async function POST(req: NextRequest) {
       notice_period: notice_period || '',
       applied_segment,
       applied_subject,
-      target_branch_id: target_branch_id || (staffCtx?.user.branch_id) || 'branch_gachibowli',
+      target_branch_id: target_branch_id || staffCtx?.user.branch_id || undefined,
       video_intro_url: video_intro_url || '',
       reading_passage_text,
       reading_passage_score,

@@ -41,6 +41,23 @@ export default function SuperAdminPage() {
     }
   };
 
+  const setSchoolStatus = async (schoolId: string, name: string, status: 'active' | 'suspended') => {
+    const verb = status === 'active' ? 'Approve' : 'Suspend';
+    if (!window.confirm(`${verb} "${name}"?${status === 'active' ? ' It can then use AI scoring, WhatsApp and public applications.' : ' Its AI features, messaging and public applications will stop.'}`)) return;
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId, updates: { status } })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not change the school status');
+      await fetchSuperAdminData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not change the school status');
+    }
+  };
+
   const confirmDeletion = async (requestId: string, candidateId: string, email: string) => {
     if (!window.confirm(`Permanently delete this candidate's application (${email})? This removes their record, stage results, recordings, resume, and message history. This cannot be undone.`)) {
       return;
@@ -161,7 +178,14 @@ export default function SuperAdminPage() {
 
       {/* Tenants Table */}
       <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
-        <h2 className="text-lg font-extrabold text-slate-900">Active Tenant Schools ({schools.length})</h2>
+        <h2 className="text-lg font-extrabold text-slate-900">
+          Tenant Schools ({schools.length})
+          {schools.filter(sc => sc.status === 'onboarding').length > 0 && (
+            <span className="ml-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+              {schools.filter(sc => sc.status === 'onboarding').length} waiting for approval
+            </span>
+          )}
+        </h2>
         <div className="divide-y divide-slate-100">
           {schools.map(sch => (
             <div key={sch.id} className="py-4 flex flex-wrap items-center justify-between gap-4 text-xs font-medium">
@@ -176,10 +200,32 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  {sch.status.toUpperCase()}
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                  sch.status === 'active' ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : sch.status === 'suspended' ? 'bg-rose-50 text-rose-800 border-rose-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-300'
+                }`}>
+                  {sch.status === 'onboarding' ? 'WAITING FOR APPROVAL' : sch.status.toUpperCase()}
                 </span>
                 <span className="text-slate-600 font-semibold">{sch.branches.length} Campuses</span>
+                {sch.status !== 'active' && (
+                  <button
+                    type="button"
+                    onClick={() => setSchoolStatus(sch.id, sch.name, 'active')}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white cursor-pointer hover:bg-emerald-700"
+                  >
+                    Approve
+                  </button>
+                )}
+                {sch.status === 'active' && (
+                  <button
+                    type="button"
+                    onClick={() => setSchoolStatus(sch.id, sch.name, 'suspended')}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-slate-300 text-slate-600 cursor-pointer hover:bg-slate-50"
+                  >
+                    Suspend
+                  </button>
+                )}
               </div>
             </div>
           ))}

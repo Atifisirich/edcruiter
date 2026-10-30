@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from './db';
 import { getCandidateSession, getSessionUser } from './session';
 import { User, UserRole } from './types';
+import { schoolBlockReason } from './schoolStatus';
 
 /**
  * Authorization for API routes.
@@ -146,6 +147,17 @@ export function resolveSchoolId(ctx: StaffContext, requested?: string | null): s
 }
 
 /** Requires staff who may act on `schoolId` specifically. */
+/**
+ * Throws unless the school has been approved. Call it before anything that
+ * spends money (AI generation or scoring), sends messages, or is public.
+ * Takes a school id rather than a session so candidate-facing routes, which
+ * have no staff session, can use it too.
+ */
+export function assertSchoolActive(schoolId: string): void {
+  const reason = schoolBlockReason(db.getSchoolById(schoolId)?.status);
+  if (reason) throw new AuthError(reason, 403);
+}
+
 export async function requireSchoolAccess(
   requested: string | null | undefined,
   options?: { minRole?: UserRole; anyOf?: UserRole[] }

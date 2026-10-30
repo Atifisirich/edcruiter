@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { authErrorResponse, requireCandidate } from '@/lib/auth';
+import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
   try {
     // Requires a live candidate session — this route makes a paid Gemini
     // call per turn and previously had no auth at all.
-    await requireCandidate();
+    const access = await requireCandidate();
+    assertSchoolActive(access.schoolId);
     const rl = checkRateLimit(req, 'ai-interview', { max: 40, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Too many interview turns this hour.' }, { status: 429 });

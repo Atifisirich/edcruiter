@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ScheduledInterview, InterviewRound } from '@/lib/types';
-import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchoolAccess, requireStaff } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchoolAccess, requireStaff, assertSchoolActive } from '@/lib/auth';
 import { generateMeetingLink } from '@/lib/meetingLink';
 import { sendTemplateMessage } from '@/lib/whatsappClient';
 import { sendEmail } from '@/lib/emailClient';
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'schedule-interview', { max: 60, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

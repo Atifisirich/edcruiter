@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { analyzeResumeWithAIAsync, reconcileResumeWithClaims } from '@/lib/aiResumeAnalyzer';
 import { GoogleGenAI } from '@google/genai';
 import { Candidate, ResumeAnalysisReport } from '@/lib/types';
-import { authErrorResponse, requireCandidate } from '@/lib/auth';
+import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
 import { ensureUploadsDir, extensionForMime, mediaUrlFor, randomUploadFilename, safeUploadPath } from '@/lib/uploads';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'candidate_id is required' }, { status: 400 });
     }
     const candidate = await requireCandidate(candidateId);
+    assertSchoolActive(candidate.schoolId);
 
     const rl = checkRateLimit(req, 'resume-upload', { max: 10, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

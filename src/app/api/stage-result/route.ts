@@ -4,7 +4,7 @@ import { evaluateStageWithAIAsync } from '@/lib/aiScoringEngine';
 import { StageResult, StageKey } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { isScoredStage } from '@/lib/scoredStages';
-import { authErrorResponse, requireCandidate } from '@/lib/auth';
+import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const access = await requireCandidate(candidate_id);
+    assertSchoolActive(access.schoolId);
 
     const rl = checkRateLimit(req, 'stage-submit', { max: 20, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

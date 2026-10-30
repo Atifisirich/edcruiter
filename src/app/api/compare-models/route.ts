@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isScoredStage } from '@/lib/scoredStages';
-import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { authErrorResponse, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import {
   evaluateStageWithAIAsync,
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     // candidate's submission — school admin and above only, and rate-limited
     // since each call is billed API usage.
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
     const rl = checkRateLimit(req, 'compare-models', { max: 10, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Model comparison limit reached for this hour.' }, { status: 429 });

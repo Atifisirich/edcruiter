@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db } from '@/lib/db';
 import { AssessmentPack, StageKey } from '@/lib/types';
 import { buildFallbackMcqs, buildFallbackPack } from '@/lib/buildAssessmentPack';
-import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'assessment-pack-generate', { max: 15, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

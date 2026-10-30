@@ -610,6 +610,18 @@ export default function SchoolAdminWorkspace() {
       {/* 2. MAIN WORKSPACE CONTENT AREA */}
       {/* ========================================================================= */}
       <main className="flex-1 p-6 sm:p-8 space-y-6 overflow-y-auto max-h-screen">
+        {school && school.status !== 'active' && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-1">
+            <p className="font-extrabold text-sm">
+              {school.status === 'suspended' ? 'This school is suspended' : 'Your school is waiting for approval'}
+            </p>
+            <p>
+              {school.status === 'suspended'
+                ? 'AI features, messaging and public applications are switched off. Contact Edcruiter support.'
+                : 'You can set up your campuses, HR policies and vacancies now. AI test generation and scoring, WhatsApp messages and public applications switch on as soon as Edcruiter approves your school.'}
+            </p>
+          </div>
+        )}
         
         {/* Workspace Top Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4">

@@ -5,7 +5,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
     const job = db.getJobById(id);
-    if (!job) {
+    // A vacancy of a school that is not approved is not public.
+    if (!job || !db.isSchoolActive(job.school_id)) {
       return NextResponse.json({ error: 'Vacancy not found' }, { status: 404 });
     }
     return NextResponse.json({ job });

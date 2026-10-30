@@ -609,9 +609,13 @@ class DB {
     return job;
   }
 
+  isSchoolActive(schoolId: string): boolean {
+    return this.data.schools.find(s => s.id === schoolId)?.status === 'active';
+  }
+
   getPublicJobs(): PublicVacancy[] {
     if (!this.data.jobs) return [];
-    return this.data.jobs.filter(j => j.status === 'active');
+    return this.data.jobs.filter(j => j.status === 'active' && this.isSchoolActive(j.school_id));
   }
 
   getJobsBySchool(schoolId: string): PublicVacancy[] {
