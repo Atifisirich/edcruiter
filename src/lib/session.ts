@@ -88,8 +88,12 @@ export function createCandidateToken(session: Omit<CandidateSession, 'exp'>, max
  * use the magic-login route issues a normal 3-day session cookie — this
  * token is never itself persisted as one.
  */
-export function createCandidateMagicLinkToken(candidateId: string, schoolId: string): string {
-  return createCandidateToken({ cid: candidateId, school_id: schoolId }, 30 * 60);
+// Default is short (a link forwarded or screenshotted should stop working fast).
+// Invites sent on WhatsApp pass a longer value, because a teacher may tap the
+// button the next day and the alternative is a login screen they cannot pass
+// without the code.
+export function createCandidateMagicLinkToken(candidateId: string, schoolId: string, maxAgeSec: number = 30 * 60): string {
+  return createCandidateToken({ cid: candidateId, school_id: schoolId }, maxAgeSec);
 }
 
 export function readCandidateToken(token: string | undefined): CandidateSession | null {

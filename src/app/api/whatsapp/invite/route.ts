@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
-import { sendTemplateMessage } from '@/lib/whatsappClient';
+import { sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { createCandidateMagicLinkToken } from '@/lib/session';
 
 /**
  * Sends the assessment_invite template to a candidate at this school.
@@ -47,27 +46,8 @@ export async function POST(req: NextRequest) {
     }
 
     const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://edcruiter.ai';
-    const code = candidate.invite_code || candidate.id;
-
-    // The button parameter is the only dynamic piece of a WhatsApp template
-    // URL button — Meta appends it to whatever base URL was registered for
-    // this template. That base must be registered as
-    // "<origin>/api/candidates/magic-login?token=" so the full link becomes
-    // .../magic-login?token=<this>. Tapping it logs the candidate in and
-    // lands them straight on their assessment — previously this param was
-    // just the bare candidate id, which pointed at a page requiring a
-    // session that clicking the link never created, so every tap still
-    // demanded the manual identifier+code screen.
-    const magicToken = createCandidateMagicLinkToken(candidate.id, candidate.school_id);
-
-    const result = await sendTemplateMessage({
-      school,
-      candidateId: candidate.id,
-      toRaw: candidate.phone,
-      template: 'assessment_invite',
-      bodyParams: [candidate.name, school.name, candidate.applied_subject, code],
-      buttonParam: magicToken
-    });
+    // The button's sign-in link and the variable order live in sendAssessmentInvite.
+    const result = await sendAssessmentInvite(school, candidate);
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'WHATSAPP_INVITE',

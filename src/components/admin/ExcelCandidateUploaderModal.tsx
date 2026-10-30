@@ -178,6 +178,14 @@ export default function ExcelCandidateUploaderModal({
   const [importSuccess, setImportSuccess] = useState(false);
   const [importError, setImportError] = useState('');
   const [contactAttested, setContactAttested] = useState(false);
+  // Send each teacher their WhatsApp test invite straight after the import.
+  const [sendInvites, setSendInvites] = useState(true);
+  const [inviteResult, setInviteResult] = useState<{
+    summary?: { sent: number; already_invited: number; no_phone: number; no_consent: number; waiting_for_daily_limit: number; failed: number };
+    firstFailure?: string;
+    error?: string;
+    imported: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -289,6 +297,29 @@ export default function ExcelCandidateUploaderModal({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Batch import failed.');
+
+      const importedIds: string[] = (data.candidates || []).map((c: { id: string }) => c.id);
+
+      if (sendInvites && importedIds.length > 0) {
+        // The profiles exist now. Send the invites and show what happened
+        // instead of closing, so a school can see who did not get one and why.
+        let result: NonNullable<typeof inviteResult> = { imported: importedIds.length };
+        try {
+          const inv = await fetch('/api/whatsapp/invite-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ school_id: schoolId, candidate_ids: importedIds }),
+          });
+          const invData = await inv.json();
+          result = inv.ok
+            ? { imported: importedIds.length, summary: invData.summary, firstFailure: invData.first_failure }
+            : { imported: importedIds.length, error: invData.error || 'The invites could not be sent.' };
+        } catch {
+          result = { imported: importedIds.length, error: 'The invites could not be sent. Check your connection, then send them from the candidate list.' };
+        }
+        setInviteResult(result);
+        return;
+      }
 
       setImportSuccess(true);
       setTimeout(() => {
@@ -440,8 +471,49 @@ export default function ExcelCandidateUploaderModal({
                 I confirm the school has permission to contact these {parsedRows.length} candidates by WhatsApp and email about this application.
               </span>
             </label>
+            <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-indigo-200 bg-indigo-50 text-xs text-indigo-900 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendInvites}
+                onChange={(e) => setSendInvites(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <strong>Send each teacher their test invite on WhatsApp right after the import.</strong>{' '}
+                Teachers with a phone number get a message with their code and a button that opens their test.
+              </span>
+            </label>
             {importError && <p className="text-xs text-rose-600 font-semibold">{importError}</p>}
 
+            {inviteResult ? (
+              <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50 text-xs text-emerald-900 space-y-2">
+                <p className="font-extrabold text-sm">{inviteResult.imported} teacher profiles created</p>
+                {inviteResult.error ? (
+                  <p className="text-rose-700 font-semibold">{inviteResult.error}</p>
+                ) : inviteResult.summary && (
+                  <ul className="space-y-1">
+                    <li>✅ <strong>{inviteResult.summary.sent}</strong> invites sent on WhatsApp</li>
+                    {inviteResult.summary.no_phone > 0 && <li>• {inviteResult.summary.no_phone} have no phone number</li>}
+                    {inviteResult.summary.no_consent > 0 && <li>• {inviteResult.summary.no_consent} have not agreed to WhatsApp messages</li>}
+                    {inviteResult.summary.waiting_for_daily_limit > 0 && (
+                      <li>⏳ {inviteResult.summary.waiting_for_daily_limit} are waiting: WhatsApp&apos;s daily limit for new numbers was reached. Send them again tomorrow.</li>
+                    )}
+                    {inviteResult.summary.failed > 0 && (
+                      <li className="text-rose-700">⚠️ {inviteResult.summary.failed} failed{inviteResult.firstFailure ? ` (${inviteResult.firstFailure})` : ''}</li>
+                    )}
+                  </ul>
+                )}
+                <div className="pt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setInviteResult(null); onSuccess(); onClose(); }}
+                    className="brand-primary-btn px-5 py-2 rounded-xl text-xs font-bold text-white"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="pt-2 flex items-center justify-between border-t border-slate-100">
               <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100">
                 Cancel
@@ -470,6 +542,7 @@ export default function ExcelCandidateUploaderModal({
                 )}
               </button>
             </div>
+            )}
           </div>
         )}
       </div>

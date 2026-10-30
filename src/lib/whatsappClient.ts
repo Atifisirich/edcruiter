@@ -174,7 +174,9 @@ export async function sendTemplateMessage(params: {
     }
   }
 
-  const cap = params.tierCap ?? 250;
+  // 250 is where every new business starts; set WHATSAPP_TIER_CAP once Meta
+  // raises the limit (Messaging limits in WhatsApp Manager shows the current one).
+  const cap = params.tierCap ?? (Number(process.env.WHATSAPP_TIER_CAP) || 250);
   if (db.countRecentUniqueRecipients(params.school.id, 24 * 60 * 60_000) >= cap) {
     return { ok: false, reason: 'rate_limited', detail: `24h unique-recipient cap of ${cap} reached for this number.` };
   }
