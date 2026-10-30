@@ -593,9 +593,11 @@ export default function SchoolAdminWorkspace() {
         <div className="p-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center">
-              S
+              {(school?.name || 'E').charAt(0).toUpperCase()}
             </div>
-            <span className="font-medium text-slate-200">Sample School • CBSE</span>
+            <span className="font-medium text-slate-200">
+              {school?.name || 'Your school'}{school?.curricula?.length ? ` • ${school.curricula.join(' / ')}` : ''}
+            </span>
           </div>
           <Link href="/" className="hover:text-white">
             <ArrowRight className="w-4 h-4" />

@@ -42,9 +42,17 @@ export default function SchoolJobsPage() {
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+  const [school, setSchool] = useState<{ name: string; branches?: unknown[] } | null>(null);
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
+
+  useEffect(() => {
+    fetch(`/api/schools?school_id=${schoolId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.school) setSchool(d.school); })
+      .catch(() => {});
+  }, [schoolId]);
 
   const loadJobs = () => {
     fetch(`/api/jobs?school_id=${schoolId}`)
@@ -103,7 +111,10 @@ export default function SchoolJobsPage() {
   };
 
   const copyInvite = (job: SchoolJob) => {
-    const msg = `*Teacher Assessment Invitation • Sample School*\n\nDear Educator,\n\nYou have been shortlisted to take your 5-stage proctored evaluation for *${job.title}* (${job.branch}).\n\n👉 Assessment code: SAMPLE-PHY-2026\n⏱️ Duration: 30 Mins (Includes 5-Min Video Demo & Lesson Plan)`;
+    // A public link anyone can apply through, not a per-teacher assessment code
+    // (the old text invented one that no teacher could use).
+    const link = `${window.location.origin}/jobs/${job.id}`;
+    const msg = `*Teaching vacancy • ${school?.name || 'Our school'}*\n\nDear Educator,\n\nWe are hiring for *${job.title}*${job.branch ? ` (${job.branch})` : ''}.\n\n👉 Apply here: ${link}\n⏱️ The online assessment takes about 60–75 minutes: a short profile, a written test, and two short videos.`;
     navigator.clipboard.writeText(msg);
     setCopiedJobId(job.id);
     setTimeout(() => setCopiedJobId(null), 2000);
@@ -136,7 +147,7 @@ export default function SchoolJobsPage() {
           </Link>
 
           <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
-            Sample School • 3 Active Campuses
+            {school?.name || 'Your school'}{school?.branches?.length ? ` • ${school.branches.length} campus${school.branches.length === 1 ? '' : 'es'}` : ''}
           </span>
         </div>
 

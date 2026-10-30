@@ -9,110 +9,16 @@ import {
   ArrowLeft, Check, BookOpen, AlertCircle, Share2, DollarSign
 } from 'lucide-react';
 
-const JOB_DETAILS_DATABASE: Record<string, any> = {
-  job_001: {
-    id: 'job_001',
-    title: 'Senior PGT Physics Faculty (Grades 11–12)',
-    school_name: 'Sample School',
-    school_type: 'CBSE & Cambridge International',
-    subject: 'Physics',
-    segment: 'Senior Secondary (Grades 11-12)',
-    board: 'CBSE / Cambridge IGCSE & A-Level',
-    location: 'Hyderabad, Telangana',
-    branch: 'Manneguda Campus',
-    experience_required: '3 – 6 Years',
-    salary_range: '₹7.8 LPA – ₹9.5 LPA',
-    posted_date: 'Posted 2 days ago',
-    overview: 'Sample School is seeking an experienced, visionary PGT Physics faculty member for our Senior Secondary wing at Manneguda Campus. The educator will teach advanced mechanics, electromagnetism, and modern physics for CBSE Class 11-12 board exams and Cambridge A-Levels.',
-    responsibilities: [
-      'Deliver engaging 35-45 minute physics lectures emphasizing conceptual first-principles.',
-      'Supervise senior physics laboratory practical experiments adhering to board safety protocols.',
-      'Diagnose and remediate student misconceptions in vector calculus, thermodynamics, and circuit analysis.',
-      'Design formative exit tickets and calibrated term examinations.'
-    ],
-    requirements: [
-      'Master of Science (M.Sc) in Physics / Applied Physics with minimum 60% aggregate.',
-      'Bachelor of Education (B.Ed) from an NCTE recognized university.',
-      'Minimum 3 years of classroom teaching experience in CBSE or Cambridge senior cohorts.',
-      'Strong communication and chalkboard pedagogical projection.'
-    ],
-    perks: [
-      'Subsidized AC Campus Housing & Staff Quarters',
-      '100% Tuition Fee Waiver for up to 2 Children',
-      'Comprehensive Medical & Health Insurance Cover',
-      'Annual Performance & Board Results Bonus',
-      'Free Daily Staff Transport (AC Bus)'
-    ]
-  },
-  job_002: {
-    id: 'job_002',
-    title: 'TGT Mathematics Lead & Olympiad Mentor',
-    school_name: 'Sample School',
-    school_type: 'CBSE Affiliated Senior School',
-    subject: 'Mathematics',
-    segment: 'Secondary (Grades 9-10)',
-    board: 'CBSE Curriculum',
-    location: 'Hyderabad, Telangana',
-    branch: 'Tukkuguda Campus',
-    experience_required: '4 – 7 Years',
-    salary_range: '₹6.5 LPA – ₹8.2 LPA',
-    posted_date: 'Posted 3 days ago',
-    overview: 'Sample School invites applications for a passionate Secondary Mathematics Teacher (TGT) to mentor grade 9-10 students in geometric proofs, algebraic reasoning, and competitive olympiad problems.',
-    responsibilities: [
-      'Teach CBSE class 9-10 mathematics with concrete-to-abstract pedagogical scaffolding.',
-      'Conduct interactive math lab activities to visualize trigonometric ratios and coordinate geometry.',
-      'Provide targeted remedial support for struggling learners while mentoring gifted students.'
-    ],
-    requirements: [
-      'M.Sc or B.Sc in Mathematics with B.Ed degree.',
-      'Minimum 4 years teaching experience in recognized CBSE/ICSE schools.',
-      'Demonstrated track record of strong student board examination performance.'
-    ],
-    perks: [
-      'Free AC Staff Transport',
-      'Provident Fund + Gratuity Benefits',
-      'Annual National Math Conclave Sponsorship',
-      'Daily Nutritious Lunch on Campus'
-    ]
-  },
-  job_003: {
-    id: 'job_003',
-    title: 'Cambridge IGCSE Biology & Life Sciences Specialist',
-    school_name: 'Sample School',
-    school_type: 'Cambridge International School',
-    subject: 'Biology',
-    segment: 'Secondary (Grades 9-10)',
-    board: 'Cambridge IGCSE',
-    location: 'Vikarabad, Telangana',
-    branch: 'Vikarabad Campus',
-    experience_required: '2 – 5 Years',
-    salary_range: '₹6.0 LPA – ₹7.5 LPA',
-    posted_date: 'Posted 5 days ago',
-    overview: 'Join Sample School as an IGCSE Biology Specialist. Foster an environment of scientific inquiry, microscopic investigations, and ecological awareness.',
-    responsibilities: [
-      'Teach Cambridge 0610 Biology syllabus with emphasis on experimental analysis.',
-      'Guide students in microscope slide preparation, osmosis experiments, and enzyme kinetics.',
-      'Facilitate biology club and environmental science exhibitions.'
-    ],
-    requirements: [
-      'M.Sc or B.Sc in Botany / Zoology / Life Sciences + B.Ed.',
-      'Familiarity with Cambridge assessment rubrics and practical paper 6.',
-      '2+ years of international curriculum experience.'
-    ],
-    perks: [
-      'Relocation Allowance for outstation candidates',
-      'Cambridge Professional Development Certification',
-      'Campus Dining & Health Insurance'
-    ]
-  }
-};
+// Only real vacancies a school published are shown; the page used to hold three
+// fake postings, so /jobs/job_001 showed a job that did not exist, with a form
+// that saved real candidates against a school that did not exist either.
 
 export default function PublicJobApplicationPage() {
   const params = useParams();
   const router = useRouter();
-  const rawId = (params.id as string) || 'job_001';
-  const [job, setJob] = useState<any>(JOB_DETAILS_DATABASE[rawId] || null);
-  const [jobLoading, setJobLoading] = useState(!JOB_DETAILS_DATABASE[rawId]);
+  const rawId = (params.id as string) || '';
+  const [job, setJob] = useState<any>(null);
+  const [jobLoading, setJobLoading] = useState(true);
 
   useEffect(() => {
     fetch(`/api/jobs/${rawId}`)
@@ -129,7 +35,7 @@ export default function PublicJobApplicationPage() {
           subject: j.subject,
           segment: j.segment,
           board: j.board,
-          location: j.location || 'Hyderabad, Telangana',
+          location: j.location || '',
           branch: j.branch,
           experience_required: j.experience_required,
           salary_range: j.salary_range,
