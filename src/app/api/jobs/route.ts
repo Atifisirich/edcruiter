@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { SLOKA_DEFAULT_SCHOOL } from '@/lib/defaultData';
 import { PublicVacancy } from '@/lib/types';
-import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { assertSchoolActive, authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    assertSchoolActive(ctx.schoolId);
     const school = db.getSchoolById(ctx.schoolId);
 
     if (!body.title || !body.subject || !body.segment) {

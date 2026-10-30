@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
+import { flagDuplicateLeads, type CvLead } from '@/lib/cvLead';
 
 interface ParsedCandidate {
   name: string;
@@ -17,6 +18,9 @@ interface ParsedCandidate {
   qualification: string;
   experience: string;
   prior_org: string;
+  /** Set on rows read from a CV: the file name and what to check. */
+  source?: string;
+  warnings?: string[];
 }
 
 interface ExcelCandidateUploaderModalProps {
@@ -30,7 +34,9 @@ Dr. Priya Nair,priya.science@gmail.com,+91 98765 11223,Physics,Senior Secondary 
 Sanjay Mukherjee,sanjay.math@gmail.com,+91 98765 22334,Mathematics,Secondary (Grades 9-10),M.Sc (Math) + B.Ed,3.0 Years,Oakridge International
 Kavita Deshmukh,kavita.bio@gmail.com,+91 98765 33445,Biology,Secondary (Grades 9-10),M.Sc (Botany) + B.Ed,5.0 Years,Chirec International`;
 
-const HEADER_ALIASES: Record<keyof ParsedCandidate | 'name', string[]> = {
+type SheetField = Exclude<keyof ParsedCandidate, 'source' | 'warnings'>;
+
+const HEADER_ALIASES: Record<SheetField, string[]> = {
   name: ['name', 'full name', 'candidate', 'teacher', 'teacher name', 'applicant'],
   email: ['email', 'e-mail', 'mail', 'email id', 'email address'],
   phone: ['phone', 'mobile', 'whatsapp', 'contact', 'phone number', 'mobile number', 'number', 'cell'],
@@ -71,11 +77,11 @@ function splitCsvLine(line: string): string[] {
   return cols.map((c) => c.replace(/^["']|["']$/g, '').trim());
 }
 
-function mapHeaderIndex(headers: string[]): Partial<Record<keyof ParsedCandidate, number>> {
-  const map: Partial<Record<keyof ParsedCandidate, number>> = {};
+function mapHeaderIndex(headers: string[]): Partial<Record<SheetField, number>> {
+  const map: Partial<Record<SheetField, number>> = {};
   headers.forEach((raw, idx) => {
     const h = normalizeHeader(raw);
-    (Object.keys(HEADER_ALIASES) as (keyof ParsedCandidate)[]).forEach((field) => {
+    (Object.keys(HEADER_ALIASES) as (SheetField)[]).forEach((field) => {
       if (map[field] !== undefined) return;
       if (HEADER_ALIASES[field].some((alias) => h === alias || h.includes(alias))) {
         map[field] = idx;
@@ -87,11 +93,11 @@ function mapHeaderIndex(headers: string[]): Partial<Record<keyof ParsedCandidate
 
 function rowToCandidate(
   cols: string[],
-  map: Partial<Record<keyof ParsedCandidate, number>>,
+  map: Partial<Record<SheetField, number>>,
   rowIndex: number,
   positional: boolean
 ): ParsedCandidate | null {
-  const get = (field: keyof ParsedCandidate, positionalIdx: number, fallback: string) => {
+  const get = (field: SheetField, positionalIdx: number, fallback: string) => {
     if (!positional && map[field] !== undefined) {
       return (cols[map[field]!] || '').trim() || fallback;
     }
@@ -109,10 +115,12 @@ function rowToCandidate(
   const phoneFromEmailSlot = !looksLikeEmail && /^[\d+\s()-]{8,}$/.test(emailRaw) ? emailRaw : '';
   const subjectFromEmailSlot = !looksLikeEmail && !phoneFromEmailSlot && emailRaw && !phone ? emailRaw : '';
 
-  const resolvedPhone = phone || phoneFromEmailSlot || '+91 00000 00000';
+  // A missing phone or email stays blank. The old placeholders ("+91 00000
+  // 00000", "lead.<digits>@school.local") looked real, so an invite was sent
+  // to a number that does not exist.
+  const resolvedPhone = phone || phoneFromEmailSlot || '';
   const resolvedSubject = subject !== 'General' ? subject : (subjectFromEmailSlot || 'General');
-  const digits = resolvedPhone.replace(/\D/g, '').slice(-10) || String(rowIndex);
-  const email = looksLikeEmail ? emailRaw : `lead.${digits}@school.local`;
+  const email = looksLikeEmail ? emailRaw : '';
 
   return {
     name,
@@ -187,8 +195,67 @@ export default function ExcelCandidateUploaderModal({
     imported: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const [cvProgress, setCvProgress] = useState<{ done: number; total: number } | null>(null);
+  const [cvUnreadable, setCvUnreadable] = useState<{ filename: string; error: string }[]>([]);
 
   if (!isOpen) return null;
+
+  const schoolIdForRequests = () =>
+    (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
+
+  // Reads CVs five at a time, so one slow file cannot stall the whole batch,
+  // and shows progress. Nothing is saved until the school confirms the import.
+  const handleCvFiles = async (picked: FileList | File[]) => {
+    const pdfs = Array.from(picked).filter((f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf');
+    if (pdfs.length === 0) {
+      setParseError('Choose CVs in PDF format.');
+      return;
+    }
+    const files = pdfs.slice(0, 50);
+    setParseError(pdfs.length > files.length ? `Only the first 50 of ${pdfs.length} CVs were read. Import these, then add the rest.` : '');
+    setParsedRows([]);
+    setCvUnreadable([]);
+    setFileName(`${files.length} CV${files.length === 1 ? '' : 's'}`);
+    setCvProgress({ done: 0, total: files.length });
+
+    const rows: ParsedCandidate[] = [];
+    const unreadable: { filename: string; error: string }[] = [];
+    for (let i = 0; i < files.length; i += 5) {
+      const batch = files.slice(i, i + 5);
+      const form = new FormData();
+      form.append('school_id', schoolIdForRequests());
+      batch.forEach((f) => form.append('files', f));
+      try {
+        const res = await fetch('/api/candidates/cv-parse', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not read these CVs.');
+        for (const r of data.results as Array<{ filename: string; ok: boolean; error?: string; lead?: CvLead }>) {
+          if (r.ok && r.lead) rows.push(r.lead);
+          else unreadable.push({ filename: r.filename, error: r.error || 'Could not be read.' });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not read these CVs.';
+        batch.forEach((f) => unreadable.push({ filename: f.name, error: message }));
+      }
+      setCvProgress({ done: Math.min(i + batch.length, files.length), total: files.length });
+    }
+
+    setCvProgress(null);
+    setCvUnreadable(unreadable);
+    if (rows.length === 0) {
+      setParseError('None of these CVs could be read. See the reasons below, or use an Excel file.');
+      return;
+    }
+    setParsedRows(flagDuplicateLeads(rows.map((r) => ({ ...r, warnings: r.warnings ?? [] }))));
+  };
+
+  const updateRow = (idx: number, patch: Partial<ParsedCandidate>) =>
+    setParsedRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const removeRow = (idx: number) => setParsedRows((rows) => rows.filter((_, i) => i !== idx));
+  // A lead needs a name and some way to reach them.
+  const rowIsComplete = (r: ParsedCandidate) => Boolean(r.name.trim() && (r.phone.trim() || r.email.trim()));
+  const incompleteCount = parsedRows.filter((r) => !rowIsComplete(r)).length;
 
   const handleFile = async (file: File) => {
     setFileName(file.name);
@@ -390,6 +457,48 @@ export default function ExcelCandidateUploaderModal({
               </div>
             </div>
 
+            <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/60 text-xs text-slate-700 space-y-2">
+              <input
+                ref={cvInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) handleCvFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <p className="font-extrabold text-slate-900 text-sm">Or add teachers from their CVs</p>
+              <p>
+                Choose up to 50 CV PDFs. AI reads the name, phone, email, subject and experience off each one.
+                You check the list before anything is saved, and the CV files are not stored.
+              </p>
+              {cvProgress ? (
+                <p className="font-bold text-indigo-700 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Reading CVs… {cvProgress.done} of {cvProgress.total}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => cvInputRef.current?.click()}
+                  className="px-4 py-2 rounded-xl bg-white border border-indigo-300 text-indigo-700 font-bold hover:bg-indigo-50"
+                >
+                  Choose CV PDFs
+                </button>
+              )}
+            </div>
+
+            {cvUnreadable.length > 0 && (
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <p className="font-bold">{cvUnreadable.length} file{cvUnreadable.length === 1 ? '' : 's'} could not be read:</p>
+                <ul className="list-disc pl-4">
+                  {cvUnreadable.map((u) => <li key={u.filename}><strong>{u.filename}</strong> — {u.error}</li>)}
+                </ul>
+              </div>
+            )}
+
             {parseError && (
               <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -430,14 +539,25 @@ export default function ExcelCandidateUploaderModal({
                   setParsedRows([]);
                   setFileName(null);
                   setParseError('');
+                  setCvUnreadable([]);
                 }}
                 className="text-xs text-emerald-800 underline font-semibold"
               >
-                Change file
+                Start over
               </button>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 overflow-hidden max-h-56 overflow-y-auto">
+            {cvUnreadable.length > 0 && (
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <p className="font-bold">{cvUnreadable.length} file{cvUnreadable.length === 1 ? '' : 's'} could not be read:</p>
+                <ul className="list-disc pl-4">
+                  {cvUnreadable.map((u) => <li key={u.filename}><strong>{u.filename}</strong> — {u.error}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500">Check each row. You can fix a name, phone, subject or email directly in the table.</p>
+            <div className="rounded-2xl border border-slate-200 overflow-hidden max-h-72 overflow-y-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
                   <tr>
@@ -445,20 +565,44 @@ export default function ExcelCandidateUploaderModal({
                     <th className="py-2.5 px-3">Phone</th>
                     <th className="py-2.5 px-3">Subject</th>
                     <th className="py-2.5 px-3">Email</th>
+                    <th className="py-2.5 px-2" aria-label="Remove" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {parsedRows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/70">
-                      <td className="py-2 px-3 font-bold text-slate-900">{row.name}</td>
-                      <td className="py-2 px-3 font-mono text-[11px]">{row.phone}</td>
-                      <td className="py-2 px-3 text-indigo-700 font-semibold">{row.subject}</td>
-                      <td className="py-2 px-3 text-slate-500 text-[11px]">{row.email}</td>
-                    </tr>
-                  ))}
+                  {parsedRows.map((row, idx) => {
+                    const cell = 'w-full bg-transparent px-1.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:outline-none';
+                    const incomplete = !rowIsComplete(row);
+                    return (
+                      <React.Fragment key={idx}>
+                        <tr className={incomplete ? 'bg-rose-50/60' : 'hover:bg-slate-50/70'}>
+                          <td className="py-1.5 px-2"><input aria-label="Name" value={row.name} onChange={(e) => updateRow(idx, { name: e.target.value })} className={`${cell} font-bold text-slate-900`} placeholder="Name" /></td>
+                          <td className="py-1.5 px-2"><input aria-label="Phone" value={row.phone} onChange={(e) => updateRow(idx, { phone: e.target.value })} className={`${cell} font-mono text-[11px]`} placeholder="Phone" /></td>
+                          <td className="py-1.5 px-2"><input aria-label="Subject" value={row.subject} onChange={(e) => updateRow(idx, { subject: e.target.value })} className={`${cell} text-indigo-700 font-semibold`} /></td>
+                          <td className="py-1.5 px-2"><input aria-label="Email" value={row.email} onChange={(e) => updateRow(idx, { email: e.target.value })} className={`${cell} text-[11px]`} placeholder="Email" /></td>
+                          <td className="py-1.5 px-2 text-right">
+                            <button type="button" onClick={() => removeRow(idx)} title="Remove this row" className="text-slate-400 hover:text-rose-600 p-1"><X className="w-3.5 h-3.5" /></button>
+                          </td>
+                        </tr>
+                        {(row.warnings?.length || incomplete) ? (
+                          <tr className={incomplete ? 'bg-rose-50/60' : ''}>
+                            <td colSpan={5} className="px-3 pb-2 text-[11px] text-amber-800">
+                              {row.source && <span className="font-mono text-slate-400 mr-2">{row.source}</span>}
+                              {incomplete && <span className="text-rose-700 font-semibold mr-2">Needs a name and a phone or email.</span>}
+                              {row.warnings?.join(' · ')}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            {incompleteCount > 0 && (
+              <p className="text-xs text-rose-700 font-semibold">
+                {incompleteCount} row{incompleteCount === 1 ? '' : 's'} need a name and a phone or email. Fix or remove {incompleteCount === 1 ? 'it' : 'them'} to import.
+              </p>
+            )}
 
             <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-700 cursor-pointer">
               <input
@@ -521,7 +665,7 @@ export default function ExcelCandidateUploaderModal({
               <button
                 type="button"
                 onClick={handleConfirmImport}
-                disabled={importing || !contactAttested}
+                disabled={importing || !contactAttested || incompleteCount > 0}
                 className="brand-primary-btn px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md flex items-center gap-2 disabled:opacity-50"
               >
                 {importing ? (

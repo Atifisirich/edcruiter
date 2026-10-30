@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { assertSchoolActive, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 
 /**
  * Records a human override of an AI score. The reviewer identity comes from
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest) {
     const ctx = await requireSchoolAccess(body.school_id, {
       anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN']
     });
+    assertSchoolActive(ctx.schoolId);
 
-    const results = db.getStageResultsByCandidate(ctx.schoolId, candidate_id);
+    const results =db.getStageResultsByCandidate(ctx.schoolId, candidate_id);
     const targetResult = results.find(r => r.stage_key === stage_key);
 
     if (!targetResult) {

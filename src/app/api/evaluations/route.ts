@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { EvaluationRecord } from '@/lib/types';
-import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { assertSchoolActive, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     const ctx = await requireSchoolAccess(body.school_id, {
       anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN']
     });
+    assertSchoolActive(ctx.schoolId);
 
     const {
       candidate_id,

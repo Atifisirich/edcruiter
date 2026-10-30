@@ -31,6 +31,10 @@ export default function PDFResumeUploader({
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(defaultResumeUrl || null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // What the AI actually read off the CV, so the candidate can see it was taken in.
+  const [readSummary, setReadSummary] = useState<{
+    name?: string; degrees?: string[]; years?: number; mismatches?: string[]; notRead?: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFile = async (selectedFile: File) => {
@@ -70,6 +74,17 @@ export default function PDFResumeUploader({
       }
 
       setUploadedUrl(data.url);
+      const r = data.report;
+      setReadSummary(
+        data.read && r
+          ? {
+              name: r.name_on_cv || undefined,
+              degrees: r.qualifications_match?.degrees_found,
+              years: typeof r.total_experience_years === 'number' ? r.total_experience_years : undefined,
+              mismatches: r.form_vs_cv_discrepancies
+            }
+          : { notRead: true }
+      );
       onUploadComplete(data.url, data.report);
     } catch (err: any) {
       console.error('PDF upload error:', err);
@@ -166,9 +181,21 @@ export default function PDFResumeUploader({
               <strong className="text-xs font-bold text-slate-900 block">
                 {file?.name || 'Candidate_Resume.pdf'}
               </strong>
-              <span className="text-[11px] text-emerald-300 block">
-                PDF uploaded & Edcruiter AI analysis attached to scorecard ✓
+              <span className="text-[11px] text-emerald-700 block">
+                {readSummary?.notRead
+                  ? 'CV saved. We could not read it automatically, so a reviewer will open it.'
+                  : 'CV uploaded and read ✓'}
               </span>
+              {readSummary && !readSummary.notRead && (
+                <ul className="mt-1.5 text-[11px] text-slate-600 space-y-0.5">
+                  {readSummary.name && <li>Name on CV: <strong>{readSummary.name}</strong></li>}
+                  {readSummary.degrees && readSummary.degrees.length > 0 && <li>Qualifications found: <strong>{readSummary.degrees.join(', ')}</strong></li>}
+                  {readSummary.years !== undefined && <li>Experience found: <strong>{readSummary.years} year{readSummary.years === 1 ? '' : 's'}</strong></li>}
+                  {readSummary.mismatches && readSummary.mismatches.length > 0 && (
+                    <li className="text-amber-700">Please check your form against your CV: {readSummary.mismatches.join('; ')}</li>
+                  )}
+                </ul>
+              )}
             </div>
           </div>
 

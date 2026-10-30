@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       const schoolAttested = Boolean(body.school_attested ?? false);
       const requestedSchoolId = Array.isArray(body) ? rows[0]?.school_id : body.school_id;
       const ctx = await requireSchoolAccess(requestedSchoolId, { minRole: 'SCHOOL_ADMIN' });
+      assertSchoolActive(ctx.schoolId);
 
       if (!schoolAttested) {
         return NextResponse.json(
@@ -56,13 +57,19 @@ export async function POST(req: NextRequest) {
       }
 
       const createdList: Candidate[] = [];
+      let skipped = 0;
       for (const item of rows) {
-        if (!item.name || !item.email) continue;
+        // A lead needs a name and some way to reach them. An email is not
+        // required: a teacher with only a phone number is a normal lead.
+        if (!item.name || (!item.email && !item.phone)) {
+          skipped += 1;
+          continue;
+        }
         const newCand: Candidate = {
           id: newCandidateId(),
           school_id: ctx.schoolId,
           name: item.name,
-          email: item.email,
+          email: item.email || '',
           phone: item.phone || '',
           // Everything below is left exactly as the spreadsheet had it — or
           // blank — rather than filled in with a plausible-looking value.
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest) {
         details: 'Imported via spreadsheet with school-attested contact permission.'
       });
 
-      return NextResponse.json({ success: true, count: createdList.length, candidates: createdList }, { status: 201 });
+      return NextResponse.json({ success: true, count: createdList.length, skipped, candidates: createdList }, { status: 201 });
     }
 
     // Single-candidate creation. Two distinct callers land here:
@@ -174,7 +181,7 @@ export async function POST(req: NextRequest) {
     // Public applications only go to a school that exists and has been approved
     // — otherwise applicants (and their personal data) pile up against a school
     // nobody is reviewing, or one that does not exist at all.
-    if (!staffCtx) assertSchoolActive(school_id);
+    assertSchoolActive(school_id);
 
     const newCandidate: Candidate = {
       id: newCandidateId(),

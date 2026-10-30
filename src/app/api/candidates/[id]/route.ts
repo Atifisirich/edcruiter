@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { evaluateStageWithAI, isMisappliedHrPolicyScore } from '@/lib/aiScoringEngine';
 import { isScoredStage } from '@/lib/scoredStages';
 import { Candidate, StageResult } from '@/lib/types';
-import { authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
+import { assertSchoolActive, authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 
 /**
@@ -89,6 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const access = await requireCandidateOrStaff(id);
+    assertSchoolActive(access.schoolId);
     const body = await req.json();
     const requestedUpdates = (body.updates || body) as Record<string, unknown>;
 

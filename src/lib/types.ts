@@ -105,6 +105,20 @@ export interface CurriculumGuidelines {
   custom_syllabus_notes?: string;
 }
 
+/**
+ * What a school has paid for. A school with no `billing` record predates plans
+ * and is treated as complimentary; a self-signup starts on `none` and the
+ * platform owner sets its plan once payment is received.
+ */
+export interface SchoolBilling {
+  plan: 'none' | 'trial' | 'starter' | 'growth' | 'complimentary';
+  /** ISO date the paid period ends; absent means no end date. */
+  valid_until?: string;
+  /** Payment reference or note entered by the platform owner. */
+  note?: string;
+  updated_at: string;
+}
+
 export interface School {
   id: string;
   name: string;
@@ -123,6 +137,7 @@ export interface School {
   curriculum_guidelines?: CurriculumGuidelines;
   created_at: string;
   status: 'active' | 'onboarding' | 'suspended';
+  billing?: SchoolBilling;
   /** Configurable AI shortlist colour bands (0–100 overall score). */
   shortlist_bands?: ShortlistBand[];
   /** Structured HR answers used to generate the teacher-facing policy pack. */

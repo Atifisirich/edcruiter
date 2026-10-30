@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import { db } from '@/lib/db';
-import { analyzeResumeWithAIAsync, reconcileResumeWithClaims } from '@/lib/aiResumeAnalyzer';
+import { reconcileResumeWithClaims } from '@/lib/aiResumeAnalyzer';
 import { GoogleGenAI } from '@google/genai';
 import { Candidate, ResumeAnalysisReport } from '@/lib/types';
 import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     const publicUrl = mediaUrlFor(filename);
 
-    let report = undefined;
+    let report: ResumeAnalysisReport | undefined = undefined;
 
     // Direct Gemini Multimodal PDF Ingestion
     if (ai && buffer.length <= MAX_PDF_BYTES) {
@@ -162,7 +162,7 @@ Output ONLY valid JSON:
         }
 
         const responseText = response.text ? response.text.trim() : '';
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```json/g, '').replace(/```/g, '').trim();
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         report = JSON.parse(cleanJson);
         report = reconcileResumeWithClaims(
           {
@@ -182,25 +182,15 @@ Output ONLY valid JSON:
       }
     }
 
-    if (!report && schoolId && candidateId) {
-      const c = db.getCandidateById(schoolId, candidateId);
-      if (c) {
-        report = await analyzeResumeWithAIAsync({
-          candidateName: claimedName || c.name,
-          appliedSubject: claimedSubject || c.applied_subject,
-          appliedSegment: c.applied_segment,
-          claimedQualification: claimedQualification || c.qualification,
-          claimedExperience: claimedExperience || c.experience_band,
-          claimedPriorOrg: claimedPriorOrg || c.prior_org,
-          resumeText: `PDF file uploaded: ${filename}. Form name: ${claimedName || c.name}. Form qualification: ${claimedQualification || c.qualification}. Form experience: ${claimedExperience || c.experience_band}. Form org: ${claimedPriorOrg || c.prior_org}. Applied subject: ${claimedSubject || c.applied_subject}.`
-        });
-      }
-    }
+    // When the AI could not read the PDF there is no report. The old fallback
+    // built one from the typed form fields alone and presented it as an audit
+    // of the CV; a reviewer now sees "not read" and opens the file instead.
+    const read = Boolean(report);
 
     if (schoolId && candidateId) {
       const updates: Record<string, unknown> = {
         resume_url: publicUrl,
-        resume_analysis: report
+        ...(report ? { resume_analysis: report } : {})
       };
       if (claimedName) updates.name = claimedName;
       if (claimedQualification) updates.qualification = claimedQualification;
@@ -214,6 +204,7 @@ Output ONLY valid JSON:
       success: true,
       url: publicUrl,
       filename,
+      read,
       report
     });
   } catch (error) {

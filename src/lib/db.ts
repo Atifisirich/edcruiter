@@ -3,6 +3,7 @@ import path from 'path';
 import { School, User, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import { candidateMatchesIdentifier } from './candidateMatch';
 import { createCoalescedWriter } from './coalescedWriter';
+import { workspaceBlockReason } from './schoolStatus';
 import { SLOKA_DEFAULT_SCHOOL, DEFAULT_USERS, SLOKA_HR_POLICIES, DEFAULT_RUBRIC_TEMPLATES, DEFAULT_QUESTIONNAIRES, SLOKA_SCHOOL_ID } from './defaultData';
 
 interface DatabaseSchema {
@@ -610,7 +611,7 @@ class DB {
   }
 
   isSchoolActive(schoolId: string): boolean {
-    return this.data.schools.find(s => s.id === schoolId)?.status === 'active';
+    return workspaceBlockReason(this.data.schools.find(s => s.id === schoolId)) === null;
   }
 
   getPublicJobs(): PublicVacancy[] {

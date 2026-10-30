@@ -2,7 +2,49 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Building2, Plus, Lock, Unlock, FileText, CheckCircle2, AlertTriangle, Users, Trash2 } from 'lucide-react';
-import { School, AuditLogEntry, DeletionRequest } from '@/lib/types';
+import { School, SchoolBilling, AuditLogEntry, DeletionRequest } from '@/lib/types';
+import { workspaceBlockReason } from '@/lib/schoolStatus';
+
+function PlanControls({ school, onActivate }: {
+  school: School;
+  onActivate: (school: School, plan: SchoolBilling['plan'], months: number, note: string) => void;
+}) {
+  const [plan, setPlan] = useState<SchoolBilling['plan']>('trial');
+  const [months, setMonths] = useState(12);
+  const [note, setNote] = useState('');
+  const field = 'px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800';
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select value={plan} onChange={e => setPlan(e.target.value as SchoolBilling['plan'])} className={field}>
+        <option value="trial">Trial (14 days)</option>
+        <option value="starter">Starter</option>
+        <option value="growth">Growth</option>
+        <option value="complimentary">Complimentary</option>
+      </select>
+      {plan !== 'trial' && (
+        <label className="flex items-center gap-1 text-slate-600">
+          <input type="number" min={0} max={60} value={months} onChange={e => setMonths(Number(e.target.value))} className={`${field} w-16`} />
+          months
+        </label>
+      )}
+      <input value={note} onChange={e => setNote(e.target.value)} placeholder="Payment ref / note" className={`${field} w-40`} />
+      <button
+        type="button"
+        onClick={() => onActivate(school, plan, months, note)}
+        className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white cursor-pointer hover:bg-emerald-700"
+      >
+        {school.status === 'active' ? 'Update plan' : 'Approve & activate'}
+      </button>
+    </div>
+  );
+}
+
+function billingLabel(school: School): string {
+  const b = school.billing;
+  if (!b) return 'No plan record (open)';
+  const until = b.valid_until ? ` until ${new Date(b.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+  return b.plan === 'none' ? 'No plan yet' : `${b.plan}${until}`;
+}
 
 export default function SuperAdminPage() {
   const [schools, setSchools] = useState<School[]>([]);
@@ -55,6 +97,35 @@ export default function SuperAdminPage() {
       await fetchSuperAdminData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not change the school status');
+    }
+  };
+
+  // Approves the school and records what it has paid for in one step. A
+  // school only gets in once the platform owner has received payment.
+  const activatePlan = async (school: School, plan: SchoolBilling['plan'], months: number, note: string) => {
+    const days = plan === 'trial' ? 14 : Math.round(months * 30.44);
+    const validUntil = plan === 'complimentary' && !months
+      ? undefined
+      : new Date(Date.now() + days * 86_400_000).toISOString();
+    const summary = plan === 'trial' ? '14-day trial' : `${plan} plan${months ? ` for ${months} month(s)` : ' with no end date'}`;
+    if (!window.confirm(`Activate "${school.name}" on the ${summary}?`)) return;
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_id: school.id,
+          updates: {
+            status: 'active',
+            billing: { plan, valid_until: validUntil, note: note.trim() || undefined, updated_at: new Date().toISOString() }
+          }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not set the plan');
+      await fetchSuperAdminData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not set the plan');
     }
   };
 
@@ -207,16 +278,13 @@ export default function SuperAdminPage() {
                 }`}>
                   {sch.status === 'onboarding' ? 'WAITING FOR APPROVAL' : sch.status.toUpperCase()}
                 </span>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                  workspaceBlockReason(sch) ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-slate-50 text-slate-700 border-slate-200'
+                }`}>
+                  Plan: {billingLabel(sch)}
+                </span>
                 <span className="text-slate-600 font-semibold">{sch.branches.length} Campuses</span>
-                {sch.status !== 'active' && (
-                  <button
-                    type="button"
-                    onClick={() => setSchoolStatus(sch.id, sch.name, 'active')}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white cursor-pointer hover:bg-emerald-700"
-                  >
-                    Approve
-                  </button>
-                )}
+                <PlanControls school={sch} onActivate={activatePlan} />
                 {sch.status === 'active' && (
                   <button
                     type="button"

@@ -17,6 +17,7 @@ import BrandMark from '@/components/shared/BrandMark';
 import AIJobGeneratorModal from '@/components/admin/AIJobGeneratorModal';
 import ExcelCandidateUploaderModal from '@/components/admin/ExcelCandidateUploaderModal';
 import { credentialsFromCandidate } from '@/lib/credentials';
+import { workspaceBlockReason } from '@/lib/schoolStatus';
 import {
   DEFAULT_SHORTLIST_BANDS,
   ShortlistBand,
@@ -610,15 +611,24 @@ export default function SchoolAdminWorkspace() {
       {/* 2. MAIN WORKSPACE CONTENT AREA */}
       {/* ========================================================================= */}
       <main className="flex-1 p-6 sm:p-8 space-y-6 overflow-y-auto max-h-screen">
-        {school && school.status !== 'active' && (
+        {school && workspaceBlockReason(school) && (
           <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-1">
             <p className="font-extrabold text-sm">
-              {school.status === 'suspended' ? 'This school is suspended' : 'Your school is waiting for approval'}
+              {school.status === 'suspended'
+                ? 'This school is suspended'
+                : school.status === 'onboarding'
+                  ? 'Your school is waiting for approval'
+                  : school.billing?.plan === 'none'
+                    ? 'Choose a plan to start hiring'
+                    : 'Your plan has ended'}
             </p>
             <p>
               {school.status === 'suspended'
-                ? 'AI features, messaging and public applications are switched off. Contact Edcruiter support.'
-                : 'You can set up your campuses, HR policies and vacancies now. AI test generation and scoring, WhatsApp messages and public applications switch on as soon as Edcruiter approves your school.'}
+                ? 'Candidates, vacancies, AI features, messaging and public applications are switched off. Contact Edcruiter support.'
+                : 'You can set up your campuses and HR policies now. Adding candidates, importing leads, vacancies, AI tests and scoring, WhatsApp messages and public applications unlock once Edcruiter activates your plan.'}
+            </p>
+            <p>
+              To activate, write to <a className="font-bold underline" href="mailto:edcruiterofficial@gmail.com">edcruiterofficial@gmail.com</a> with your school name.
             </p>
           </div>
         )}

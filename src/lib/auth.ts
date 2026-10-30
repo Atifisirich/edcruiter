@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from './db';
 import { getCandidateSession, getSessionUser } from './session';
 import { User, UserRole } from './types';
-import { schoolBlockReason } from './schoolStatus';
+import { workspaceBlockReason } from './schoolStatus';
 
 /**
  * Authorization for API routes.
@@ -154,7 +154,7 @@ export function resolveSchoolId(ctx: StaffContext, requested?: string | null): s
  * have no staff session, can use it too.
  */
 export function assertSchoolActive(schoolId: string): void {
-  const reason = schoolBlockReason(db.getSchoolById(schoolId)?.status);
+  const reason = workspaceBlockReason(db.getSchoolById(schoolId));
   if (reason) throw new AuthError(reason, 403);
 }
 

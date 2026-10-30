@@ -80,6 +80,10 @@ export async function POST(req: NextRequest) {
       // A school that signed itself up waits for the platform owner to approve
       // it; one the platform owner creates is approved from the start.
       status: founderEmail ? 'onboarding' : 'active',
+      // A self-signup has paid for nothing yet; the platform owner sets its
+      // plan once payment arrives. A school the owner creates is complimentary
+      // until they set a plan.
+      billing: founderEmail ? { plan: 'none', updated_at: new Date().toISOString() } : undefined,
       shortlist_bands: shortlist_bands || undefined,
       hr_policy_answers: hr_policy_answers || undefined,
       whatsapp_hiring: wa
