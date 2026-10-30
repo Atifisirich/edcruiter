@@ -485,6 +485,8 @@ export interface StageResult {
   stage_key: StageKey;
   stage_name: string;
   ai_scores?: AIScoringContract;
+  /** 'pending' while the AI is still scoring a saved submission; absent on older results. */
+  scoring_status?: 'pending' | 'done' | 'failed';
   human_override?: HumanOverride;
   reviewer_notes?: string;
   reviewer_decision?: 'pass' | 'reject' | 'hire' | 'hold';
@@ -509,7 +511,9 @@ export type ProctoringEventType =
   | 'VOICE_PROCTOR_WARNING'
   | 'MULTI_FACE_DETECTED'
   | 'FACE_NOT_DETECTED'
-  | 'OBJECT_DETECTED';
+  | 'OBJECT_DETECTED'
+  | 'FOCUS_LOST'
+  | 'MULTIPLE_DISPLAYS';
 
 export interface ProctoringEvent {
   id: string;

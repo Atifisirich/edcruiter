@@ -10,6 +10,7 @@ import {
 import { Candidate, StageResult, ProctoringEvent, StageKey } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { calculateAuthenticityScore } from '@/lib/proctoringEngine';
+import { cleanResumeReport } from '@/lib/reportText';
 
 interface CandidateReportCardProps {
   candidate: Candidate;
@@ -56,7 +57,7 @@ export default function CandidateReportCard({ candidate, stageResults, proctorin
   // claim) shown for any candidate who hasn't actually had their resume
   // analyzed yet, indistinguishable from a real AI result. The empty state
   // below prompts the reviewer to run a real audit instead.
-  const [resumeReport, setResumeReport] = useState<any>(candidate.resume_analysis || null);
+  const [resumeReport, setResumeReport] = useState<any>(candidate.resume_analysis ? cleanResumeReport(candidate.resume_analysis) : null);
   const [analyzingResume, setAnalyzingResume] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   // Also starts blank rather than a fabricated bio paragraph (fake prior
@@ -79,7 +80,7 @@ export default function CandidateReportCard({ candidate, stageResults, proctorin
       });
       const data = await res.json();
       if (data.report) {
-        setResumeReport(data.report);
+        setResumeReport(data.report ? cleanResumeReport(data.report) : data.report);
         setShowResumeModal(false);
         alert('Resume analysis generated successfully with Edcruiter AI!');
       }

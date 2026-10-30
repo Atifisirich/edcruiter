@@ -8,6 +8,7 @@ import {
 import { Candidate, EvaluationRecord, ProctoringEvent, StageResult } from '@/lib/types';
 import { SLOKA_SCHOOL_ID, SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { isScoredStage } from '@/lib/scoredStages';
+import { cleanResumeReport } from '@/lib/reportText';
 
 interface CandidateProfileDashboardProps {
   isOpen: boolean;
@@ -201,7 +202,8 @@ export default function CandidateProfileDashboard({
     }
   };
 
-  const resumeReport = candidate?.resume_analysis;
+  // Each point once: the summary, the mismatches and the red flags used to repeat one another.
+  const resumeReport = candidate?.resume_analysis ? cleanResumeReport(candidate.resume_analysis, { crossList: true }) : undefined;
   const overallScore = overallFromStages(stageResults, candidate?.total_ai_score);
   const identityResult = stageResults.find(r => r.stage_key === 'identity_verification');
   const scoredWithoutAi = stageResults.filter(

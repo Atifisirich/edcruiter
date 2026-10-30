@@ -14,6 +14,27 @@ interface LiveProctoringWebcamProps {
   onViolation?: (type: string, details: string) => void;
 }
 
+/** A reason the candidate can act on, instead of one message for every failure. */
+function describeCameraError(err: any): string {
+  switch (err?.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'The camera is blocked. Click the camera icon in the address bar, choose Allow, then press Enable Camera.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No camera was found. Plug in or turn on your webcam, then press Enable Camera.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Your camera is being used by another app or tab (Zoom, Meet, Teams or another browser window). Close it, then press Enable Camera.';
+    case 'OverconstrainedError':
+      return 'Your camera could not start at the requested quality. Press Enable Camera to try again.';
+    case 'SecurityError':
+      return 'The browser will not open the camera on this page. Make sure the address starts with https://.';
+    default:
+      return 'The camera could not start. Press Enable Camera to try again. If it keeps failing, restart your browser.';
+  }
+}
+
 export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, onViolation }: LiveProctoringWebcamProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -293,8 +314,15 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     };
   }, [onViolation, triggerVoiceWarning]);
 
+  const retriesRef = useRef(0);
+
   // Camera Initialization
   const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('This browser cannot open the camera on this page. Use the latest Chrome or Edge, and make sure the address starts with https://.');
+      setCameraActive(false);
+      return;
+    }
     try {
       setCameraError(null);
       let stream: MediaStream;
@@ -317,6 +345,16 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         streamRef.current = stream;
         video.srcObject = stream;
         setCameraActive(true);
+        retriesRef.current = 0;
+        // If the camera is unplugged or taken by another app, say so and try to
+        // get it back rather than showing a frozen picture.
+        stream.getVideoTracks().forEach((track) => {
+          track.onended = () => {
+            setCameraActive(false);
+            setCameraError('The camera stopped. Close any other app using it. Reconnecting…');
+            setTimeout(() => { startCamera(); }, 1500);
+          };
+        });
 
         const playWhenReady = () => {
           video.play().catch((err) => {
@@ -334,12 +372,15 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         startCalibration();
       }
     } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera access blocked. Please allow camera permissions in your browser.');
-      } else {
-        setCameraError('Webcam required for AI Proctoring.');
-      }
+      setCameraError(describeCameraError(err));
       setCameraActive(false);
+      // Another app or tab may be holding the camera for a moment (a video
+      // call that is still closing, the recorder handing over). Try again by
+      // itself a couple of times before leaving the candidate on an error.
+      if ((err?.name === 'NotReadableError' || err?.name === 'AbortError') && retriesRef.current < 3) {
+        retriesRef.current += 1;
+        setTimeout(() => { startCamera(); }, 2000);
+      }
     }
   };
 
@@ -855,13 +896,15 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
               >
                 <RefreshCw className="w-3 h-3" /> Enable Camera
               </button>
-              <button
-                type="button"
-                onClick={startDemoStream}
-                className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <Sparkles className="w-3 h-3 text-indigo-600" /> Start Demo Stream
-              </button>
+              {process.env.NODE_ENV !== 'production' && (
+                <button
+                  type="button"
+                  onClick={startDemoStream}
+                  className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3 h-3 text-indigo-600" /> Start Demo Stream
+                </button>
+              )}
             </div>
           </div>
         )}

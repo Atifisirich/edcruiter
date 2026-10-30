@@ -15,6 +15,8 @@ import VideoRecorderUpload from '@/components/candidate/VideoRecorderUpload';
 import PDFResumeUploader from '@/components/candidate/PDFResumeUploader';
 import StructuredLessonPlanEditor from '@/components/candidate/StructuredLessonPlanEditor';
 import { resolveSubjectPacket, subjectBucket, segmentTier } from '@/lib/questionBank';
+import { pickActivePack, sameSubject } from '@/lib/subjectMatch';
+import { MIN_LESSON_WORDS, countWords } from '@/lib/testRules';
 
 // The Stage 1 subject/segment <select> options use exact-case canonical
 // values ("Biology", not "biology") — a <select> whose bound value doesn't
@@ -28,6 +30,15 @@ import { resolveSubjectPacket, subjectBucket, segmentTier } from '@/lib/question
 // agree on exact casing forever.
 const SUBJECT_OPTIONS = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English', 'Social Studies'];
 const SEGMENT_OPTIONS = ['Secondary (Grades 9-10)', 'Senior Secondary (Grades 11-12)', 'Middle School (Grades 6-8)', 'Primary (Grades 1-5)'];
+const QUALIFICATION_OPTIONS = [
+  'Graduation (B.Sc / B.A / B.Com)',
+  'Masters / Post Graduation (M.Sc / M.A / M.Ed)',
+  'B.Ed (Bachelor of Education)',
+  'D.El.Ed / NTT / Montessori Diploma',
+  'Ph.D / Doctorate'
+];
+const OTHER_QUALIFICATION = 'Others';
+
 function canonicalOption(raw: string | undefined, options: string[]): string {
   if (!raw) return '';
   const match = options.find((opt) => opt.toLowerCase() === raw.toLowerCase());
@@ -68,6 +79,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   const [codeCopied, setCodeCopied] = useState(false);
   const [schoolName, setSchoolName] = useState<string>('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [schoolSubjects, setSchoolSubjects] = useState<string[]>([]);
+  const [schoolSegments, setSchoolSegments] = useState<string[]>([]);
+  const [packState, setPackState] = useState<'checking' | 'ready' | 'preparing' | 'failed'>('checking');
+  const [packError, setPackError] = useState('');
+  // Shown inside the page. A browser pop-up (alert) takes some browsers out of
+  // fullscreen, which the proctoring then counts against the candidate.
+  const [stageError, setStageError] = useState('');
 
   // Stage 1: Identity & PDF CV State
   const [identityData, setIdentityData] = useState({
@@ -88,6 +106,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     applied_subject: ''
   });
   const [resumePdfUrl, setResumePdfUrl] = useState<string>('');
+  const [otherQualification, setOtherQualification] = useState('');
 
   // Stage 2: Written / Theory Response
   const [writtenTheoryResponse, setWrittenTheoryResponse] = useState<string>('');
@@ -131,6 +150,43 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     fetchCandidateData();
   }, [candidateId]);
 
+  // The school's test for this candidate's subject and grade level. If it has
+  // not been written yet, the server writes it and this keeps asking until it
+  // is ready, so the candidate waits on a clear screen instead of getting two
+  // stray questions or another subject's paper.
+  useEffect(() => {
+    if (!candidate || loadError) return;
+    if (assessmentPack && pickActivePack([assessmentPack], candidate.applied_subject, candidate.applied_segment)) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = async () => {
+      try {
+        const res = await fetch('/api/assessment-packs/ensure');
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.state === 'ready') {
+          setAssessmentPack(data.pack);
+          setPackState('ready');
+          return;
+        }
+        if (data.state === 'failed') {
+          setPackState('failed');
+          setPackError(data.error || '');
+        } else {
+          setPackState('preparing');
+        }
+      } catch {
+        if (!cancelled) setPackState('preparing');
+      }
+      if (!cancelled) timer = setTimeout(check, 5000);
+    };
+    check();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [candidate?.id, candidate?.applied_subject, candidate?.applied_segment, assessmentPack, loadError]);
+
   useEffect(() => {
     if (allCompleted && document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
@@ -164,6 +220,35 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
+  }, [activeStageKey, allCompleted]);
+
+  // Overlays and other windows. A floating app, a screen-share overlay or a
+  // chat window on top of the test does not change the tab, so the tab-switch
+  // check never sees it, but the page loses keyboard focus. Check for that, and
+  // for a second screen, while a proctored stage is open.
+  useEffect(() => {
+    if (activeStageKey === 'identity_verification' || allCompleted) return;
+    let lastLogged = 0;
+    const reportFocusLoss = () => {
+      if (document.hidden || document.hasFocus()) return;
+      const now = Date.now();
+      if (now - lastLogged < 15_000) return;
+      lastLogged = now;
+      handleProctoringAnomaly('FOCUS_LOST', 'The test window lost focus: another window or an overlay may be on top of it.');
+    };
+    const onBlur = () => { setTimeout(reportFocusLoss, 800); };
+    window.addEventListener('blur', onBlur);
+    const poll = setInterval(reportFocusLoss, 3000);
+
+    const screenInfo = window.screen as Screen & { isExtended?: boolean };
+    if (screenInfo.isExtended) {
+      handleProctoringAnomaly('MULTIPLE_DISPLAYS', 'More than one screen is connected to this computer.');
+    }
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStageKey, allCompleted]);
 
   const toggleFullscreen = () => {
@@ -205,6 +290,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         if (qData.questionnaires) setCustomQuestions(qData.questionnaires);
         setSchoolPolicies(polData.policies || []);
         setSchoolName(cData.schoolName || '');
+        setSchoolSubjects(cData.schoolSubjects || []);
+        setSchoolSegments(cData.schoolSegments || []);
 
         setCandidate(cData.candidate);
         setStageResults(cData.stageResults || []);
@@ -219,7 +306,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           // pre-marked "2 – 4 years", or "30 days" notice for someone with
           // none, changes what a school decides to offer). Each dropdown
           // below now opens on an explicit "Select…" option instead.
-          qualification: cData.candidate.qualification || '',
+          qualification: cData.candidate.qualification && !QUALIFICATION_OPTIONS.includes(cData.candidate.qualification)
+            ? OTHER_QUALIFICATION
+            : (cData.candidate.qualification || ''),
           experience_band: cData.candidate.experience_band || '',
           prior_org: cData.candidate.prior_org || '',
           current_salary: cData.candidate.current_salary || '',
@@ -233,24 +322,16 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         });
 
         if (cData.candidate.resume_url) setResumePdfUrl(cData.candidate.resume_url);
+        if (cData.candidate.qualification && !QUALIFICATION_OPTIONS.includes(cData.candidate.qualification)) {
+          setOtherQualification(cData.candidate.qualification);
+        }
 
         const packs: AssessmentPack[] = packData.packs || [];
-        const candSubject = subjectBucket(cData.candidate.applied_subject);
-        const candSegment = segmentTier(cData.candidate.applied_segment);
-        // Only ever hand a candidate a pack that actually matches both their
-        // subject AND grade segment. This used to fall back to "any active
-        // pack" when no subject match existed — if a school had only ever
-        // generated and activated one test (say, English), every candidate
-        // of every other subject silently got English questions instead of
-        // their own. No match now means no pack at all, which correctly
-        // falls through to the subject/segment-correct static question set
-        // below rather than an unrelated one.
-        const matched = packs.find((p) =>
-          p.status === 'active' &&
-          subjectBucket(p.subject) === candSubject &&
-          segmentTier(p.segment) === candSegment
-        ) || null;
+        // Only ever the test written for this candidate's own subject and grade
+        // level. No match means "prepare one", never another subject's test.
+        const matched = pickActivePack(packs, cData.candidate.applied_subject, cData.candidate.applied_segment);
         setAssessmentPack(matched);
+        setPackState(matched ? 'ready' : 'preparing');
 
         const completedKeys = (cData.stageResults || []).map((r: StageResult) => r.stage_key);
         const nextStage = SLOKA_DEFAULT_STAGES.find(s => !completedKeys.includes(s.key));
@@ -326,14 +407,26 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   };
 
   const handleSubmitStage = async (stageKey: StageKey, customResponseText?: string) => {
+    setStageError('');
+    const fail = (message: string) => {
+      setStageError(message);
+      setSubmitting(false);
+    };
+    // The click that submits is the one moment the browser lets us go back
+    // into fullscreen if something knocked the candidate out of it.
+    if (stageKey !== 'identity_verification' && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+
     if (stageKey === 'identity_verification') {
-      if (!identityData.name.trim()) {
-        alert('Please fill in your Full Legal Name before proceeding.');
-        return;
+      if (!identityData.name.trim()) return fail('Please fill in your Full Legal Name before proceeding.');
+      if (!identityData.phone.trim()) return fail('Please provide your WhatsApp / Contact Phone number.');
+      if (!identityData.qualification) return fail('Please choose your highest qualification.');
+      if (identityData.qualification === OTHER_QUALIFICATION && !otherQualification.trim()) {
+        return fail('Please type your qualification.');
       }
-      if (!identityData.phone.trim()) {
-        alert('Please provide your WhatsApp / Contact Phone number.');
-        return;
+      if (!resumePdfUrl && !candidate?.resume_url) {
+        return fail('Please upload your CV as a PDF. It must be a proper CV with your name, qualifications and experience.');
       }
     }
 
@@ -342,11 +435,12 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       let submissionData: any = {};
 
       if (stageKey === 'identity_verification') {
-        const effectiveResume = resumePdfUrl || candidate?.resume_url || 'https://assets.edcruiter.ai/resumes/candidate_dossier.pdf';
+        const effectiveResume = resumePdfUrl || candidate?.resume_url || '';
         
         submissionData = {
           candidate_updates: {
             ...identityData,
+            qualification: identityData.qualification === OTHER_QUALIFICATION ? otherQualification.trim() : identityData.qualification,
             name: identityData.name.trim(),
             phone: identityData.phone.trim(),
             age: identityData.age ? parseInt(identityData.age) : undefined,
@@ -368,35 +462,21 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         }) : prev);
       } else if (stageKey === 'written_theory') {
         const textToSubmit = customResponseText !== undefined ? customResponseText : writtenTheoryResponse;
-        if (!textToSubmit || textToSubmit.trim().length < 15) {
-          alert('Please complete the lesson plan answers before submitting.');
-          setSubmitting(false);
-          return;
-        }
-        const packet = resolveSubjectPacket(
-          identityData.applied_subject || candidate?.applied_subject || 'Physics',
-          identityData.applied_segment || candidate?.applied_segment || 'Secondary'
-        );
-        const mcqList = (assessmentPack?.mcqs?.length ? assessmentPack.mcqs : packet.mcqs);
-        const unanswered = mcqList.filter((q) => !mcqAnswers[q.id]);
+        const words = countWords(textToSubmit);
+        if (!assessmentPack) return fail('Your test is still being prepared. Wait a moment, then submit.');
+        const unanswered = assessmentPack.mcqs.filter((q) => !mcqAnswers[q.id]);
         if (unanswered.length > 0) {
-          alert('Please answer every MCQ in this stage before submitting.');
-          setSubmitting(false);
-          return;
+          return fail(`Please answer every question. ${unanswered.length} still need an answer.`);
         }
-        const mcqBlock = mcqList.map((q) => {
-          const selected = mcqAnswers[q.id];
-          const correct = selected === q.correct_option ? 'Correct' : 'Incorrect';
-          return `Q: ${q.question_text}\nSelected: ${selected}\nKey: ${q.correct_option} (${correct})`;
-        }).join('\n\n');
-        submissionData = {
-          written_submission: `MCQ TEST\n\n${mcqBlock}\n\n--- LESSON PLAN ---\n\n${textToSubmit}`
-        };
+        if (words < MIN_LESSON_WORDS) {
+          return fail(`Your lesson plan has ${words} words. Please write at least ${MIN_LESSON_WORDS} words.`);
+        }
+        // Only the picks go to the server. It marks them against the answer key,
+        // which never reaches this page.
+        submissionData = { mcq_answers: mcqAnswers, lesson_plan: textToSubmit };
       } else if (stageKey === 'micro_teaching_demo') {
         if (!microDemoVideoUrl) {
-          alert('Please complete the live teaching demo recording before submitting.');
-          setSubmitting(false);
-          return;
+          return fail('Please complete the live teaching demo recording before submitting.');
         }
         submissionData = {
           media_url: microDemoVideoUrl,
@@ -405,9 +485,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         };
       } else if (stageKey === 'situational_scenario') {
         if (!situationalVideoUrl) {
-          alert('Please complete the live classroom scenario recording before submitting.');
-          setSubmitting(false);
-          return;
+          return fail('Please complete the live classroom scenario recording before submitting.');
         }
         submissionData = {
           media_url: situationalVideoUrl,
@@ -416,9 +494,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         };
       } else if (stageKey === 'hr_policy_briefing') {
         if (!hrNoticeConfirmed || !hrSafeguardingConfirmed) {
-          alert('Please confirm all HR policy conditions to complete the assessment.');
-          setSubmitting(false);
-          return;
+          return fail('Please confirm all HR policy conditions to complete the assessment.');
         }
         submissionData = {
           written_submission: `HR Policy Confirmation:
@@ -461,7 +537,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         throw new Error(data.error || 'Failed to record stage result');
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to submit stage response. Please try again.');
+      setStageError(err.message || 'Failed to submit stage response. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -799,12 +875,20 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="" disabled>Select your qualification…</option>
-                    <option value="Graduation (B.Sc / B.A / B.Com)">Graduation (B.Sc / B.A / B.Com)</option>
-                    <option value="Masters / Post Graduation (M.Sc / M.A / M.Ed)">Masters / Post Graduation (M.Sc / M.A / M.Ed)</option>
-                    <option value="B.Ed (Bachelor of Education)">B.Ed (Bachelor of Education)</option>
-                    <option value="Ph.D / Doctorate">Ph.D / Doctorate</option>
-                    <option value="Other Certification / Diploma">Other Certification / Diploma</option>
+                    {QUALIFICATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                    <option value={OTHER_QUALIFICATION}>Others (type below)</option>
                   </select>
+                  {identityData.qualification === OTHER_QUALIFICATION && (
+                    <input
+                      type="text"
+                      placeholder="Type your qualification (e.g. B.Tech Computer Science, MCA)"
+                      value={otherQualification}
+                      onChange={e => setOtherQualification(e.target.value)}
+                      className="mt-2 w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -887,12 +971,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     onChange={e => setIdentityData({...identityData, applied_subject: e.target.value})}
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold focus:border-indigo-500 focus:outline-none"
                   >
-                    <option value="Physics">Physics</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Biology">Biology / Life Sciences</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="English">English Literature</option>
-                    <option value="Social Studies">Social Studies</option>
+                    {(() => {
+                      const base = schoolSubjects.length ? schoolSubjects : SUBJECT_OPTIONS;
+                      const list = identityData.applied_subject && !base.some((s) => sameSubject(s, identityData.applied_subject))
+                        ? [identityData.applied_subject, ...base]
+                        : base;
+                      return list.map((s) => <option key={s} value={s}>{s}</option>);
+                    })()}
                   </select>
                 </div>
 
@@ -903,10 +988,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     onChange={e => setIdentityData({...identityData, applied_segment: e.target.value})}
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none"
                   >
-                    <option value="Secondary (Grades 9-10)">Secondary (Grades 9-10)</option>
-                    <option value="Senior Secondary (Grades 11-12)">Senior Secondary (Grades 11-12)</option>
-                    <option value="Middle School (Grades 6-8)">Middle School (Grades 6-8)</option>
-                    <option value="Primary (Grades 1-5)">Primary (Grades 1-5)</option>
+                    {(() => {
+                      const base = schoolSegments.length ? schoolSegments : SEGMENT_OPTIONS;
+                      const list = identityData.applied_segment && !base.includes(identityData.applied_segment)
+                        ? [identityData.applied_segment, ...base]
+                        : base;
+                      return list.map((s) => <option key={s} value={s}>{s}</option>);
+                    })()}
                   </select>
                 </div>
               </div>
@@ -970,53 +1058,76 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 <p className="text-xs text-slate-500">{currentStageConfig?.description}</p>
               </div>
 
+              {stageError && (
+                <div role="alert" className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-semibold flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{stageError}</span>
+                </div>
+              )}
+
               {/* STAGE 2: Written / Theory */}
               {activeStageKey === 'written_theory' && (
                 <div className="space-y-6">
-                  {(() => {
-                    const packet = resolveSubjectPacket(
-                      candidate.applied_subject || identityData.applied_subject || 'Physics',
-                      candidate.applied_segment || identityData.applied_segment || 'Secondary (Grades 9-10)'
-                    );
-                    const mcqList = assessmentPack?.mcqs?.length ? assessmentPack.mcqs : packet.mcqs;
-                    return (
-                      <div className="glass-card p-5 rounded-3xl border border-slate-200 bg-white space-y-4">
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">MCQ test</p>
-                          <h3 className="text-sm font-black text-slate-900">Subject check before the lesson plan</h3>
-                        </div>
-                        {mcqList.map((q, idx) => (
-                          <fieldset key={q.id} className="space-y-2 border-t border-slate-100 pt-3">
-                            <legend className="text-xs font-bold text-slate-800">
-                              {idx + 1}. {q.question_text}
-                            </legend>
-                            <div className="space-y-1.5">
-                              {q.options.map((opt) => (
-                                <label
-                                  key={opt}
-                                  className={`flex items-start gap-2 p-2.5 rounded-xl border text-xs cursor-pointer ${
-                                    mcqAnswers[q.id] === opt
-                                      ? 'border-indigo-500 bg-indigo-100 text-indigo-900 font-semibold'
-                                      : 'border-slate-300 bg-slate-100 text-slate-800'
-                                  }`}
-                                >
-                                  <input
-                                    type="radio"
-                                    name={q.id}
-                                    value={opt}
-                                    checked={mcqAnswers[q.id] === opt}
-                                    onChange={() => setMcqAnswers((prev) => ({ ...prev, [q.id]: opt }))}
-                                    className="mt-0.5"
-                                  />
-                                  <span>{opt}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </fieldset>
-                        ))}
+                  {!assessmentPack ? (
+                    <div className="glass-card p-6 rounded-3xl border border-slate-200 bg-white text-center space-y-3">
+                      {packState === 'failed' ? (
+                        <>
+                          <AlertTriangle className="w-7 h-7 text-amber-600 mx-auto" />
+                          <h3 className="text-sm font-black text-slate-900">We could not prepare your test yet</h3>
+                          <p className="text-xs text-slate-600">
+                            {packError || 'Something went wrong while writing your test.'} We are trying again automatically. You can also close this page and come back in a few minutes with your link.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-7 h-7 text-indigo-600 animate-spin mx-auto" />
+                          <h3 className="text-sm font-black text-slate-900">Preparing your {candidate.applied_subject} test</h3>
+                          <p className="text-xs text-slate-600">
+                            Your questions are written for {candidate.applied_subject} at {candidate.applied_segment}. This takes about a minute the first time. Please keep this page open.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="glass-card p-5 rounded-3xl border border-slate-200 bg-white space-y-4">
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">MCQ test · {assessmentPack.mcqs.length} questions</p>
+                        <h3 className="text-sm font-black text-slate-900">Subject check before the lesson plan</h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Answered {Object.keys(mcqAnswers).filter((id) => assessmentPack.mcqs.some((q) => q.id === id)).length} of {assessmentPack.mcqs.length}
+                        </p>
                       </div>
-                    );
-                  })()}
+                      {assessmentPack.mcqs.map((q, idx) => (
+                        <fieldset key={q.id} className="space-y-2 border-t border-slate-100 pt-3">
+                          <legend className="text-xs font-bold text-slate-800">
+                            {idx + 1}. {q.question_text}
+                          </legend>
+                          <div className="space-y-1.5">
+                            {q.options.map((opt) => (
+                              <label
+                                key={opt}
+                                className={`flex items-start gap-2 p-2.5 rounded-xl border text-xs cursor-pointer ${
+                                  mcqAnswers[q.id] === opt
+                                    ? 'border-indigo-500 bg-indigo-100 text-indigo-900 font-semibold'
+                                    : 'border-slate-300 bg-slate-100 text-slate-800'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={q.id}
+                                  value={opt}
+                                  checked={mcqAnswers[q.id] === opt}
+                                  onChange={() => setMcqAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                                  className="mt-0.5"
+                                />
+                                <span>{opt}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ))}
+                    </div>
+                  )}
 
                   <StructuredLessonPlanEditor
                     subject={candidate.applied_subject || identityData.applied_subject || 'Physics'}
@@ -1031,13 +1142,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('written_theory', writtenTheoryResponse)}
-                      disabled={submitting}
+                      disabled={submitting || !assessmentPack}
                       className="brand-primary-btn px-8 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Evaluating with Edcruiter AI...</span>
+                          <span>Saving your answers...</span>
                         </>
                       ) : (
                         <>

@@ -39,6 +39,14 @@ function repairStageResults(schoolId: string, candidateId: string, results: Stag
   if (!candidate) return results;
 
   return results.map((result) => {
+    // A submission the AI is still scoring is not broken. Only one that has
+    // been pending for ten minutes is treated as lost and falls through to the
+    // quick built-in marking below, flagged as failed.
+    if (result.scoring_status === 'pending') {
+      const waitedMs = Date.now() - Date.parse(result.completed_at);
+      if (waitedMs < 10 * 60_000) return result;
+    }
+
     const needsRescore =
       isMisappliedHrPolicyScore(result.stage_key, result.ai_scores) ||
       (isScoredStage(result.stage_key) && !result.ai_scores?.scores?.length);
@@ -55,7 +63,7 @@ function repairStageResults(schoolId: string, candidateId: string, results: Stag
       media_url: result.media_url
     });
 
-    const repaired: StageResult = { ...result, ai_scores };
+    const repaired: StageResult = { ...result, ai_scores, scoring_status: result.scoring_status === 'pending' ? 'failed' : result.scoring_status };
     db.saveStageResult(repaired);
     return repaired;
   });
@@ -77,9 +85,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const proctoringEvents = db.getProctoringEventsByCandidate(candidate.school_id, candidate.id);
     const evaluations = db.getEvaluationsByCandidate(candidate.school_id, candidate.id);
-    const schoolName = db.getSchoolById(candidate.school_id)?.name;
+    const school = db.getSchoolById(candidate.school_id);
+    const schoolName = school?.name;
+    // The subjects and grade levels this school hires for, so the candidate
+    // picks from the school's own list rather than a fixed set of six.
+    const schoolSubjects = school?.subjects || [];
+    const schoolSegments = school?.segments || [];
 
-    return NextResponse.json({ candidate, stageResults, proctoringEvents, evaluations, schoolName });
+    return NextResponse.json({ candidate, stageResults, proctoringEvents, evaluations, schoolName, schoolSubjects, schoolSegments });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidate profile' }, { status: 500 });
   }

@@ -37,6 +37,10 @@ const VIOLATION_WEIGHTS: Record<ProctoringEventType, number> = {
   VOICE_PROCTOR_WARNING: 5,
   LOOKING_DOWN_AT_DEVICE: 8,
   TAB_SWITCH: 8,
+  // Another window or an overlay took focus without the tab changing, or a
+  // second screen is attached. Worth a look, not proof of cheating.
+  FOCUS_LOST: 6,
+  MULTIPLE_DISPLAYS: 6,
   FULLSCREEN_EXIT: 10,
   COPY_PASTE_ATTEMPT: 10,
   OBJECT_DETECTED: 10,

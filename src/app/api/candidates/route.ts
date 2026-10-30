@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { warmPack } from '@/lib/ensurePack';
 import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
@@ -122,6 +123,14 @@ export async function POST(req: NextRequest) {
         details: 'Imported via spreadsheet with school-attested contact permission.'
       });
 
+      // Write each subject's test now, so it is ready when the candidates open their links.
+      const wanted = new Map<string, { subject: string; segment: string }>();
+      createdList.forEach((c) => wanted.set(`${c.applied_subject}|${c.applied_segment}`, { subject: c.applied_subject, segment: c.applied_segment }));
+      const schoolForWarm = ctx.schoolId;
+      after(async () => {
+        for (const w of wanted.values()) await warmPack(schoolForWarm, w.subject, w.segment);
+      });
+
       return NextResponse.json({ success: true, count: createdList.length, skipped, candidates: createdList }, { status: 201 });
     }
 
@@ -216,6 +225,7 @@ export async function POST(req: NextRequest) {
     };
 
     db.createCandidate(newCandidate);
+    after(() => warmPack(newCandidate.school_id, newCandidate.applied_subject, newCandidate.applied_segment));
 
     // Consent is recorded either way, so a "no" is durable and auditable —
     // only a "yes" allows WhatsApp sends later.

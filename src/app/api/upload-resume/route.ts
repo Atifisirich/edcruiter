@@ -111,6 +111,7 @@ APPLICATION FORM (what the candidate typed — not proof):
 - Prior organisation on form: ${formOrg || 'Not provided'}
 - Applied subject: ${formSubject || 'Not provided'}
 
+is_cv must be false if the document is not a CV or resume (for example a certificate alone, an ID card, a photo, a letter, an invoice, a blank page or random text). A real CV lists a person's name with their education and/or work history.
 THE PDF IS GROUND TRUTH. Do not invent B.Ed, CTET, jobs, or years of experience that are not on the PDF.
 If the person is still studying, a student, or has no teaching job listed, say so.
 If the name printed on the CV differs from the form name, flag it.
@@ -120,6 +121,7 @@ Do not use a high example score. A weak CV is 1–4.
 
 Output ONLY valid JSON:
 {
+  "is_cv": true,
   "overall_fitment_score": 3,
   "eligibility_verdict": "not_eligible" | "needs_review" | "eligible",
   "eligibility_summary": "One sentence grounded in the CV.",
@@ -164,6 +166,19 @@ Output ONLY valid JSON:
         const responseText = response.text ? response.text.trim() : '';
         const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         report = JSON.parse(cleanJson);
+        // Not a CV: refuse it here, so the candidate is asked for a proper one
+        // instead of moving on with something that cannot be assessed.
+        const parsed = report as unknown as { is_cv?: boolean; name_on_cv?: string; qualifications_match?: { degrees_found?: string[] }; total_experience_years?: number };
+        const hasNoCvContent = !String(parsed.name_on_cv || '').trim() && !(parsed.qualifications_match?.degrees_found || []).length && !Number(parsed.total_experience_years);
+        if (parsed.is_cv === false || hasNoCvContent) {
+          try { fs.unlinkSync(absPath); } catch {}
+          return NextResponse.json({
+            success: false,
+            not_a_cv: true,
+            error: 'This does not look like a CV. Please upload your CV as a PDF. It should show your name, your qualifications and your teaching experience.'
+          }, { status: 422 });
+        }
+
         report = reconcileResumeWithClaims(
           {
             ...report,

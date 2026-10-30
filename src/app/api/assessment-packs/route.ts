@@ -1,30 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { db } from '@/lib/db';
-import { AssessmentPack, StageKey } from '@/lib/types';
-import { buildFallbackMcqs, buildFallbackPack } from '@/lib/buildAssessmentPack';
+import { AssessmentPack } from '@/lib/types';
+import { generateAssessmentPackData } from '@/lib/assessmentPackGenerator';
+import { sanitizeForCandidate, savePackWithRubrics } from '@/lib/ensurePack';
 import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
-
-const apiKey = process.env.GEMINI_API_KEY || '';
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
-
-/**
- * Strips the answer key and grading rubrics before a pack reaches a candidate.
- * The previous version sent mcqs[].correct_option and every stage rubric to
- * the browser verbatim — a candidate could open devtools and read both the
- * quiz answers and the exact criteria they would be scored against before
- * (or during) the assessment.
- */
-function sanitizeForCandidate(pack: AssessmentPack) {
-  return {
-    ...pack,
-    mcqs: (pack.mcqs || []).map(({ correct_option: _correct_option, explanation: _explanation, ...rest }) => rest),
-    lesson_rubric: undefined,
-    demo_rubric: undefined,
-    scenario_rubric: undefined,
-  };
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -61,97 +41,18 @@ export async function POST(req: NextRequest) {
     const board = body.board || 'CBSE';
     const save = body.save !== false;
 
-    const fallback = buildFallbackPack({ school_id: ctx.schoolId, subject, segment, board });
-    let packData = { ...fallback };
-
-    if (ai) {
-      try {
-        const prompt = `You are a school academic director writing a teacher hiring assessment.
-Create ONE JSON object (no markdown) for hiring a ${subject} teacher for ${segment} on the ${board} board.
-
-Required keys:
-{
-  "mcqs": [ 25 objects with id, question_text, options (4 strings), correct_option (must match one option), explanation ],
-  "lesson_prompt": "lesson plan task for the candidate",
-  "lesson_rubric": "how AI should score the lesson plan, 1-10 dimensions",
-  "demo_prompt": "5-minute live teaching demo prompt",
-  "demo_rubric": "how AI should score the demo",
-  "scenario_prompt": "classroom scenario the candidate answers on camera",
-  "scenario_rubric": "how AI should score the scenario"
-}
-
-MCQs must be about teaching ${subject} to ${segment}, not trivia for children. Mix pedagogy and subject knowledge.`;
-
-        let response;
-        try {
-          response = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt });
-        } catch {
-          response = await ai.models.generateContent({ model: 'gemini-flash-lite-latest', contents: prompt });
-        }
-        const raw = (response.text || '').replace(/```json/g, '').replace(/```/g, '').trim();
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          const mcqs = Array.isArray(parsed.mcqs) ? parsed.mcqs : [];
-          const normalized = mcqs.map((q: any, i: number) => ({
-            id: q.id || `mcq_${i + 1}`,
-            question_text: q.question_text,
-            options: q.options || [],
-            correct_option: q.correct_option,
-            explanation: q.explanation
-          })).filter((q: any) => q.question_text && q.options?.length >= 2);
-          const padded = [
-            ...normalized,
-            ...buildFallbackMcqs(subject, segment, board, 25)
-          ].slice(0, 25);
-          packData = {
-            ...fallback,
-            mcqs: padded,
-            lesson_prompt: parsed.lesson_prompt || fallback.lesson_prompt,
-            lesson_rubric: parsed.lesson_rubric || fallback.lesson_rubric,
-            demo_prompt: parsed.demo_prompt || fallback.demo_prompt,
-            demo_rubric: parsed.demo_rubric || fallback.demo_rubric,
-            scenario_prompt: parsed.scenario_prompt || fallback.scenario_prompt,
-            scenario_rubric: parsed.scenario_rubric || fallback.scenario_rubric
-          };
-        }
-      } catch (err) {
-        console.warn('Assessment pack Gemini fallback:', err);
-      }
-    }
-
-    const pack: AssessmentPack = {
-      id: `pack_${Date.now()}`,
-      ...packData,
-      title: body.title || packData.title,
-      status: 'draft',
-      created_at: new Date().toISOString()
-    };
-
-    const saved = save ? db.createAssessmentPack(pack) : pack;
-
-    ['written_theory', 'micro_teaching_demo', 'situational_scenario'].forEach((stage_key, idx) => {
-      const rubricText = idx === 0 ? pack.lesson_rubric : idx === 1 ? pack.demo_rubric : pack.scenario_rubric;
-      db.addOrUpdateRubric({
-        id: `rubric_${pack.id}_${stage_key}`,
-        school_id: ctx.schoolId,
-        stage_key: stage_key as StageKey,
-        role_type: 'Teacher',
-        subject,
-        segment,
-        dimensions: [
-          { id: 'ai_generated', name: 'Edcruiter AI rubric', description: rubricText, weight: 100 }
-        ]
-      });
-    });
+    const data = await generateAssessmentPackData({ subject, segment, board });
+    const pack: AssessmentPack = save
+      ? savePackWithRubrics(ctx.schoolId, data, 'draft', body.title)
+      : { id: `pack_${Date.now()}`, ...data, school_id: ctx.schoolId, title: body.title || data.title, status: 'draft', created_at: new Date().toISOString() };
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'ASSESSMENT_PACK_GENERATED',
       resource: `Assessment pack: ${subject} / ${segment}`,
-      details: `Generated ${packData.mcqs?.length ?? 0} MCQs and 3 stage rubrics.`
+      details: `Generated ${pack.mcqs.length} MCQs and 3 stage rubrics.`
     });
 
-    return NextResponse.json({ success: true, pack: saved });
+    return NextResponse.json({ success: true, pack });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to generate test' }, { status: 500 });
   }

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { dedupeSimilar } from './reportText';
 import { ResumeAnalysisReport, CurriculumGuidelines } from './types';
 import { hasBEdCredential } from './credentials';
 
@@ -402,8 +403,8 @@ export function reconcileResumeWithClaims(
     overall_fitment_score: score,
     eligibility_verdict: verdict,
     eligibility_summary: discrepancies[0] || report.eligibility_summary,
-    red_flags: Array.from(new Set(red)),
-    form_vs_cv_discrepancies: Array.from(new Set(discrepancies)),
+    red_flags: dedupeSimilar(red),
+    form_vs_cv_discrepancies: dedupeSimilar(discrepancies),
     analyzed_at: report.analyzed_at || new Date().toISOString()
   };
 }
