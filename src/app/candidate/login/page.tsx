@@ -7,6 +7,7 @@ import {
   ArrowRight, Loader2, AlertCircle,
   ArrowLeft, GraduationCap
 } from 'lucide-react';
+import { cleanIdentifier, extractInviteCode, signInPathFromPastedText } from '@/lib/candidateLink';
 
 export default function CandidateLoginPage() {
   const router = useRouter();
@@ -15,20 +16,30 @@ export default function CandidateLoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A WhatsApp/email invite link logs a candidate in automatically now (see
+  // A WhatsApp/email invite link logs a candidate in automatically (see
   // /api/candidates/magic-login) — landing here at all means that link was
   // expired or already used, not a first-time visit, so say that rather
   // than showing no explanation for why they're on a login screen.
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('error') === 'link_expired') {
-      setError('That link has expired or was already used. Enter your details below to continue.');
+      setError('That link has expired or was already used. Paste a newer link below, or enter your phone or email with your application ID.');
     }
   }, []);
 
+  // A candidate who pastes the whole link they were sent, into either box,
+  // goes straight in. No second field to fill.
+  const openIfLink = (text: string): boolean => {
+    const path = signInPathFromPastedText(text);
+    if (!path) return false;
+    window.location.href = path;
+    return true;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (openIfLink(identifier) || openIfLink(inviteCode)) return;
     if (!identifier.trim() || !inviteCode.trim()) {
-      setError('Enter both your Application ID / phone / email and your invite code.');
+      setError('Paste your link, or enter your phone or email together with your application ID.');
       return;
     }
 
@@ -40,8 +51,8 @@ export default function CandidateLoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          identifier: identifier.trim(),
-          invite_code: inviteCode.trim()
+          identifier: cleanIdentifier(identifier),
+          invite_code: extractInviteCode(inviteCode)
         })
       });
 
@@ -75,7 +86,7 @@ export default function CandidateLoginPage() {
           </div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight">Continue your application</h2>
           <p className="text-xs text-slate-500">
-            Enter the same details you applied with, plus the invite code we sent you on WhatsApp or email.
+            The easiest way is the link we sent you on WhatsApp or email: just tap it. Lost it? Paste it below, or enter your phone or email with your application ID.
           </p>
         </div>
 
@@ -89,13 +100,13 @@ export default function CandidateLoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700">
-              Application ID, mobile number, or email
+              Your link, or your mobile number / email
             </label>
             <input
               type="text"
-              placeholder="e.g. 9876543210 or you@example.com"
+              placeholder="Paste your link, or 9876543210, or you@example.com"
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(e) => { setIdentifier(e.target.value); openIfLink(e.target.value); }}
               className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
               autoFocus
             />
@@ -103,16 +114,17 @@ export default function CandidateLoginPage() {
 
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700">
-              Invite code
+              Application ID
             </label>
             <input
               type="text"
               placeholder="e.g. EDC-PHYS-A4K2"
               value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
+              onChange={(e) => { setInviteCode(e.target.value); openIfLink(e.target.value); }}
+              onBlur={(e) => setInviteCode(extractInviteCode(e.target.value))}
               className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm font-mono focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
             />
-            <p className="text-[11px] text-slate-500">Sent to you on WhatsApp or email when you first applied.</p>
+            <p className="text-[11px] text-slate-500">It starts with EDC and is in the message we sent you. You can paste the whole message and we will pick it out.</p>
           </div>
 
           <button

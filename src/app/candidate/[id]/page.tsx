@@ -595,17 +595,25 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               {candidate.invite_code && (
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(candidate.invite_code || '').then(() => {
+                  onClick={async () => {
+                    // One link that opens the application anywhere, rather than a
+                    // code the candidate has to pair with their phone or email.
+                    try {
+                      const res = await fetch('/api/candidates/my-link');
+                      const data = await res.json();
+                      if (!res.ok || !data.url) throw new Error('no link');
+                      await navigator.clipboard.writeText(data.url);
                       setCodeCopied(true);
-                      setTimeout(() => setCodeCopied(false), 1500);
-                    });
+                      setTimeout(() => setCodeCopied(false), 2500);
+                    } catch {
+                      setStageError('Could not copy your link. Write down your application ID instead: ' + candidate.invite_code);
+                    }
                   }}
-                  title="This is your sign-in code — save it. You'll need it, along with your email or phone, to get back into your application from another device or after signing out."
+                  title="Copies one link that opens your application on any phone or computer for 7 days. Paste it into WhatsApp (message yourself) or your notes. Do not share it."
                   className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10.5px] font-bold hover:bg-amber-100 transition-colors"
                 >
                   <KeyRound className="w-3 h-3" />
-                  Your login code: <span className="font-mono">{candidate.invite_code}</span>
+                  {codeCopied ? 'Link copied. Paste it in your notes or WhatsApp.' : 'Save my link to come back later'}
                   {codeCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                 </button>
               )}
@@ -753,7 +761,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               </ol>
               {candidate.invite_code && (
                 <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  To check back later, sign in with your phone or email and your code <strong className="font-mono text-slate-700">{candidate.invite_code}</strong>.
+                  To come back later, use the link we sent you, or tap &ldquo;Save my link&rdquo; at the top of this page. If you need to type it, your application ID is <strong className="font-mono text-slate-700">{candidate.invite_code}</strong>.
                 </p>
               )}
               <div className="pt-2">

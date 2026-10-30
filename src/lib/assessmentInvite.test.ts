@@ -5,7 +5,7 @@ vi.mock('./db', () => ({ db: { updateCandidate: (...a: unknown[]) => updateCandi
 const sendTemplateMessage = vi.fn();
 vi.mock('./whatsappClient', () => ({ sendTemplateMessage: (...a: unknown[]) => sendTemplateMessage(...a) }));
 
-import { sendAssessmentInvite, INVITE_LINK_VALIDITY_SEC } from './assessmentInvite';
+import { sendAssessmentInvite, signInLinkFor, INVITE_LINK_VALIDITY_SEC } from './assessmentInvite';
 import { readCandidateToken } from './session';
 import type { Candidate, School } from './types';
 
@@ -50,6 +50,14 @@ describe('sendAssessmentInvite', () => {
     sendTemplateMessage.mockResolvedValue({ ok: false, reason: 'no_consent' });
     await sendAssessmentInvite(school, candidate);
     expect(updateCandidate).not.toHaveBeenCalled();
+  });
+
+  it('makes one saveable link that signs this candidate in for a week', () => {
+    const url = new URL(signInLinkFor(candidate));
+    expect(url.pathname).toBe('/api/candidates/magic-login');
+    const session = readCandidateToken(url.searchParams.get('token') || undefined);
+    expect(session?.cid).toBe('c1');
+    expect(session?.school_id).toBe('s1');
   });
 
   it('falls back to the candidate id when no invite code was generated', async () => {

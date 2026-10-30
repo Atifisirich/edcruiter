@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { warmPack } from '@/lib/ensurePack';
+import { sendApplicationLinks } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
@@ -255,6 +256,15 @@ export async function POST(req: NextRequest) {
         resource: `Candidate: ${newCandidate.name}`,
         details: `Completed identity & eligibility capture for ${newCandidate.applied_subject} (${newCandidate.applied_segment}).`,
         timestamp: new Date().toISOString()
+      });
+    }
+
+    // An applicant from the job portal is signed in on this browser only. Send
+    // them the link back in, so closing the tab or switching phone does not lose it.
+    if (!staffCtx) {
+      after(async () => {
+        const school = db.getSchoolById(newCandidate.school_id);
+        if (school) await sendApplicationLinks(school, newCandidate);
       });
     }
 
