@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appOrigin, googleOAuthClient } from '@/lib/googleOAuth';
 import { createSessionToken, OAUTH_STATE_COOKIE, SESSION_COOKIE } from '@/lib/session';
+import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const origin = appOrigin();
@@ -44,7 +45,23 @@ export async function GET(request: NextRequest) {
       picture: payload.picture,
     });
 
-    const res = NextResponse.redirect(`${origin}${safeNext}`);
+    // The sign-in button always asks for the school-setup page, which only
+    // makes sense for someone with no account yet. People who already have
+    // one go straight to their own workspace.
+    let destination = safeNext;
+    if (safeNext === '/school/setup') {
+      const existing = db.getUserByEmail(payload.email);
+      if (existing) {
+        destination =
+          existing.role === 'SUPER_ADMIN' ? '/superadmin'
+          : existing.role === 'REPORTING_MANAGER' ? '/reviewer/rm'
+          : existing.role === 'INSTITUTE_HEAD' ? '/reviewer/ih'
+          : existing.role === 'FINAL_DECISION_MAKER' ? '/reviewer/coo'
+          : '/admin';
+      }
+    }
+
+    const res = NextResponse.redirect(`${origin}${destination}`);
     res.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/', maxAge: 0 });
     res.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,

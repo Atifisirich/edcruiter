@@ -7,6 +7,10 @@ import { Building2, ArrowRight, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import BrandMark from '@/components/shared/BrandMark';
 import { DEFAULT_SHORTLIST_BANDS } from '@/lib/shortlistBands';
 
+// A live site starts with no demo school, so "open the demo" would lead to an
+// empty workspace. It is only offered during local development.
+const SHOW_DEMO = process.env.NODE_ENV !== 'production';
+
 type BranchRow = { name: string; location: string };
 
 export default function SchoolSetupWizard() {
@@ -126,17 +130,19 @@ export default function SchoolSetupWizard() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.setItem('edcruiter_school_setup_done', '1');
-              router.push('/admin');
-            }}
-            className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50 text-left hover:border-indigo-400 transition-colors"
-          >
-            <p className="text-sm font-black text-indigo-900">Open demo school</p>
-            <p className="text-xs text-indigo-700/80 mt-1">Skip setup — show the recruiter workspace with Sample School data.</p>
-          </button>
+          {SHOW_DEMO && (
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem('edcruiter_school_setup_done', '1');
+                router.push('/admin');
+              }}
+              className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50 text-left hover:border-indigo-400 transition-colors"
+            >
+              <p className="text-sm font-black text-indigo-900">Open demo school</p>
+              <p className="text-xs text-indigo-700/80 mt-1">Skip setup — show the recruiter workspace with Sample School data.</p>
+            </button>
+          )}
           <div className="p-4 rounded-2xl border border-slate-200 bg-white text-left">
             <p className="text-sm font-black text-slate-900">Complete school setup</p>
             <p className="text-xs text-slate-500 mt-1">Use the form below to demonstrate how a school configures campuses and contact.</p>
@@ -381,16 +387,18 @@ export default function SchoolSetupWizard() {
             <ArrowRight className="w-4 h-4" />
           </button>
 
-          <button
-            type="button"
-            className="w-full text-xs font-semibold text-slate-500 hover:text-indigo-600"
-            onClick={() => {
-              localStorage.setItem('edcruiter_school_setup_done', '1');
-              router.push('/admin');
-            }}
-          >
-            Skip for now (demo school)
-          </button>
+          {SHOW_DEMO && (
+            <button
+              type="button"
+              className="w-full text-xs font-semibold text-slate-500 hover:text-indigo-600"
+              onClick={() => {
+                localStorage.setItem('edcruiter_school_setup_done', '1');
+                router.push('/admin');
+              }}
+            >
+              Skip for now (demo school)
+            </button>
+          )}
         </form>
 
         <p className="text-center text-xs text-slate-400 flex items-center justify-center gap-1">
