@@ -93,6 +93,11 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
   const voiceMuted = false;
   const readingGuardEnabled = true;
 
+  // The baseline is taken when the camera starts. A candidate may reset it twice
+  // (for example after moving their seat); otherwise someone could look down at a
+  // phone, press the button, and stop being noticed.
+  const [recheckLeft, setRecheckLeft] = useState<number>(2);
+
   // Manual Trigger to Recalibrate Neutral Center
   const startCalibration = useCallback(() => {
     setIsCalibrating(true);
@@ -101,9 +106,23 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     isCalibratedRef.current = false;
   }, []);
 
-  // Audio Speech Warning Dispatcher with cooldown & immediate counter reset
-  const triggerVoiceWarning = useCallback((spokenMessage: string, violationType: string, logDetails: string) => {
+  // Events that must always reach the record, even inside the spoken-warning cooldown.
+  const lastLoggedByTypeRef = useRef<Record<string, number>>({});
+
+  // Audio Speech Warning Dispatcher with cooldown & immediate counter reset.
+  // alwaysLog: write the event even if a warning was spoken a moment ago (at most
+  // once every 1.5 seconds per kind, so a held key does not flood the record).
+  // silent: record it without a spoken or on-screen warning.
+  const triggerVoiceWarning = useCallback((spokenMessage: string, violationType: string, logDetails: string, opts: { alwaysLog?: boolean; silent?: boolean } = {}) => {
     const now = Date.now();
+    if (opts.silent) {
+      const last = lastLoggedByTypeRef.current[violationType] ?? 0;
+      if (now - last > 1500) {
+        lastLoggedByTypeRef.current[violationType] = now;
+        onViolation?.(violationType, logDetails);
+      }
+      return;
+    }
     // Minimum 8 seconds between voice interventions
     if (now - lastVoiceAlertTimeRef.current > 8000) {
       lastVoiceAlertTimeRef.current = now;
@@ -134,6 +153,12 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
       setTimeout(() => {
         setActiveVoiceToast(prev => ({ ...prev, visible: false }));
       }, 5000);
+    } else if (opts.alwaysLog) {
+      const last = lastLoggedByTypeRef.current[violationType] ?? 0;
+      if (now - last > 1500) {
+        lastLoggedByTypeRef.current[violationType] = now;
+        onViolation?.(violationType, logDetails);
+      }
     }
   }, [onViolation, voiceMuted]);
 
@@ -169,17 +194,11 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     let isSubscribed = true;
 
     async function initModels() {
+      // Everything is served from this site: the page's security policy does not
+      // allow scripts or models from anywhere else.
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const wasmCandidates = [
-        `${origin}/mediapipe/wasm`,
-        '/mediapipe/wasm',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm',
-      ];
-      const modelCandidates = [
-        `${origin}/mediapipe/models/face_landmarker.task`,
-        '/mediapipe/models/face_landmarker.task',
-        'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-      ];
+      const wasmCandidates = [`${origin}/mediapipe/wasm`];
+      const modelCandidates = [`${origin}/mediapipe/models/face_landmarker.task`];
 
       let landmarkerReady = false;
       for (const wasmPath of wasmCandidates) {
@@ -219,7 +238,7 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
       }
 
       try {
-        const coco = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        const coco = await cocoSsd.load({ base: 'lite_mobilenet_v2', modelUrl: `${origin}/coco-ssd/model.json` });
         if (isSubscribed) {
           cocoModelRef.current = coco;
         }
@@ -281,39 +300,91 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     return () => clearInterval(objectInterval);
   }, [triggerVoiceWarning]);
 
-  // Security Event Listeners (Copy, Paste, Shortcuts)
+  // Ways to bring text into the test, or take it out: copy, cut, paste, drag and
+  // drop, paste shortcuts, text-assist insertions, the context menu, printing,
+  // saving, developer tools and the screenshot key. These are blocked, and every
+  // attempt is recorded for the reviewer. Capturing listeners run before the
+  // page's own, so nothing on the page can switch them off.
   useEffect(() => {
-    const handleCopyPaste = (e: Event) => {
+    const inField = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT');
+
+    const block = (e: Event, what: string) => {
       e.preventDefault();
-      triggerVoiceWarning('Copy and paste is prohibited.', 'COPY_PASTE_ATTEMPT', `Unauthorized ${e.type} blocked.`);
+      e.stopPropagation();
+      triggerVoiceWarning('Copying and pasting is not allowed in this test.', 'COPY_PASTE_ATTEMPT', `${what} was blocked.`, { alwaysLog: true });
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'a', 'p'].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-        triggerVoiceWarning('Keyboard shortcut blocked.', 'COPY_PASTE_ATTEMPT', `Shortcut Ctrl/Cmd+${e.key.toUpperCase()} blocked.`);
+    const onClipboard = (e: Event) => block(e, `A ${e.type} attempt`);
+    const onDrop = (e: Event) => block(e, 'Dropping text or a file into the page');
+    const onDragStart = (e: Event) => e.preventDefault();
+    const onSelectStart = (e: Event) => { if (!inField(e.target)) e.preventDefault(); };
+
+    const onBeforeInput = (e: Event) => {
+      const input = e as InputEvent;
+      const kind = input.inputType || '';
+      if (['insertFromPaste', 'insertFromPasteAsQuotation', 'insertFromDrop', 'insertFromYank', 'insertLink'].includes(kind)) {
+        block(e, 'Inserting text from outside the test');
+        return;
+      }
+      // Typing never adds this much at once. Autocomplete, dictation or an
+      // extension might, so it is noted for the reviewer, not blocked.
+      const data = input.data || '';
+      if (['insertText', 'insertCompositionText', 'insertReplacementText'].includes(kind) && data.length > 60) {
+        triggerVoiceWarning('', 'TYPING_ANOMALY', `${data.length} characters appeared at once (autocomplete, dictation or an extension).`, { silent: true });
       }
     };
 
-    const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      onViolation?.('COPY_PASTE_ATTEMPT', 'Right-click menu blocked.');
+    const onKeyDown = (e: Event) => {
+      const k = e as KeyboardEvent;
+      const key = (k.key || '').toLowerCase();
+      const mod = k.ctrlKey || k.metaKey;
+      const field = inField(k.target);
+
+      if (k.key === 'F12' || (mod && k.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) || (mod && ['u', 's'].includes(key))) {
+        block(e, 'Opening developer tools, page source or Save');
+        return;
+      }
+      const pasteOrCut = (k.shiftKey && ['insert', 'delete'].includes(key)) || (mod && key === 'insert');
+      // Select-all inside the answer box is harmless, since copying is blocked.
+      if ((mod && ['c', 'v', 'x', 'p'].includes(key)) || (mod && key === 'a' && !field) || pasteOrCut) {
+        block(e, `The shortcut ${mod ? 'Ctrl/Cmd+' : ''}${k.shiftKey ? 'Shift+' : ''}${(k.key || '').toUpperCase()}`);
+      }
     };
 
-    window.addEventListener('copy', handleCopyPaste);
-    window.addEventListener('paste', handleCopyPaste);
-    window.addEventListener('cut', handleCopyPaste);
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('contextmenu', handleContextMenu);
+    const onKeyUp = (e: Event) => {
+      if ((e as KeyboardEvent).key === 'PrintScreen') {
+        // The screenshot is already taken; empty the clipboard so it cannot be pasted, and note it.
+        try { navigator.clipboard?.writeText(''); } catch { /* the browser may refuse */ }
+        triggerVoiceWarning('Screenshots are not allowed in this test.', 'COPY_PASTE_ATTEMPT', 'The Print Screen key was pressed.', { alwaysLog: true });
+      }
+    };
+
+    const onContextMenu = (e: Event) => {
+      e.preventDefault();
+      triggerVoiceWarning('', 'COPY_PASTE_ATTEMPT', 'The right-click menu was blocked.', { silent: true });
+    };
+
+    const onBeforePrint = () => {
+      triggerVoiceWarning('', 'COPY_PASTE_ATTEMPT', 'Printing the test page was attempted.', { silent: true });
+    };
+
+    const listeners: [string, EventListener][] = [
+      ['copy', onClipboard], ['cut', onClipboard], ['paste', onClipboard],
+      ['drop', onDrop], ['dragstart', onDragStart], ['selectstart', onSelectStart],
+      ['beforeinput', onBeforeInput], ['keydown', onKeyDown], ['keyup', onKeyUp],
+      ['contextmenu', onContextMenu], ['beforeprint', onBeforePrint],
+    ];
+    // dragover must also be cancelled for a drop to be refused cleanly.
+    const onDragOver = (e: Event) => e.preventDefault();
+    for (const [type, fn] of listeners) window.addEventListener(type, fn, true);
+    window.addEventListener('dragover', onDragOver, true);
 
     return () => {
-      window.removeEventListener('copy', handleCopyPaste);
-      window.removeEventListener('paste', handleCopyPaste);
-      window.removeEventListener('cut', handleCopyPaste);
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('contextmenu', handleContextMenu);
+      for (const [type, fn] of listeners) window.removeEventListener(type, fn, true);
+      window.removeEventListener('dragover', onDragOver, true);
     };
-  }, [onViolation, triggerVoiceWarning]);
+  }, [triggerVoiceWarning]);
 
   const retriesRef = useRef(0);
 
@@ -350,7 +421,10 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         // If the camera is unplugged or taken by another app, say so and try to
         // get it back rather than showing a frozen picture.
         stream.getVideoTracks().forEach((track) => {
+          // A covered lens or a privacy shutter pauses the feed without ending it.
+          track.onmute = () => onViolation?.('CAMERA_LOST', 'The camera feed paused (covered, switched off or taken by another app).');
           track.onended = () => {
+            onViolation?.('CAMERA_LOST', 'The camera stopped during the test.');
             setCameraActive(false);
             setCameraError('The camera stopped. Close any other app using it. Reconnecting…');
             setTimeout(() => { startCamera(); }, 1500);
@@ -831,12 +905,17 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         </div>
         <button
           type="button"
-          onClick={startCalibration}
-          disabled={!cameraActive}
-          title="Use this if you moved your seat or the camera"
+          onClick={() => {
+            if (recheckLeft <= 0) return;
+            setRecheckLeft((n) => n - 1);
+            onViolation?.('RECALIBRATED', `The gaze check was reset (${2 - recheckLeft + 1} of 2).`);
+            startCalibration();
+          }}
+          disabled={!cameraActive || recheckLeft <= 0}
+          title={recheckLeft > 0 ? 'Use this only if you moved your seat or the camera. You can do it twice.' : 'You have used both rechecks.'}
           className="shrink-0 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
         >
-          <RefreshCw className="w-3.5 h-3.5" /> Recheck
+          <RefreshCw className="w-3.5 h-3.5" /> Recheck ({recheckLeft})
         </button>
       </div>
 

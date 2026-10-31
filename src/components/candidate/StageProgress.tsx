@@ -33,15 +33,28 @@ export default function StageProgress({
           </p>
           <span className="text-[11px] font-bold text-slate-500 shrink-0">{done} done</span>
         </div>
-        <div className="flex gap-1.5" aria-hidden="true">
-          {STAGE_ORDER.map((k, i) => (
-            <span
-              key={k}
-              className={`h-1.5 flex-1 rounded-full ${
-                completedKeys.includes(k) ? 'bg-indigo-600' : i === activeIndex ? 'bg-indigo-300' : 'bg-slate-200'
-              }`}
-            />
-          ))}
+        <div className="flex gap-1.5">
+          {STAGE_ORDER.map((k, i) => {
+            const isDone = completedKeys.includes(k);
+            const bar = (
+              <span
+                className={`block h-1.5 rounded-full ${isDone ? 'bg-indigo-600' : i === activeIndex ? 'bg-indigo-300' : 'bg-slate-200'}`}
+              />
+            );
+            return isDone ? (
+              <button
+                key={k}
+                type="button"
+                onClick={() => onSelect(k)}
+                aria-label={`Open stage ${i + 1}: ${STAGE_GUIDE[k].short}`}
+                className="flex-1 py-2 -my-2 cursor-pointer"
+              >
+                {bar}
+              </button>
+            ) : (
+              <span key={k} className="flex-1">{bar}</span>
+            );
+          })}
         </div>
       </div>
 

@@ -557,7 +557,10 @@ export type ProctoringEventType =
   | 'FACE_NOT_DETECTED'
   | 'OBJECT_DETECTED'
   | 'FOCUS_LOST'
-  | 'MULTIPLE_DISPLAYS';
+  | 'MULTIPLE_DISPLAYS'
+  | 'CAMERA_LOST'
+  | 'RECALIBRATED'
+  | 'TYPING_ANOMALY';
 
 export interface ProctoringEvent {
   id: string;

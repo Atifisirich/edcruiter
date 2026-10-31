@@ -41,6 +41,13 @@ const VIOLATION_WEIGHTS: Record<ProctoringEventType, number> = {
   // second screen is attached. Worth a look, not proof of cheating.
   FOCUS_LOST: 6,
   MULTIPLE_DISPLAYS: 6,
+  // The camera was unplugged, covered or taken by another app mid-test.
+  CAMERA_LOST: 8,
+  // The gaze baseline was reset. A reset is allowed twice; each one is noted.
+  RECALIBRATED: 3,
+  // A large block of text appeared at once (autocomplete, dictation or an
+  // extension). Paste and drop are blocked outright and count as COPY_PASTE_ATTEMPT.
+  TYPING_ANOMALY: 6,
   FULLSCREEN_EXIT: 10,
   COPY_PASTE_ATTEMPT: 10,
   OBJECT_DETECTED: 10,

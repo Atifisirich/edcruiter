@@ -29,7 +29,7 @@ export default function ApplicationIdCard({ code }: { code: string }) {
         Your application ID
       </div>
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-lg font-black text-slate-900 tracking-wide break-all">{code}</span>
+        <span className="allow-select font-mono text-lg font-black text-slate-900 tracking-wide break-all">{code}</span>
         <button
           type="button"
           onClick={copy}

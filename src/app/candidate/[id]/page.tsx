@@ -588,7 +588,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   ) : null;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-16">
+    <div className="no-copy min-h-screen bg-[#f8fafc] text-slate-900 pb-16">
       
       {/* Top Header Bar */}
       <header className="bg-white border-b border-slate-200 px-4 sm:px-8 py-3">
@@ -606,7 +606,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               </p>
               {candidate.invite_code && (
                 <p className="text-[11px] text-slate-500 truncate">
-                  Application ID: <span className="font-mono font-bold text-slate-700">{candidate.invite_code}</span>
+                  Application ID: <span className="allow-select font-mono font-bold text-slate-700">{candidate.invite_code}</span>
                 </p>
               )}
             </div>
@@ -732,7 +732,15 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             
             <StageIntro stageKey="identity_verification" number={1} />
 
+            {typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+              <div role="note" className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-950">
+                <strong className="block">You are on a phone.</strong>
+                Stages 2 to 5 work best on a laptop or desktop with a camera. Some checks, like fullscreen, are not available on phones. If you can, open your link on a computer before you continue.
+              </div>
+            )}
+
             <ul className="space-y-2 px-1 text-sm text-slate-700">
+              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>Use a <strong>laptop or desktop</strong> with a camera and microphone, in a quiet room.</span></li>
               <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>The whole application takes about <strong>60 to 75 minutes</strong>. Take a break between stages. Each one is saved when you submit it.</span></li>
               <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>To come back later, tap the link we sent you, or sign in with your phone or email and your application ID (shown at the top of this page).</span></li>
               <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>People at the school make every decision. AI only helps them review.</span></li>

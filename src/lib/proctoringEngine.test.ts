@@ -47,3 +47,12 @@ describe('calculateAuthenticityScore', () => {
     expect(result.label).toBe('Mostly authentic');
   });
 });
+
+describe('copy, camera and typing events', () => {
+  it('count against the score, and a lost camera or a blocked paste costs more than a recheck', () => {
+    expect(calculateAuthenticityScore([event('COPY_PASTE_ATTEMPT')]).score).toBe(90);
+    expect(calculateAuthenticityScore([event('CAMERA_LOST')]).score).toBe(92);
+    expect(calculateAuthenticityScore([event('TYPING_ANOMALY')]).score).toBe(94);
+    expect(calculateAuthenticityScore([event('RECALIBRATED')]).score).toBe(97);
+  });
+});

@@ -39,12 +39,12 @@ export default function PDFResumeUploader({
 
   const handleFile = async (selectedFile: File) => {
     if (!selectedFile.name.toLowerCase().endsWith('.pdf') && selectedFile.type !== 'application/pdf') {
-      setErrorMessage('Please upload a valid PDF document (.pdf)');
+      setErrorMessage('That file is not a PDF. Please choose your CV as a PDF file.');
       return;
     }
 
     if (selectedFile.size > 15 * 1024 * 1024) {
-      setErrorMessage('PDF file size exceeds 15MB limit.');
+      setErrorMessage('That file is larger than 15 MB. Please choose a smaller PDF.');
       return;
     }
 
@@ -113,19 +113,19 @@ export default function PDFResumeUploader({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label className="text-slate-700 font-bold text-xs flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <label className="text-slate-700 font-bold text-sm flex items-center gap-1.5">
           <FileText className="w-4 h-4 text-indigo-600" />
-          <span>Upload Candidate CV / Resume (PDF Format)</span>
+          <span>Your CV <span className="text-indigo-600">*</span></span>
         </label>
-        <span className="text-[10px] font-mono text-indigo-600 font-bold flex items-center gap-1">
-          <Sparkles className="w-3 h-3" /> Auto-audited by Edcruiter AI
+        <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-indigo-600" /> AI reads it and checks it against your details
         </span>
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 flex items-center gap-2 text-xs">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div role="alert" className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 font-semibold flex items-start gap-2 text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{errorMessage}</span>
         </div>
       )}
@@ -158,41 +158,42 @@ export default function PDFResumeUploader({
             <Upload className="w-6 h-6" />
           </div>
 
-          <div className="text-xs font-bold text-slate-900 mb-0.5">
-            Click to upload or drag and drop your Resume PDF
+          <div className="text-sm font-bold text-slate-900 mb-0.5">
+            Tap to choose your CV
+            <span className="hidden sm:inline font-semibold text-slate-500"> or drag it here</span>
           </div>
-          <p className="text-[11px] text-slate-400">
-            Supports PDF documents up to 15MB • Edcruiter AI extracts career gaps and teaching accreditations automatically
+          <p className="text-xs text-slate-500">
+            PDF only, up to 15 MB. It should show your name, qualifications and experience.
           </p>
         </div>
       ) : isUploading ? (
         <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
           <Loader2 className="w-6 h-6 text-indigo-600 animate-spin mx-auto" />
-          <div className="text-xs font-bold text-slate-900">Ingesting & auditing PDF with Edcruiter AI...</div>
-          <p className="text-[11px] text-slate-400">Detecting career gaps, upward seniority trajectory, and B.Ed/CTET credentials</p>
+          <div className="text-sm font-bold text-slate-900">Reading your CV…</div>
+          <p className="text-xs text-slate-500">This takes about 20 seconds. Please keep this page open.</p>
         </div>
       ) : (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <strong className="text-xs font-bold text-slate-900 block">
+              <strong className="text-sm font-bold text-slate-900 block break-all">
                 {file?.name || 'Candidate_Resume.pdf'}
               </strong>
-              <span className="text-[11px] text-emerald-700 block">
+              <span className="text-xs text-emerald-800 block">
                 {readSummary?.notRead
                   ? 'CV saved. We could not read it automatically, so a reviewer will open it.'
-                  : 'CV uploaded and read ✓'}
+                  : 'CV uploaded and read'}
               </span>
               {readSummary && !readSummary.notRead && (
-                <ul className="mt-1.5 text-[11px] text-slate-600 space-y-0.5">
+                <ul className="mt-1.5 text-xs text-slate-600 space-y-0.5">
                   {readSummary.name && <li>Name on CV: <strong>{readSummary.name}</strong></li>}
                   {readSummary.degrees && readSummary.degrees.length > 0 && <li>Qualifications found: <strong>{readSummary.degrees.join(', ')}</strong></li>}
                   {readSummary.years !== undefined && <li>Experience found: <strong>{readSummary.years} year{readSummary.years === 1 ? '' : 's'}</strong></li>}
                   {readSummary.mismatches && readSummary.mismatches.length > 0 && (
-                    <li className="text-amber-700">Please check your form against your CV: {readSummary.mismatches.join('; ')}</li>
+                    <li className="text-amber-800 font-semibold">Please check your details against your CV: {readSummary.mismatches.join('; ')}</li>
                   )}
                 </ul>
               )}
@@ -206,10 +207,9 @@ export default function PDFResumeUploader({
               setFile(null);
               onUploadComplete('');
             }}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-            title="Replace PDF"
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" /> Replace
           </button>
         </div>
       )}
