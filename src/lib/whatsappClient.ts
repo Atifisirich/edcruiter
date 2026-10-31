@@ -282,19 +282,28 @@ async function startLogRowAndMarkSkipped(
 }
 
 /**
- * Sends Meta's built-in `hello_world` template, present on every new WhatsApp
- * Business Account before any custom template is approved. Used only by the
- * connect wizard's "send a test message" step (see /api/whatsapp/test-send) —
- * never for a real candidate-facing send, since its copy cannot be changed.
+ * The connect wizard's "send a test message". It sends the approved
+ * `assessment_invite` template with obvious sample values, because Meta's
+ * built-in `hello_world` can only be sent from Meta's own public test numbers
+ * and is refused (#131058) from a real business number. The button opens a link
+ * that does not exist, so the test cannot sign anyone in. Never used for a real
+ * candidate (see /api/whatsapp/test-send).
  */
-export async function sendHelloWorld(creds: Credentials, toRaw: string): Promise<GraphResult> {
+export async function sendTestInvite(creds: Credentials, toRaw: string, schoolName: string): Promise<GraphResult> {
   const to = toWhatsAppE164(toRaw);
   if (!to) return { ok: false, code: 0, title: 'Invalid phone number.' };
   return callGraph(creds, {
     messaging_product: 'whatsapp',
     to,
     type: 'template',
-    template: { name: 'hello_world', language: { code: 'en_US' } }
+    template: {
+      name: 'assessment_invite',
+      language: { code: 'en' },
+      components: [
+        { type: 'body', parameters: ['Test teacher', schoolName.trim() || 'Your school', 'Test subject', 'EDC-TEST-0000'].map((text) => ({ type: 'text', text })) },
+        { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'test' }] },
+      ],
+    },
   });
 }
 

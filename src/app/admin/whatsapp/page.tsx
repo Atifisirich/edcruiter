@@ -159,7 +159,7 @@ export default function WhatsAppHiringPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not send test message');
-      setNotice(`Sent. Check WhatsApp on that phone now — a message from Meta's sample "hello_world" template should arrive within a few seconds. Once it does, this number is ready for real candidate invites.`);
+      setNotice(`Sent. Check WhatsApp on that phone now — a sample test invite (for "Test subject", ID EDC-TEST-0000) should arrive within a few seconds. Its button does not open a real application. Once it arrives, this number is ready for real candidate invites.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send test message');
     } finally {
@@ -425,8 +425,8 @@ export default function WhatsAppHiringPage() {
             3. Send a test message
           </div>
           <p className="text-xs text-slate-500">
-            Sends Meta's built-in <code className="font-mono">hello_world</code> template to a phone number of your
-            choice — use your own phone so you can see it arrive. This is a real message, not a simulation.
+            Sends a sample test invite, using your approved invite message, to a phone number of your choice. Use your own
+            phone so you can see it arrive. This is a real message, not a simulation.
           </p>
           {provider === 'school_waba' && status !== 'live' && (
             <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-2.5">

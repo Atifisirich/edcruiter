@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { resolveCredentials, sendHelloWorld, WhatsAppConfigError } from '@/lib/whatsappClient';
+import { resolveCredentials, sendTestInvite, WhatsAppConfigError } from '@/lib/whatsappClient';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
- * Step 5 of the connect wizard: sends Meta's built-in hello_world template to
- * a number the admin types in, so they see a real message land before any
- * candidate invite ever goes out. Kept separate from the candidate-facing
+ * Step 5 of the connect wizard: sends the approved invite template, with sample
+ * values, to a number the admin types in, so they see a real message land before
+ * any candidate invite ever goes out. Kept separate from the candidate-facing
  * send path in whatsappClient so a misconfigured test can never touch a
  * real applicant.
  */
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: e instanceof WhatsAppConfigError ? e.message : 'Not configured.' }, { status: 400 });
     }
 
-    const result = await sendHelloWorld(creds, to);
+    const result = await sendTestInvite(creds, to, school.name);
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'WHATSAPP_TEST_SENT',
