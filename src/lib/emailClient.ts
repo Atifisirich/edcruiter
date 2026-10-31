@@ -20,6 +20,15 @@ export function emailIsConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
 }
 
+/**
+ * RESEND_FROM_EMAIL can be a bare address. It is sent as "Edcruiter <address>"
+ * so the inbox shows the product name instead of "no-reply". A value that already
+ * carries a display name is used as given.
+ */
+export function fromHeader(from: string): string {
+  return from.includes('<') ? from : `Edcruiter <${from}>`;
+}
+
 export async function sendEmail(params: {
   to: string;
   subject: string;
@@ -41,7 +50,7 @@ export async function sendEmail(params: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from,
+        from: fromHeader(from),
         to: params.to,
         subject: params.subject,
         html: params.html,
