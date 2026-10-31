@@ -1,3 +1,4 @@
+import type { AnswerBehaviour } from './answerBehaviour';
 import type { ShortlistBand } from './shortlistBands';
 import type { HrPolicyAnswers } from './hrPolicyTemplate';
 import type { ReportSettings } from './teachingProfile';
@@ -539,6 +540,8 @@ export interface StageResult {
   transcript?: string;
   written_submission?: string;
   media_url?: string;
+  /** How the written answers were produced (typing pattern, answer pace). For the reviewer; never changes a score. */
+  behaviour?: AnswerBehaviour;
   completed_at: string;
 }
 

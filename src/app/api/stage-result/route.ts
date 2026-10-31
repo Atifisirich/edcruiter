@@ -10,6 +10,8 @@ import { findActivePack } from '@/lib/ensurePack';
 import { maybeGenerateTeachingProfile } from '@/lib/profileGenerator';
 import { testFor } from '@/lib/candidateTest';
 import { countWords, gradeMcqs, MIN_LESSON_WORDS, type GradableMcq } from '@/lib/testRules';
+import { buildBehaviour, type AnswerBehaviour } from '@/lib/answerBehaviour';
+import { createProctoringEvent } from '@/lib/proctoringEngine';
 
 /**
  * A stage submission with a scored stage triggers a live Gemini call, so this
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { candidate_id, stage_key, transcript, media_url, video_url, candidate_updates, mcq_answers, lesson_plan } = body;
     let written_submission: string | undefined = body.written_submission;
+    let behaviour: AnswerBehaviour | undefined;
 
     if (!candidate_id || !stage_key) {
       return NextResponse.json({ error: 'candidate_id and stage_key are required' }, { status: 400 });
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
         );
       }
       written_submission = `MCQ TEST\n\n${graded.block}\n\n--- LESSON PLAN ---\n\n${lessonText}`;
+      behaviour = buildBehaviour(body.behaviour?.typing, body.behaviour?.mcq, lessonText);
     }
 
     const stageConfig = SLOKA_DEFAULT_STAGES.find(s => s.key === stage_key);
@@ -103,10 +107,16 @@ export async function POST(req: NextRequest) {
       written_submission,
       transcript,
       media_url: resolvedMediaUrl || undefined,
+      behaviour,
       completed_at: new Date().toISOString()
     };
 
     db.saveStageResult(newResult);
+
+    // Two or more signals are worth a line in the proctoring record. They are signals, not proof.
+    if (behaviour && behaviour.signals.length >= 2) {
+      db.addProctoringEvent(createProctoringEvent(school_id, candidate_id, 'written_theory', 'TYPING_ANOMALY', `Answer pattern: ${behaviour.signals.slice(0, 2).join(' ')}`));
+    }
 
     const currentStageIdx = SLOKA_DEFAULT_STAGES.findIndex(s => s.key === stage_key);
     const nextStage = SLOKA_DEFAULT_STAGES[currentStageIdx + 1];

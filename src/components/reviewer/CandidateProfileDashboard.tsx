@@ -562,6 +562,56 @@ export default function CandidateProfileDashboard({
               })}
             </div>
 
+            {(() => {
+              const behaviour = stageResults.find((r) => r.behaviour)?.behaviour;
+              if (!behaviour) return null;
+              const { typing, mcq, signals } = behaviour;
+              return (
+                <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-indigo-600" />
+                    <h2 className="text-sm font-black text-slate-900">How the written answers were produced</h2>
+                  </div>
+                  {signals.length === 0 ? (
+                    <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-2xl p-3">Nothing unusual in how the answers were entered.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {signals.map((s) => (
+                        <li key={s} className="text-xs text-amber-950 bg-amber-50 border border-amber-200 rounded-2xl p-3">{s}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {mcq && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                        <dt className="text-slate-500">Time between answers</dt>
+                        <dd className="font-bold text-slate-900">{mcq.median_gap_seconds}s typical</dd>
+                      </div>
+                    )}
+                    {typing && !typing.touch && (
+                      <>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <dt className="text-slate-500">Lesson plan</dt>
+                          <dd className="font-bold text-slate-900">{typing.words_final} words</dd>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <dt className="text-slate-500">Corrections</dt>
+                          <dd className="font-bold text-slate-900">{typing.deletions}</dd>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <dt className="text-slate-500">Thinking pauses</dt>
+                          <dd className="font-bold text-slate-900">{typing.pauses_over_4s}</dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                  <p className="text-[11px] text-slate-500">
+                    These are signals to weigh, not proof. A fast, fluent typist can trigger some of them, and typing is not judged on phones. They never change a score. A few follow-up questions in the interview about the candidate&apos;s own lesson plan are the best check.
+                  </p>
+                </section>
+              );
+            })()}
+
             <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-3">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-indigo-600" />

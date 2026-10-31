@@ -14,6 +14,7 @@ import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
 import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
 import StageProgress from '@/components/candidate/StageProgress';
 import StageIntro from '@/components/candidate/StageIntro';
+import type { TypingRaw } from '@/lib/answerBehaviour';
 import VideoRecorderUpload from '@/components/candidate/VideoRecorderUpload';
 import PDFResumeUploader from '@/components/candidate/PDFResumeUploader';
 import StructuredLessonPlanEditor from '@/components/candidate/StructuredLessonPlanEditor';
@@ -121,6 +122,15 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   // Stage 2: Written / Theory Response
   const [writtenTheoryResponse, setWrittenTheoryResponse] = useState<string>('');
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, string>>({});
+  // How the written stage was answered, for the reviewer: when each question was first
+  // answered, and how the lesson plan was typed.
+  const mcqFirstAnswerRef = useRef<Record<string, number>>({});
+  const mcqChangesRef = useRef(0);
+  const typingRef = useRef<TypingRaw>({ chars_typed: 0, deletions: 0, pauses_over_4s: 0, active_seconds: 0, touch: false });
+  const recordMcqAnswer = (id: string) => {
+    if (mcqFirstAnswerRef.current[id] === undefined) mcqFirstAnswerRef.current[id] = Date.now();
+    else mcqChangesRef.current += 1;
+  };
 
   // Stage 3: Micro-Teaching 5-Min Video Demo
   const [microDemoVideoUrl, setMicroDemoVideoUrl] = useState<string>('');
@@ -480,7 +490,17 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         }
         // Only the picks go to the server. It marks them against the answer key,
         // which never reaches this page.
-        submissionData = { mcq_answers: mcqAnswers, lesson_plan: textToSubmit };
+        const answeredAt = Object.values(mcqFirstAnswerRef.current);
+        const firstAt = answeredAt.length ? Math.min(...answeredAt) : 0;
+        const touch = navigator.maxTouchPoints > 0 && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        submissionData = {
+          mcq_answers: mcqAnswers,
+          lesson_plan: textToSubmit,
+          behaviour: {
+            typing: { ...typingRef.current, touch },
+            mcq: { first_answer_ms: answeredAt.map((t) => t - firstAt), changes: mcqChangesRef.current },
+          },
+        };
       } else if (stageKey === 'micro_teaching_demo') {
         if (!microDemoVideoUrl) {
           return fail('Please complete the live teaching demo recording before submitting.');
@@ -1040,7 +1060,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                                   name={q.id}
                                   value={opt}
                                   checked={mcqAnswers[q.id] === opt}
-                                  onChange={() => setMcqAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                                  onChange={() => { recordMcqAnswer(q.id); setMcqAnswers((prev) => ({ ...prev, [q.id]: opt })); }}
                                   className="mt-1 w-4 h-4 accent-indigo-600"
                                 />
                                 <span>{opt}</span>
@@ -1059,6 +1079,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     rubricHint={getDynamicQuestion('written_theory')?.rubric_hint}
                     initialValue={writtenTheoryResponse}
                     onChange={(compiled) => setWrittenTheoryResponse(compiled)}
+                    typingRef={typingRef}
                   />
 
                   {stageErrorBox}

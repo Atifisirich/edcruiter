@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Sparkles, Clock, Target, BookOpen, AlertCircle, Edit3 } from 'lucide-react';
 import { resolveSubjectPacket } from '@/lib/questionBank';
 import { MIN_LESSON_WORDS } from '@/lib/testRules';
+import type { TypingRaw } from '@/lib/answerBehaviour';
 
 interface StructuredLessonPlanEditorProps {
   subject: string;
@@ -12,6 +13,8 @@ interface StructuredLessonPlanEditorProps {
   rubricHint?: string;
   initialValue?: string;
   onChange: (compiledText: string) => void;
+  /** Filled in as the candidate types, so how the plan was written can be reviewed. */
+  typingRef?: React.MutableRefObject<TypingRaw>;
 }
 
 export default function StructuredLessonPlanEditor({
@@ -20,7 +23,8 @@ export default function StructuredLessonPlanEditor({
   questionPrompt,
   rubricHint,
   initialValue = '',
-  onChange
+  onChange,
+  typingRef
 }: StructuredLessonPlanEditorProps) {
   const subjectPacket = resolveSubjectPacket(subject, segment);
   const activePrompt = questionPrompt || subjectPacket.theoryPrompt.question_text || `Design a comprehensive 35-minute Lesson Plan for ${subject} (${segment}).`;
@@ -28,6 +32,24 @@ export default function StructuredLessonPlanEditor({
 
   // Freeform text response state - initialized clean with no sample text
   const [lessonPlanText, setLessonPlanText] = useState<string>(initialValue);
+
+  const lastKeyAt = React.useRef(0);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const stats = typingRef?.current;
+    if (!stats || e.ctrlKey || e.metaKey || e.altKey) return;
+    const isDelete = e.key === 'Backspace' || e.key === 'Delete';
+    // Printable keys, plus the "Process" key an IME sends while composing.
+    if (!isDelete && e.key.length !== 1 && e.key !== 'Process') return;
+    const now = Date.now();
+    if (lastKeyAt.current) {
+      const gap = now - lastKeyAt.current;
+      if (gap < 8000) stats.active_seconds += gap / 1000;
+      if (gap >= 4000) stats.pauses_over_4s += 1;
+    }
+    lastKeyAt.current = now;
+    if (isDelete) stats.deletions += 1;
+    else stats.chars_typed += 1;
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -85,6 +107,7 @@ export default function StructuredLessonPlanEditor({
           rows={16}
           value={lessonPlanText}
           onChange={handleChange}
+          onKeyDown={handleKeyDown}
           placeholder={`Write your lesson plan for ${subject} here.
 
 A good plan covers:
