@@ -279,13 +279,11 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
       if (cData.candidate) {
         const realSchoolId = cData.candidate.school_id;
-        const [qRes, packRes, polRes] = await Promise.all([
+        const [qRes, polRes] = await Promise.all([
           fetch(`/api/questionnaires?school_id=${realSchoolId}`),
-          fetch(`/api/assessment-packs?school_id=${realSchoolId}`),
           fetch(`/api/hr-policies?school_id=${realSchoolId}`)
         ]);
         const qData = await qRes.json();
-        const packData = await packRes.json();
         const polData = await polRes.json();
         if (qData.questionnaires) setCustomQuestions(qData.questionnaires);
         setSchoolPolicies(polData.policies || []);
@@ -326,12 +324,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           setOtherQualification(cData.candidate.qualification);
         }
 
-        const packs: AssessmentPack[] = packData.packs || [];
-        // Only ever the test written for this candidate's own subject and grade
-        // level. No match means "prepare one", never another subject's test.
-        const matched = pickActivePack(packs, cData.candidate.applied_subject, cData.candidate.applied_segment);
-        setAssessmentPack(matched);
-        setPackState(matched ? 'ready' : 'preparing');
+        // The questions come from this candidate's own draw (see the effect that
+        // calls /api/assessment-packs/ensure), never from a list shared with everyone.
 
         const completedKeys = (cData.stageResults || []).map((r: StageResult) => r.stage_key);
         const nextStage = SLOKA_DEFAULT_STAGES.find(s => !completedKeys.includes(s.key));

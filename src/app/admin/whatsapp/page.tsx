@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import {
-  ArrowLeft, CheckCircle2, Loader2, MessageCircle, Radio, ShieldCheck, Send, AlertTriangle,
+  CheckCircle2, Loader2, MessageCircle, Radio, ShieldCheck, Send, AlertTriangle,
   ExternalLink, ChevronDown, Circle, CheckCircle
 } from 'lucide-react';
 import { School, WhatsAppHiringConfig } from '@/lib/types';
@@ -169,15 +168,10 @@ export default function WhatsAppHiringPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 py-10">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 space-y-6">
-        <Link href="/admin" className="text-xs font-bold text-slate-600 hover:text-indigo-600 inline-flex items-center gap-1.5">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Recruiter workspace
-        </Link>
-
-        <header className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Recruiter workspace</p>
-          <h1 className="text-2xl font-black mt-1">WhatsApp hiring line</h1>
+    <div>
+      <div className="max-w-3xl space-y-6">
+        <header className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+                    <h1 className="text-2xl sm:text-[1.75rem] font-bold tracking-tight">WhatsApp</h1>
           <p className="text-sm text-slate-600 mt-1 max-w-2xl">
             Assessment invites, reminders and offer messages go out over WhatsApp. There are two ways to get set up —
             pick whichever matches where you are right now.

@@ -1,5 +1,6 @@
 import type { ShortlistBand } from './shortlistBands';
 import type { HrPolicyAnswers } from './hrPolicyTemplate';
+import type { ReportSettings } from './teachingProfile';
 
 export type UserRole = 
   | 'SUPER_ADMIN' 
@@ -119,6 +120,13 @@ export interface SchoolBilling {
   updated_at: string;
 }
 
+/** A job title a school gives its team (for example "Science HOD"), and the access it carries. */
+export interface RoleDef {
+  id: string;
+  name: string;
+  level: UserRole;
+}
+
 export interface School {
   id: string;
   name: string;
@@ -144,6 +152,10 @@ export interface School {
   hr_policy_answers?: HrPolicyAnswers;
   /** Hiring WhatsApp line used to send assessment invites to teachers. */
   whatsapp_hiring?: WhatsAppHiringConfig;
+  /** Which video observations appear in the teaching profile. See teachingProfile.ts. */
+  report_settings?: ReportSettings;
+  /** The school's own role names. Absent means the four standard roles. See roles.ts. */
+  roles?: RoleDef[];
 }
 
 export interface WhatsAppHiringConfig {
@@ -256,6 +268,8 @@ export interface User {
   role: UserRole;
   department?: string;
   branch_id?: string;
+  /** Which of the school's own role names this person holds. `role` is the permission level behind it. */
+  role_id?: string;
   /** Set when a school admin added this person, before they have ever signed in. */
   invited_at?: string;
   invited_by?: string;
@@ -338,7 +352,9 @@ export interface Candidate {
   relocation_branches: string[]; // Manneguda, Tukkuguda, Vikarabad
   languages: string[];
   notice_period: string; // Immediate, 7 days, 15 days, 1 month, 2 months, 3 months
-  applied_segment: string; // Pre-primary, Primary 1-5, Middle 6-8, Secondary 9-10, Senior Secondary 11-12
+  applied_segment: string; // Level and grades, such as "Primary (Grades 1, 2 and 5)". See grades.ts.
+  /** The exact grades they would teach (ids from grades.ts, such as "1", "5", "lkg"). */
+  applied_grades?: string[];
   applied_subject: string; // 16 subjects
   target_branch_id: string;
   video_intro_url?: string;
@@ -389,6 +405,10 @@ export interface Candidate {
     offer_letter?: OfferLetterDetails;
   };
   current_stage_key: StageKey;
+  /** The questions drawn for this candidate from the platform bank, so the same test is served and marked every time. */
+  test_set?: { subject: string; ids: string[]; drawn_at: string };
+  /** Worked out when the list is served (how many of the five test stages are done); never stored. */
+  stages_completed?: number;
   interview_decisions?: InterviewDecision[];
   created_at: string;
   updated_at: string;
@@ -606,6 +626,8 @@ export interface PublicVacancy {
   title: string;
   subject: string;
   segment: string;
+  /** The exact grades this vacancy is for. `segment` carries the same grades as text. */
+  grades?: string[];
   board: string;
   location: string;
   branch: string;

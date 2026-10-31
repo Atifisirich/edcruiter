@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Loader2, Plus, CheckCircle2, Pencil, Trash2, X, ShieldCheck, Info } from 'lucide-react';
+import { PageHeader } from '@/components/admin/ui';
+import { Loader2, Plus, CheckCircle2, Pencil, Trash2, X, ShieldCheck, Info } from 'lucide-react';
 import { HRPolicyDocument } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import {
@@ -172,18 +172,12 @@ export default function SchoolPoliciesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] py-10">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 space-y-6">
-        <Link href="/admin" className="text-xs font-bold text-slate-600 hover:text-indigo-600 inline-flex items-center gap-1.5">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Recruiter workspace
-        </Link>
-        <header className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-2">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Recruiter workspace</p>
-          <h1 className="text-2xl font-black">Faculty HR policy</h1>
-          <p className="text-sm text-slate-600">
-            Fill the bare-minimum school fields (leaves, PF, accommodation, notice, safeguarding). The formatted policy is what teachers confirm in stage 5. You can still add extra free-text policies below.
-          </p>
-        </header>
+    <div>
+      <div className="space-y-6">
+        <PageHeader
+          title="School policies"
+          description="Answer a few questions about leave, notice period and child safety. We turn them into the policy teachers read and accept in stage 5."
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">

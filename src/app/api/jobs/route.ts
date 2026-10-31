@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { SLOKA_DEFAULT_SCHOOL } from '@/lib/defaultData';
 import { PublicVacancy } from '@/lib/types';
+import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { assertSchoolActive, authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
@@ -30,8 +31,12 @@ export async function POST(req: NextRequest) {
     assertSchoolActive(ctx.schoolId);
     const school = db.getSchoolById(ctx.schoolId);
 
-    if (!body.title || !body.subject || !body.segment) {
-      return NextResponse.json({ error: 'title, subject and segment are required' }, { status: 400 });
+    // Exact grades, when given, decide the segment text so the two always agree.
+    const grades = cleanGrades(body.grades);
+    const segment = grades.length ? segmentFromGrades(grades) : body.segment;
+
+    if (!body.title || !body.subject || !segment) {
+      return NextResponse.json({ error: 'title, subject and grades are required' }, { status: 400 });
     }
 
     const job: PublicVacancy = {
@@ -41,7 +46,8 @@ export async function POST(req: NextRequest) {
       school_type: body.school_type || school?.curriculum_guidelines?.board,
       title: body.title,
       subject: body.subject,
-      segment: body.segment,
+      segment,
+      ...(grades.length ? { grades } : {}),
       board: body.board,
       location: body.location || 'Hyderabad, Telangana',
       branch: body.branch,

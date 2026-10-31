@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { assertSchoolActive, authErrorResponse, requireCandidate } from '@/lib/auth';
 import { ensureActivePack, sanitizeForCandidate } from '@/lib/ensurePack';
+import { testFor } from '@/lib/candidateTest';
+import type { AssessmentPack } from '@/lib/types';
 
 /**
  * The signed-in candidate's own test. If the school has no test written for
@@ -17,7 +19,12 @@ export async function GET() {
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
     const result = ensureActivePack(session.schoolId, candidate.applied_subject, candidate.applied_segment);
-    if (result.state === 'ready') return NextResponse.json({ state: 'ready', pack: sanitizeForCandidate(result.pack) });
+    if (result.state === 'ready') {
+      // The school's test supplies the lesson, demo and scenario tasks; the questions are this candidate's own draw.
+      const test = testFor(candidate, result.pack);
+      const pack = { ...result.pack, mcqs: test.questions as AssessmentPack['mcqs'] };
+      return NextResponse.json({ state: 'ready', pack: sanitizeForCandidate(pack) });
+    }
     if (result.state === 'failed') return NextResponse.json({ state: 'failed', error: result.error });
     return NextResponse.json({ state: 'preparing' });
   } catch (error) {

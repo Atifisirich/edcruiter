@@ -20,37 +20,37 @@ export const HIRING_FLOW_STEPS: HiringFlowStep[] = [
   {
     n: 1,
     title: 'Create & post vacancy',
-    body: 'HR writes the role in Recruiter. Edcruiter drafts the JD and posts it live on the teaching jobs board.',
+    body: 'AI drafts the job post. Publish it on your jobs page.',
     Icon: Briefcase,
   },
   {
     n: 2,
     title: 'Add leads',
-    body: 'HR uploads teacher leads into Recruiter workspace — name, subject, and contact.',
+    body: 'Upload your leads: name, subject and phone.',
     Icon: UploadCloud,
   },
   {
     n: 3,
     title: 'WhatsApp invites',
-    body: 'Each lead gets a test code on WhatsApp so they can open the assessment on their own time.',
+    body: 'Each teacher gets a test link on WhatsApp.',
     Icon: Send,
   },
   {
     n: 4,
     title: 'Five-stage AI test',
-    body: 'Proctored test: profile, written + MCQs, live teaching demo, classroom scenario, then school policies.',
+    body: 'Written test, teaching video and a classroom scenario, with camera checks.',
     Icon: Video,
   },
   {
     n: 5,
     title: 'AI-powered shortlist',
-    body: 'Edcruiter ranks teachers from the scored stages (written, demo, scenario). HR reviews the AI shortlist and sends only the strongest profiles to leadership.',
+    body: 'Teachers are ranked, with a reason for every score.',
     Icon: Award,
   },
   {
     n: 6,
     title: 'Principal interview',
-    body: 'Subject lead, then the principal, then management. Each decision and reason stays on the teacher’s file.',
+    body: 'Subject lead, principal, then management. Every decision stays on file.',
     Icon: UserRoundCheck,
   },
 ];

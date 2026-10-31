@@ -9,6 +9,7 @@ import { Candidate, EvaluationRecord, ProctoringEvent, StageResult } from '@/lib
 import { SLOKA_SCHOOL_ID, SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { isScoredStage } from '@/lib/scoredStages';
 import { cleanResumeReport } from '@/lib/reportText';
+import TeachingProfilePanel from './TeachingProfilePanel';
 
 interface CandidateProfileDashboardProps {
   isOpen: boolean;
@@ -213,8 +214,8 @@ export default function CandidateProfileDashboard({
   const completedScored = stageResults.filter((r) => isScoredStage(r.stage_key)).length;
 
   return (
-    <div className={layout === 'page' ? 'min-h-screen bg-[#f8fafc] w-full' : 'fixed inset-0 z-50 bg-[#f8fafc] overflow-y-auto'}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className={layout === 'page' ? 'w-full' : 'fixed inset-0 z-50 bg-[#f8fafc] overflow-y-auto'}>
+      <div className={layout === 'page' ? 'space-y-6' : 'max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6'}>
         <header className="bg-white border border-slate-200 rounded-3xl px-5 py-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -290,6 +291,8 @@ export default function CandidateProfileDashboard({
                 <p className="text-sm font-bold text-indigo-700 font-mono mt-1">{candidate.invite_code || candidateId}</p>
               </div>
             </section>
+
+            <TeachingProfilePanel candidateId={candidateId} scoredStagesDone={completedScored >= 3} />
 
             {(usedDeterministic || scoredWithoutAi.length > 0) && (
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs space-y-1">

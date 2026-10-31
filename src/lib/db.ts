@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import type { TeachingProfile } from './teachingProfile';
+import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
 import { createCoalescedWriter } from './coalescedWriter';
 import { workspaceBlockReason } from './schoolStatus';
@@ -26,6 +28,8 @@ interface DatabaseSchema {
   uploadOwners?: UploadOwner[];
   deletionRequests?: DeletionRequest[];
   scheduledInterviews?: ScheduledInterview[];
+  teachingProfiles?: TeachingProfile[];
+  questionBank?: BankState;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -128,6 +132,7 @@ class DB {
         if (!this.data.uploadOwners) this.data.uploadOwners = [];
         if (!this.data.deletionRequests) this.data.deletionRequests = [];
         if (!this.data.scheduledInterviews) this.data.scheduledInterviews = [];
+        if (!this.data.teachingProfiles) this.data.teachingProfiles = [];
       } catch (err) {
         // Never overwrite a store we could not read: set it aside so the data
         // can still be recovered, then start fresh.
@@ -259,7 +264,7 @@ class DB {
     return user;
   }
 
-  updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'role' | 'last_login_at' | 'invited_at'>>): User | undefined {
+  updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'role' | 'role_id' | 'last_login_at' | 'invited_at'>>): User | undefined {
     const user = this.data.users.find(u => u.id === userId);
     if (!user) return undefined;
     Object.assign(user, updates);
@@ -581,6 +586,9 @@ class DB {
       if (this.data.evaluations) {
         this.data.evaluations = this.data.evaluations.filter(ev => ev.candidate_id !== candidateId);
       }
+      if (this.data.teachingProfiles) {
+        this.data.teachingProfiles = this.data.teachingProfiles.filter(p => p.candidate_id !== candidateId);
+      }
       if (this.data.whatsappMessages) {
         this.data.whatsappMessages = this.data.whatsappMessages.filter(m => m.candidate_id !== candidateId);
       }
@@ -635,6 +643,36 @@ class DB {
   getEvaluationsByCandidate(schoolId: string, candidateId: string): EvaluationRecord[] {
     if (!this.data.evaluations) return [];
     return this.data.evaluations.filter(e => e.school_id === schoolId && e.candidate_id === candidateId);
+  }
+
+  // Question bank: how often each question has been given, and which are retired
+  getBankState(): BankState {
+    return (this.data.questionBank ??= { exposures: {}, retired: [] });
+  }
+
+  recordBankUse(ids: string[]): void {
+    const state = this.getBankState();
+    for (const id of ids) state.exposures[id] = (state.exposures[id] ?? 0) + 1;
+    this.save();
+  }
+
+  retireBankQuestion(id: string): void {
+    const state = this.getBankState();
+    if (!state.retired.includes(id)) state.retired.push(id);
+    this.save();
+  }
+
+  // Teaching profiles: one per candidate, written once the scored stages are done
+  getTeachingProfile(schoolId: string, candidateId: string): TeachingProfile | undefined {
+    return (this.data.teachingProfiles ?? []).find(p => p.school_id === schoolId && p.candidate_id === candidateId);
+  }
+
+  saveTeachingProfile(profile: TeachingProfile): TeachingProfile {
+    const list = (this.data.teachingProfiles ??= []);
+    const idx = list.findIndex(p => p.school_id === profile.school_id && p.candidate_id === profile.candidate_id);
+    if (idx >= 0) list[idx] = profile; else list.push(profile);
+    this.save();
+    return profile;
   }
 
   // Audit Logging

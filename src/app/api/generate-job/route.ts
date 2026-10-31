@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { PublicVacancy } from '@/lib/types';
+import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { authErrorResponse, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -14,7 +15,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Generation limit reached for this hour.' }, { status: 429 });
     }
 
-    const { title, subject, segment, board, branch, target_branch_id, experience, salary_range } = body;
+    const { title, subject, board, branch, target_branch_id, experience, salary_range } = body;
+    // Exact grades, when given, decide the segment text.
+    const grades = cleanGrades(body.grades);
+    const segment = grades.length ? segmentFromGrades(grades) : body.segment;
     const schoolId = ctx.schoolId;
     const school = db.getSchoolById(schoolId);
     const schoolName = school?.name || 'this school';
@@ -39,6 +43,7 @@ export async function POST(req: NextRequest) {
       title: roleTitle,
       subject: subjectName,
       segment: segmentLevel,
+      ...(grades.length ? { grades } : {}),
       board: boardType,
       branch: campus,
       experience_required: expBand,
@@ -105,6 +110,7 @@ export async function POST(req: NextRequest) {
       title: roleTitle,
       subject: subjectName,
       segment: segmentLevel,
+      ...(grades.length ? { grades } : {}),
       board: boardType,
       // Left blank rather than a hardcoded 'Hyderabad, Telangana' when the
       // selected branch has no location on file — a school outside

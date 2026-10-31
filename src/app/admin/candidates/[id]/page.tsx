@@ -14,7 +14,7 @@ export default function CandidateReportPage() {
       layout="page"
       isOpen
       candidateId={id}
-      onClose={() => router.push('/admin')}
+      onClose={() => router.push('/admin/candidates')}
     />
   );
 }

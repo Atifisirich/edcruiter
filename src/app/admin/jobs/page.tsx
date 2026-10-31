@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { 
   Building2, Plus, Sparkles, Search, Filter, Users, Video, 
   BookOpen, CheckCircle2, ArrowRight, Share2, Copy, Check, 
-  MessageSquare, ExternalLink, Sliders, ChevronRight, Layers, ArrowLeft,
+  MessageSquare, ExternalLink, Sliders, ChevronRight, Layers,
   Briefcase, Award, Clock, Send
 } from 'lucide-react';
 import AIJobGeneratorModal from '@/components/admin/AIJobGeneratorModal';
+import { PageHeader, buttonClass } from '@/components/admin/ui';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 
 interface SchoolJob {
@@ -127,81 +128,57 @@ export default function SchoolJobsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 py-10">
+    <div>
       <AIJobGeneratorModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onJobCreated={handleJobCreated}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+      <div className="space-y-6">
         
-        {/* Breadcrumb & Navigation */}
-        <div className="flex items-center justify-between">
-          <Link
-            href="/admin"
-            className="text-xs font-bold text-slate-600 hover:text-indigo-600 flex items-center gap-1.5 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>← Back to Recruiter workspace</span>
-          </Link>
-
-          <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
-            {school?.name || 'Your school'}{school?.branches?.length ? ` • ${school.branches.length} campus${school.branches.length === 1 ? '' : 'es'}` : ''}
-          </span>
-        </div>
-
-        {/* Page Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-6">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
-              Campus Faculty Vacancies
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl font-medium">
-              Create board-calibrated job descriptions, automatically build 5-stage assessment rubrics, and generate instant WhatsApp candidate invites for each campus branch.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="brand-primary-btn px-6 py-3.5 rounded-2xl text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center gap-2 cursor-pointer hover:scale-[1.02] transition-transform"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Generate New Vacancy with AI →</span>
-          </button>
-        </div>
+        <PageHeader
+          title="Vacancies"
+          description="Post a teaching vacancy. We write the job description and build the test for you."
+          actions={
+            <button type="button" onClick={() => setModalOpen(true)} className={buttonClass('primary')}>
+              <Sparkles className="w-4 h-4" /> New vacancy
+            </button>
+          }
+        />
 
         {/* Overview Stats Ribbon */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block">Open Teaching Roles</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block">Open vacancies</span>
             <div className="text-2xl sm:text-3xl font-black font-mono text-indigo-600">{jobs.length}</div>
-            <span className="text-[11px] text-slate-500 font-medium">Across 3 Campuses</span>
+            <span className="text-[11px] text-slate-500 font-medium">
+              {new Set(jobs.map((j) => j.branch).filter(Boolean)).size || 0} campus{new Set(jobs.map((j) => j.branch).filter(Boolean)).size === 1 ? '' : 'es'}
+            </span>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Applicants Screened</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block">Applicants</span>
             <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900">
               {jobs.reduce((acc, j) => acc + j.applicants, 0)}
             </div>
-            <span className="text-[11px] text-emerald-600 font-bold">100% AI Rubric Evaluated</span>
+            <span className="text-[11px] text-slate-500 font-medium">Across all vacancies</span>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block">5-Min Video Demos Scored</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block">Teaching videos</span>
             <div className="text-2xl sm:text-3xl font-black font-mono text-indigo-600">
               {jobs.reduce((acc, j) => acc + j.video_completed, 0)}
             </div>
-            <span className="text-[11px] text-slate-500 font-medium">Chalkboard Vision Analyzed</span>
+            <span className="text-[11px] text-slate-500 font-medium">Teaching videos finished</span>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block">Ready for leadership interview</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block">Ready for interview</span>
             <div className="text-2xl sm:text-3xl font-black font-mono text-indigo-700">
               {jobs.reduce((acc, j) => acc + j.shortlisted, 0)}
             </div>
-            <span className="text-[11px] text-emerald-600 font-bold">Top 5% Faculty Pool</span>
+            <span className="text-[11px] text-slate-500 font-medium">Shortlisted</span>
           </div>
         </div>
 
@@ -254,7 +231,7 @@ export default function SchoolJobsPage() {
         {jobsLoaded && !loadError && filteredJobs.length === 0 && (
           <div className="p-8 rounded-3xl border-2 border-dashed border-slate-300 text-center text-sm text-slate-500">
             {jobs.length === 0
-              ? "No vacancies posted yet — use \"AI Vacancy Generator\" above to create your first one."
+              ? "No vacancies yet. Choose New vacancy to post your first one."
               : 'No postings match this filter or search.'}
           </div>
         )}

@@ -2,155 +2,161 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { 
-  Sparkles, ShieldCheck, Video, ScanSearch, ClipboardCheck, 
-  ChartColumn, ArrowRight, CheckCircle2, Lock, Users, BookOpen, Layers, Eye
+import {
+  Sparkles, ShieldCheck, Video, ScanSearch, ClipboardCheck, Download,
+  ArrowRight, Users, Smartphone, Scale, CalendarCheck2, CheckCircle2
 } from 'lucide-react';
+
+const FEATURES = [
+  {
+    id: 'five-stage-test',
+    Icon: ScanSearch,
+    tone: 'orange',
+    title: 'The five-stage AI test',
+    line: 'Every applicant takes the same five stages before anyone books a campus visit.',
+    points: ['1. Profile and CV, checked for B.Ed and experience', '2. Subject test and lesson plan', '3. A 5-minute teaching video', '4. Classroom scenario with a child-safety moment', '5. Your school policies'],
+  },
+  {
+    id: 'demo',
+    Icon: Video,
+    tone: 'amber',
+    title: 'See them teach, on video',
+    line: 'A recorded teaching demo shows how they explain, question and engage a class.',
+    points: ['Clarity, pacing and checking for understanding', 'Watch it back, with the transcript beside it', 'Delivery notes on eye contact, energy and voice'],
+  },
+  {
+    id: 'safeguarding',
+    Icon: ShieldCheck,
+    tone: 'emerald',
+    title: 'Safeguarding, tested',
+    line: 'Know how each teacher thinks about keeping children safe before they walk into a classroom.',
+    points: ['A child-safety moment in the classroom scenario', 'Child-protection and conduct policies accepted', 'Safeguarding awareness scored with a reason and a quote'],
+  },
+  {
+    id: 'report',
+    Icon: ClipboardCheck,
+    tone: 'blue',
+    title: 'A report your principal can read',
+    line: 'Six teaching areas, more factors on top, and a reason behind every score.',
+    points: ['Professionalism, communication, teaching, classroom management, subject, inclusive teaching', 'Real quotes from the teacher’s own answers', 'Where there is not enough evidence, it says so'],
+  },
+  {
+    id: 'pdf',
+    Icon: Download,
+    tone: 'purple',
+    title: 'Download it as a PDF',
+    line: 'Share one clean report with your HOD, principal or management board.',
+    points: ['Cover page, summary, strengths and areas to improve', 'Colour guide and a clear note on how to read it', 'Confidential, for the hiring school only'],
+  },
+  {
+    id: 'proctoring',
+    Icon: Sparkles,
+    tone: 'slate',
+    title: 'Camera on during the test',
+    line: 'Teachers keep the camera on so the test stays fair. This is sometimes called proctoring.',
+    points: ['Flags a second person, looking away or leaving the tab', 'A test-integrity score on the report', 'Flags are shown to your reviewers for a human call'],
+  },
+  {
+    id: 'whatsapp',
+    Icon: Smartphone,
+    tone: 'emerald',
+    title: 'WhatsApp, not an app',
+    line: 'Teachers get a link from your school’s own number and take the test in their browser.',
+    points: ['Nothing to install', 'Invite one teacher or a whole list', 'See who has started and who has finished'],
+  },
+  {
+    id: 'rounds',
+    Icon: CalendarCheck2,
+    tone: 'indigo',
+    title: 'Interview rounds, in order',
+    line: 'Subject lead, then principal, then management, each scheduled and recorded on the teacher’s file.',
+    points: ['Pick the interviewer and the time', 'The next round opens only after the last is accepted', 'Every decision keeps its reason'],
+  },
+  {
+    id: 'team',
+    Icon: Users,
+    tone: 'blue',
+    title: 'Your whole hiring team',
+    line: 'HR, HODs, the principal and management each have their own login.',
+    points: ['Roles decide what each person can see and do', 'Invite and remove people yourself', 'Change who sees what at any time'],
+  },
+  {
+    id: 'fair',
+    Icon: Scale,
+    tone: 'orange',
+    title: 'Fair, and your decision',
+    line: 'The AI helps with the first read. People make the hiring call.',
+    points: ['The AI is told never to mark down religious or cultural dress', 'It is told to ignore accent, age and gender', 'Reviewers can override any AI score'],
+  },
+];
+
+const TONES: Record<string, { box: string; dot: string }> = {
+  orange: { box: 'bg-orange-100 text-orange-600 border-orange-200', dot: 'text-orange-500' },
+  amber: { box: 'bg-amber-100 text-amber-600 border-amber-200', dot: 'text-amber-500' },
+  emerald: { box: 'bg-emerald-100 text-emerald-600 border-emerald-200', dot: 'text-emerald-600' },
+  blue: { box: 'bg-blue-100 text-blue-600 border-blue-200', dot: 'text-blue-600' },
+  purple: { box: 'bg-purple-100 text-purple-600 border-purple-200', dot: 'text-purple-600' },
+  slate: { box: 'bg-slate-100 text-slate-700 border-slate-300', dot: 'text-slate-600' },
+  indigo: { box: 'bg-indigo-100 text-indigo-600 border-indigo-200', dot: 'text-indigo-600' },
+};
 
 export default function FeaturesPage() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
-      
-      {/* Header */}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-14">
       <div className="text-center max-w-3xl mx-auto space-y-4">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold badge-brand shadow-xs">
-          <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-          <span>Complete Platform Capabilities</span>
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Safeguarding built in</span>
         </div>
         <h1 className="text-4xl sm:text-5xl font-black text-zinc-900 dark:text-white tracking-tight">
-          AI Teacher Assessment & Screening Engine
+          Everything you need to hire teachers with confidence
         </h1>
-        <p className="text-base text-zinc-600 dark:text-zinc-400">
-          Built specifically to evaluate subject depth, teaching pedagogy, classroom management, and communication fluency.
+        <p className="text-base sm:text-lg text-zinc-600 dark:text-zinc-400">
+          From the first WhatsApp message to the principal&apos;s decision.
         </p>
       </div>
 
-      {/* Feature Deep Dives */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        
-        {/* Feature 1 */}
-        <div className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold border border-orange-200 dark:border-orange-500/30">
-            <ScanSearch className="w-6 h-6" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+        {FEATURES.map(({ id, Icon, tone, title, line, points }) => (
+          <div
+            key={id}
+            id={id}
+            className="glass-card p-7 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all scroll-mt-24"
+          >
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${TONES[tone].box}`}>
+              <Icon className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white">{title}</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">{line}</p>
+            </div>
+            <ul className="text-sm text-zinc-700 dark:text-zinc-300 space-y-2 pt-3 border-t border-slate-100 dark:border-zinc-800/80">
+              {points.map((p) => (
+                <li key={p} className="flex items-start gap-2">
+                  <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${TONES[tone].dot}`} />
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">AI Candidate Screening</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Automatically parses applicant resumes, qualifications (M.Sc., B.Ed.), and teaching experience to rank role readiness before manual review starts.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Subject & grade segment matching</li>
-            <li>Prior institution reputation scoring</li>
-            <li>Shortlist readiness signals</li>
-          </ul>
-        </div>
-
-        {/* Feature 2 */}
-        <div className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold border border-amber-200 dark:border-amber-500/30">
-            <Video className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Pedagogy Video Analysis</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Candidates record a 5-minute teaching demonstration on camera. Edcruiter evaluates subject clarity, vocabulary, sentence structure, and eye contact.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Audio speech-to-text transcription</li>
-            <li>Fluency & grammar confidence scoring</li>
-            <li>Video playback player for hiring panels</li>
-          </ul>
-        </div>
-
-        {/* Feature 3 */}
-        <div id="proctoring" className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold border border-emerald-200 dark:border-emerald-500/30">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Camera on during the test</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Teachers keep the camera on so the test stays fair. We flag if someone else is in the room, if they look away a lot, or if they leave the test tab. This is sometimes called “proctoring”.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Live face detection & boundary check</li>
-            <li>Proctoring integrity audit log</li>
-            <li>Flagged anomaly alerts on candidate report card</li>
-          </ul>
-        </div>
-
-        {/* Feature 4 */}
-        <div className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold border border-blue-200 dark:border-blue-500/30">
-            <ClipboardCheck className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Structured Scorecard Rubrics</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Replaces informal gut-feel hiring with shared multi-stage rubrics for Reporting Managers, Subject Experts, and Principal interview rounds.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Subject knowledge & conceptual clarity</li>
-            <li>Classroom management ability</li>
-            <li>Standardized 1-10 scoring sliders</li>
-          </ul>
-        </div>
-
-        {/* Feature 5 */}
-        <div className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold border border-purple-200 dark:border-purple-500/30">
-            <ChartColumn className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Pipeline Analytics & Insights</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            School administrators see stage conversion rates, drop-off points, subject score distributions, and time-to-hire metrics in real time.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Stage-by-stage funnel visualization</li>
-            <li>Branch-wise recruitment tracking</li>
-            <li>Exportable CSV hiring summaries</li>
-          </ul>
-        </div>
-
-        {/* Feature 6 */}
-        <div className="glass-card p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 space-y-4 hover:border-orange-500/50 hover:shadow-xl transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center font-bold border border-slate-300 dark:border-zinc-700">
-            <Users className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Role-Based Multi-Reviewer Flow</h3>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Separate dashboards for School Admins, Reporting Managers (HODs), Institute Heads, and Final Decision Makers with permission controls.
-          </p>
-          <ul className="text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1.5 list-disc list-inside pt-2 border-t border-slate-100 dark:border-zinc-800/80">
-            <li>Individual reviewer notes & scorecards</li>
-            <li>Conflict-free multi-stage clearance</li>
-            <li>Role-specific access enforcement</li>
-          </ul>
-        </div>
-
+        ))}
       </div>
 
-      {/* Bottom CTA */}
       <div className="glass-card p-8 sm:p-12 rounded-3xl border border-slate-200 dark:border-zinc-800 text-center space-y-6 shadow-xl">
-        <h2 className="text-3xl font-black text-zinc-900 dark:text-white">
-          Ready to Modernize Your School&apos;s Teacher Hiring?
-        </h2>
-        <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-xl mx-auto">
-          Start assessing candidates with AI proctoring and video pedagogy evaluations today.
+        <h2 className="text-3xl font-black text-zinc-900 dark:text-white">Ready to modernise your teacher hiring?</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-xl mx-auto">
+          See it on your own vacancy. Edcruiter supports your hiring and does not replace police verification or your school&apos;s own checks.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <Link
-            href="/school/setup"
-            className="brand-primary-btn px-8 py-3 rounded-xl text-xs font-bold shadow-lg"
-          >
+          <Link href="/signup" className="brand-primary-btn px-8 py-3 rounded-xl text-sm font-bold shadow-lg">
             <span>Onboard Your School</span>
             <ArrowRight className="w-4 h-4 ml-1.5" />
           </Link>
-          <Link
-            href="/contact#book-demo"
-            className="px-8 py-3 rounded-xl text-xs font-bold secondary-nav-btn transition-all"
-          >
-            Call for a quote
+          <Link href="/contact#book-demo" className="px-8 py-3 rounded-xl text-sm font-bold secondary-nav-btn transition-all">
+            Book a demo
           </Link>
         </div>
       </div>
-
     </div>
   );
 }

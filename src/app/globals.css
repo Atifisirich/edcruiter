@@ -402,3 +402,16 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 16px;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   Hiring dashboard: one calm look across every page inside it. The older pages
+   were written with heavier weights, rounder corners and 10-11px labels; this
+   brings them in line with the shared components without rewriting each one.
+---------------------------------------------------------------------------- */
+.admin-shell .font-black { font-weight: 700; }
+.admin-shell .font-extrabold { font-weight: 700; }
+.admin-shell .rounded-3xl { border-radius: 1rem; }
+.admin-shell .text-\[10px\],
+.admin-shell .text-\[10\.5px\] { font-size: 0.75rem; line-height: 1.1rem; }
+.admin-shell .text-\[11px\] { font-size: 0.8125rem; line-height: 1.25rem; }
+.admin-shell .shadow-sm { box-shadow: 0 1px 2px rgb(15 23 42 / 0.06); }

@@ -184,9 +184,9 @@ function detectPlagiarismSignatures(text: string): { risk: 'low' | 'moderate' | 
 const INLINE_MEDIA_MAX_BYTES = 14 * 1024 * 1024;
 const UPLOADED_MEDIA_MAX_BYTES = 150 * 1024 * 1024;
 
-type PreparedMedia = { part: Part; uploadedName?: string };
+export type PreparedMedia = { part: Part; uploadedName?: string };
 
-async function prepareMediaPart(mediaUrl?: string): Promise<PreparedMedia | null> {
+export async function prepareMediaPart(mediaUrl?: string): Promise<PreparedMedia | null> {
   if (!mediaUrl || !ai) return null;
   const inline = prepareLocalMediaPart(mediaUrl);
   if (inline) return { part: inline };

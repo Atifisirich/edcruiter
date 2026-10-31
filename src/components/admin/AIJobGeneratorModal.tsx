@@ -7,6 +7,7 @@ import {
   HelpCircle, Eye, ExternalLink
 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
+import GradePicker from '@/components/admin/GradePicker';
 
 interface AIJobGeneratorModalProps {
   isOpen: boolean;
@@ -37,6 +38,8 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
   });
 
   const [generatedJob, setGeneratedJob] = useState<any>(null);
+  const [grades, setGrades] = useState<string[]>([]);
+  const [gradeError, setGradeError] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -61,6 +64,10 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (grades.length === 0) {
+      setGradeError(true);
+      return;
+    }
     if (!formData.branch_id) return;
     setLoading(true);
     try {
@@ -70,6 +77,7 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          grades,
           branch: selectedBranch?.name || '',
           target_branch_id: formData.branch_id
         })
@@ -169,21 +177,9 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1.5">
-                    School Segment / Level *
-                  </label>
-                  <select
-                    value={formData.segment}
-                    onChange={e => setFormData({ ...formData, segment: e.target.value })}
-                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-zinc-900 dark:text-white focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="Senior Secondary (Grades 11-12)">Senior Secondary (Grades 11-12)</option>
-                    <option value="Secondary (Grades 9-10)">Secondary (Grades 9-10)</option>
-                    <option value="Middle School (Grades 6-8)">Middle School (Grades 6-8)</option>
-                    <option value="Primary School (Grades 1-5)">Primary School (Grades 1-5)</option>
-                    <option value="Pre-Primary / Kindergarten">Pre-Primary / Kindergarten</option>
-                  </select>
+                <div className="md:col-span-2">
+                  <GradePicker value={grades} onChange={(g) => { setGrades(g); setGradeError(false); }} label="Grades this vacancy is for" required />
+                  {gradeError && <p className="mt-1 text-sm text-rose-600">Choose at least one grade.</p>}
                 </div>
 
                 <div>

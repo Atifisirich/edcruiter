@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, ThumbsDown, User, Video, XCircle } from 'lucide-react';
+import { PageHeader } from '@/components/admin/ui';
+import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, ThumbsDown, User, Video, XCircle } from 'lucide-react';
 import { Candidate, InterviewRound, ScheduledInterview } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 
@@ -173,21 +174,12 @@ export default function LeadershipInterviewsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 py-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-6">
-        <Link href="/admin" className="text-xs font-bold text-slate-600 hover:text-indigo-600 inline-flex items-center gap-1.5">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to Recruiter workspace
-        </Link>
-
-        <header className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Recruiter workspace</p>
-          <h1 className="text-2xl font-black mt-1">Leadership interviews</h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-            After shortlist, the school meets the teacher: subject lead, then principal, then management. Pick a real
-            person and a time here — the candidate and the reviewer are both notified, and the reviewer records their
-            own outcome once it happens.
-          </p>
-        </header>
+    <div>
+      <div className="space-y-6">
+        <PageHeader
+          title="Interviews"
+          description="After the shortlist, your school meets the teacher: subject lead, then principal, then management. Pick the person and a time. The candidate and the interviewer are both told."
+        />
 
         <div className="flex flex-wrap gap-2">
           {ROUNDS.map((r) => (

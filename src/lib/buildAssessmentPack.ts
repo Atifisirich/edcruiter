@@ -134,7 +134,7 @@ export function buildFallbackPack(input: {
     lesson_rubric: `Score 1–10 on: (1) clear learning outcome, (2) misconception diagnosis, (3) age-appropriate tasks, (4) checking for understanding, (5) realistic timing. Do not award high scores for vague or copied plans.`,
     demo_prompt: `Record a 5-minute teaching demo for ${segment} ${subject} (${board}). Open with a real-world hook, draw or show one clear visual, ask at least one check question, and close with a one-line summary.`,
     demo_rubric: `Score 1–10 on: voice clarity, visual/board work, conceptual accuracy for this grade, student-facing language, and a clear close. Penalise reading from a script and off-topic talk.`,
-    scenario_prompt: `A ${segment} student is upset during a ${subject} activity and the class starts to lose focus. In 2 minutes, explain what you would say and do in the first 60 seconds, then how you would restart learning.`,
-    scenario_rubric: `Score 1–10 on: calm de-escalation, student dignity, restoring the lesson, and age-appropriate language. Do not reward punishment-first answers.`
+    scenario_prompt: `A ${segment} student is upset during a ${subject} activity and the class starts to lose focus. In 2 minutes, explain what you would say and do in the first 60 seconds, then how you would restart learning. Finally, say what you would do if the student told you something that worried you about their safety, and who you would tell.`,
+    scenario_rubric: `Score 1–10 on: calm de-escalation, student dignity, restoring the lesson, age-appropriate language, and putting child safety first by reporting a concern to the right person. Do not reward punishment-first answers.`
   };
 }

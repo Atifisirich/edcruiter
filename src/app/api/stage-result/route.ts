@@ -7,6 +7,8 @@ import { isScoredStage } from '@/lib/scoredStages';
 import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { findActivePack } from '@/lib/ensurePack';
+import { maybeGenerateTeachingProfile } from '@/lib/profileGenerator';
+import { testFor } from '@/lib/candidateTest';
 import { countWords, gradeMcqs, MIN_LESSON_WORDS, type GradableMcq } from '@/lib/testRules';
 
 /**
@@ -67,7 +69,9 @@ export async function POST(req: NextRequest) {
       // Must be exactly the test the candidate was shown, which is the school's
       // active test for their subject and grade level and nothing else.
       const pack = findActivePack(school_id, candidate.applied_subject, candidate.applied_segment);
-      const questions: GradableMcq[] | null = pack?.mcqs?.length ? pack.mcqs : null;
+      // Marked against exactly the questions this candidate was given.
+      const given = pack ? testFor(candidate, pack).questions : [];
+      const questions: GradableMcq[] | null = given.length ? given : null;
       if (!questions) {
         return NextResponse.json(
           { error: 'Your test is still being prepared. Wait a moment and try again.' },
@@ -162,6 +166,8 @@ export async function POST(req: NextRequest) {
           details: aiScores ? `AI score: ${JSON.stringify(aiScores.scores)}.` : 'AI scoring did not finish; a reviewer should score this stage.',
           timestamp: new Date().toISOString()
         });
+        // Once the last scored stage is done, write the school's teaching profile.
+        await maybeGenerateTeachingProfile(school_id, candidate_id);
       });
     }
 

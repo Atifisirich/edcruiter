@@ -87,8 +87,8 @@ Return only JSON:
   "lesson_rubric": "how to score that lesson plan, 1-10 on named dimensions",
   "demo_prompt": "a 5-minute teaching demo task for this subject and grade",
   "demo_rubric": "how to score the demo",
-  "scenario_prompt": "a classroom scenario they answer on camera",
-  "scenario_rubric": "how to score the scenario"
+  "scenario_prompt": "a classroom scenario they answer on camera. It must also include a child-safety moment, for example a student says something that worries you about their safety, and ask what they would do and who they would tell",
+  "scenario_rubric": "how to score the scenario, including whether they put child safety first and report a concern to the right person"
 }`;
 }
 

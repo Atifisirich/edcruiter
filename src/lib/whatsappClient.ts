@@ -29,6 +29,7 @@ export type TemplateName =
   | 'stage_reminder'
   | 'shortlisted'
   | 'round_scheduled'
+  | 'interview_reminder'
   | 'offer_released'
   | 'application_outcome';
 
@@ -41,6 +42,8 @@ export const TEMPLATE_CATALOG: Record<TemplateName, { bodyParams: number; hasUrl
   stage_reminder: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
   shortlisted: { bodyParams: 3, hasUrlButton: true, category: 'UTILITY' },
   round_scheduled: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
+  // {{1}} name, {{2}} round, {{3}} interviewer, {{4}} when (for example "tomorrow at 10:30 AM").
+  interview_reminder: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
   offer_released: { bodyParams: 4, hasUrlButton: true, category: 'UTILITY' },
   // {{1}} name, {{2}} school, {{3}} subject. No button: nothing left to open.
   application_outcome: { bodyParams: 3, hasUrlButton: false, category: 'UTILITY' },

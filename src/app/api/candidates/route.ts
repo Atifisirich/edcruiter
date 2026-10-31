@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { warmPack } from '@/lib/ensurePack';
-import { sendApplicationLinks } from '@/lib/assessmentInvite';
+import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { makeInviteCode } from '@/lib/inviteCode';
+import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { CANDIDATE_COOKIE, createCandidateToken } from '@/lib/session';
@@ -25,7 +26,11 @@ export async function GET(req: NextRequest) {
     // no rate limit — and the code plus the returned ID is a complete login.
     // Magic links and /candidate/login replaced every use of it.
     const ctx = await requireSchoolAccess(searchParams.get('school_id'));
-    const candidates = db.getCandidatesBySchool(ctx.schoolId, { branchId, subject, segment, status });
+    const candidates = db.getCandidatesBySchool(ctx.schoolId, { branchId, subject, segment, status }).map((c) => ({
+      ...c,
+      // How far through the five-stage test they are, for the dashboard.
+      stages_completed: new Set(db.getStageResultsByCandidate(ctx.schoolId, c.id).map((r) => r.stage_key)).size,
+    }));
     return NextResponse.json({ candidates });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidates' }, { status: 500 });
@@ -169,14 +174,21 @@ export async function POST(req: NextRequest) {
       relocation_branches,
       languages,
       notice_period,
-      applied_segment,
+      applied_segment: requestedSegment,
+      applied_grades: requestedGrades,
       applied_subject,
       target_branch_id,
       video_intro_url,
       reading_passage_text,
       reading_passage_score,
-      whatsapp_consent
+      whatsapp_consent,
+      school_attested,
+      send_invite
     } = body;
+
+    // When exact grades are given, they decide the segment text, so the two can never disagree.
+    const applied_grades = cleanGrades(requestedGrades);
+    const applied_segment = applied_grades.length ? segmentFromGrades(applied_grades) : requestedSegment;
 
     if (!name || !email || !applied_subject || !applied_segment) {
       return NextResponse.json({ error: 'Name, email, subject and segment are required' }, { status: 400 });
@@ -213,6 +225,7 @@ export async function POST(req: NextRequest) {
       languages: languages || [],
       notice_period: notice_period || '',
       applied_segment,
+      ...(applied_grades.length ? { applied_grades } : {}),
       applied_subject,
       target_branch_id: target_branch_id || staffCtx?.user.branch_id || undefined,
       video_intro_url: video_intro_url || '',
@@ -229,13 +242,16 @@ export async function POST(req: NextRequest) {
     after(() => warmPack(newCandidate.school_id, newCandidate.applied_subject, newCandidate.applied_segment));
 
     // Consent is recorded either way, so a "no" is durable and auditable —
-    // only a "yes" allows WhatsApp sends later.
+    // only a "yes" allows WhatsApp sends later. A school adding a lead by hand
+    // vouches for it the same way a spreadsheet import does: the school
+    // confirms it has permission to contact this person.
+    const attestedByStaff = Boolean(staffCtx) && school_attested === true;
     db.setConsent({
       candidate_id: newCandidate.id,
       channel: 'whatsapp',
-      granted: Boolean(whatsapp_consent),
-      source: 'apply_form',
-      wording_version: 'apply-form-v1',
+      granted: attestedByStaff || Boolean(whatsapp_consent),
+      source: attestedByStaff ? 'school_attested' : 'apply_form',
+      wording_version: attestedByStaff ? 'staff-add-v1' : 'apply-form-v1',
       granted_at: new Date().toISOString()
     });
 
@@ -268,7 +284,32 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const res = NextResponse.json({ candidate: newCandidate }, { status: 201 });
+    // A school that asked for it gets the test invite sent straight away, from
+    // its own WhatsApp number, using the approved template. The candidate is
+    // created either way; this only reports what happened with the invite.
+    let invite: { sent: boolean; reason?: string; detail?: string } | undefined;
+    if (staffCtx && send_invite === true) {
+      const school = db.getSchoolById(school_id);
+      if (!attestedByStaff) {
+        invite = { sent: false, reason: 'no_consent' };
+      } else if (!newCandidate.phone) {
+        invite = { sent: false, reason: 'no_phone' };
+      } else if (!school?.whatsapp_hiring || school.whatsapp_hiring.status === 'not_connected') {
+        invite = { sent: false, reason: 'not_connected' };
+      } else {
+        const result = await sendAssessmentInvite(school, newCandidate).catch(() => null);
+        invite = result?.ok
+          ? { sent: true }
+          : { sent: false, reason: result && !result.ok ? result.reason : 'graph_error', detail: result && !result.ok ? result.detail : undefined };
+        auditAsStaff(staffCtx, school_id, {
+          action: 'WHATSAPP_INVITE',
+          resource: newCandidate.name,
+          details: result?.ok ? 'Invite sent when the candidate was added.' : `Invite not sent: ${invite.reason}${invite.detail ? ` (${invite.detail})` : ''}.`
+        });
+      }
+    }
+
+    const res = NextResponse.json({ candidate: newCandidate, ...(invite ? { invite } : {}) }, { status: 201 });
 
     // Only issue the candidate's own session when the applicant themselves
     // filled this in — an admin using "+ Add Candidate" from their own

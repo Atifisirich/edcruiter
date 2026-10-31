@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Archive, BookOpen, CheckCircle2, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { PageHeader, Badge } from '@/components/admin/ui';
+import { Archive, BookOpen, CheckCircle2, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { AssessmentPack } from '@/lib/types';
 
@@ -94,23 +94,13 @@ export default function AssessmentLibraryPage() {
   const activeCount = packs.filter((p) => p.status === 'active').length;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 py-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <Link href="/admin" className="text-xs font-bold text-slate-600 hover:text-indigo-600 inline-flex items-center gap-1.5">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Recruiter workspace
-          </Link>
-        </div>
-
-        <header className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">School test library</p>
-          <h1 className="text-2xl font-black mt-1">Maintain hiring tests</h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-            Generate subject tests, activate the ones candidates should take, archive older versions, or remove drafts.
-            Active tests power vacancy applicants and WhatsApp-invited teachers for that subject.
-          </p>
-          <p className="text-xs text-slate-500 mt-2">{activeCount} active · {packs.length} total in library</p>
-        </header>
+    <div>
+      <div className="space-y-6">
+        <PageHeader
+          title="AI tests"
+          description="Create a subject test, switch on the ones teachers should take, and archive older versions."
+          badge={<Badge tone="indigo">{activeCount} active · {packs.length} in total</Badge>}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <section className="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">

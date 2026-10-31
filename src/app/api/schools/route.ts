@@ -149,7 +149,16 @@ export async function PUT(req: NextRequest) {
     // Only the platform owner may change `status` (the approval switch) and a
     // few identity fields; a school admin sending status: 'active' used to
     // approve their own school.
-    const updated = db.updateSchool(ctx.schoolId, stripProtectedSchoolFields(updates || {}, ctx.isSuperAdmin));
+    const cleaned = stripProtectedSchoolFields(updates || {}, ctx.isSuperAdmin);
+    if ('report_settings' in cleaned) {
+      // Two switches and nothing else, whatever the client sent.
+      const rs = (cleaned.report_settings && typeof cleaned.report_settings === 'object' ? cleaned.report_settings : {}) as Record<string, unknown>;
+      cleaned.report_settings = {
+        delivery_observations: rs.delivery_observations !== false,
+        appearance_observations: rs.appearance_observations === true,
+      };
+    }
+    const updated = db.updateSchool(ctx.schoolId, cleaned);
     if (!updated) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }

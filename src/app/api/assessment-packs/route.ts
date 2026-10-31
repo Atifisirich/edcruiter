@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
     try {
       const candidate = await requireCandidate();
       if (candidate.schoolId !== schoolId) throw new AuthError('Not your school.', 403);
-      const packs = db.getAssessmentPacksBySchool(schoolId).map(sanitizeForCandidate);
+      // A candidate's own questions come from /ensure. The school's full list never carries questions to a candidate.
+      const packs = db.getAssessmentPacksBySchool(schoolId).map((p) => ({ ...sanitizeForCandidate(p), mcqs: [] }));
       return NextResponse.json({ packs });
     } catch {
       const ctx = await requireSchoolAccess(schoolId);

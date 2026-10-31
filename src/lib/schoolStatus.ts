@@ -38,7 +38,7 @@ export function workspaceBlockReason(school: School | undefined, now: number = D
 // approval switch itself, `billing` is what they have paid for, and the others
 // are identity or have their own guarded routes (WhatsApp credentials go
 // through /api/whatsapp/*).
-const PROTECTED_SCHOOL_FIELDS = ['id', 'status', 'billing', 'created_at', 'whatsapp_hiring'] as const;
+const PROTECTED_SCHOOL_FIELDS = ['id', 'status', 'billing', 'created_at', 'whatsapp_hiring', 'roles'] as const;
 
 export function stripProtectedSchoolFields(
   updates: Record<string, unknown>,
