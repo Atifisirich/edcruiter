@@ -46,6 +46,9 @@ export async function notifyCandidateDeclined(schoolId: string, candidateId: str
       subject: `Your application to ${schoolName}`,
       text,
       html: text.split('\n\n').map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br/>')}</p>`).join(''),
+      kind: 'interview',
+      fromName: schoolName,
+      replyTo: school?.primary_contact?.email,
     }).catch(() => null);
     email = result?.ok === true;
   }

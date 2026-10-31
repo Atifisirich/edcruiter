@@ -5,13 +5,16 @@ vi.mock('./db', () => ({ db: { updateCandidate: (...a: unknown[]) => updateCandi
 const sendTemplateMessage = vi.fn();
 vi.mock('./whatsappClient', () => ({ sendTemplateMessage: (...a: unknown[]) => sendTemplateMessage(...a) }));
 
-import { sendAssessmentInvite, signInLinkFor, INVITE_LINK_VALIDITY_SEC } from './assessmentInvite';
+const sendEmail = vi.fn();
+vi.mock('./emailClient', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }));
+
+import { sendAssessmentInvite, sendInviteEmail, signInLinkFor, INVITE_LINK_VALIDITY_SEC } from './assessmentInvite';
 import { readCandidateToken } from './session';
 import type { Candidate, School } from './types';
 
-const school = { id: 's1', name: 'Green Valley School' } as School;
+const school = { id: 's1', name: 'Green Valley School', primary_contact: { name: 'Principal', email: 'principal@gvs.edu', phone: '' } } as School;
 const candidate = {
-  id: 'c1', school_id: 's1', name: 'Priya', phone: '9876543210',
+  id: 'c1', school_id: 's1', name: 'Priya', phone: '9876543210', email: 'priya@example.com',
   applied_subject: 'Biology', invite_code: 'EDC-BIOL-1A2B',
 } as Candidate;
 
@@ -58,6 +61,20 @@ describe('sendAssessmentInvite', () => {
     const session = readCandidateToken(url.searchParams.get('token') || undefined);
     expect(session?.cid).toBe('c1');
     expect(session?.school_id).toBe('s1');
+  });
+
+  it('emails the sign-in link as an interview email, in the school\'s name, with replies going to the school', async () => {
+    sendEmail.mockResolvedValue({ ok: true, id: 'e1' });
+    expect(await sendInviteEmail(school, candidate)).toBe(true);
+    const call = sendEmail.mock.calls[0][0];
+    expect(call).toMatchObject({ to: 'priya@example.com', kind: 'interview', fromName: 'Green Valley School', replyTo: 'principal@gvs.edu' });
+    expect(call.text).toContain('/api/candidates/magic-login?token=');
+  });
+
+  it('does not email a lead that has no real address', async () => {
+    expect(await sendInviteEmail(school, { ...candidate, email: 'priya@lead.local' } as Candidate)).toBe(false);
+    expect(await sendInviteEmail(school, { ...candidate, email: '' } as Candidate)).toBe(false);
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('falls back to the candidate id when no invite code was generated', async () => {

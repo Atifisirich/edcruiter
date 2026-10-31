@@ -57,7 +57,15 @@ export async function sendInviteEmail(school: School, candidate: Candidate): Pro
     candidate.invite_code ? `<p>Your application ID: <strong>${escapeHtml(candidate.invite_code)}</strong></p>` : '',
     `<p>— ${escapeHtml(school.name)}, via Edcruiter</p>`
   ].join('');
-  const result = await sendEmail({ to: candidate.email, subject: `Continue your application to ${school.name}`, text, html }).catch(() => null);
+  const result = await sendEmail({
+    to: candidate.email,
+    subject: `Continue your application to ${school.name}`,
+    text,
+    html,
+    kind: 'interview',
+    fromName: school.name,
+    replyTo: school.primary_contact?.email,
+  }).catch(() => null);
   return result?.ok === true;
 }
 

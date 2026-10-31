@@ -5,6 +5,7 @@ import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchool
 import { generateMeetingLink } from '@/lib/meetingLink';
 import { sendTemplateMessage } from '@/lib/whatsappClient';
 import { sendEmail } from '@/lib/emailClient';
+import { escapeHtml } from '@/lib/escapeHtml';
 import { createCandidateMagicLinkToken } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -170,7 +171,11 @@ export async function POST(req: NextRequest) {
       to: assignedUser.email,
       subject: `Interview scheduled: ${candidate.name} (${ROUND_LABEL[round as InterviewRound]})`,
       text: `Hi ${assignedUser.name},\n\nYou've been assigned to interview ${candidate.name} for the ${ROUND_LABEL[round as InterviewRound]} round.\n\nWhen: ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)\nMeeting link: ${interview.meeting_link}\n${interview.notes ? `\nNote from HR: ${interview.notes}\n` : ''}\nRecord your decision after the interview from your reviewer dashboard.\n\n— Edcruiter`,
-      html: `<p>Hi ${assignedUser.name},</p><p>You've been assigned to interview <strong>${candidate.name}</strong> for the <strong>${ROUND_LABEL[round as InterviewRound]}</strong> round.</p><p><strong>When:</strong> ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)<br/><strong>Meeting link:</strong> <a href="${interview.meeting_link}">${interview.meeting_link}</a></p>${interview.notes ? `<p><strong>Note from HR:</strong> ${interview.notes}</p>` : ''}<p>Record your decision after the interview from your reviewer dashboard.</p><p>— Edcruiter</p>`
+      // Names and notes are typed by people, so they are escaped before they go into HTML.
+      html: `<p>Hi ${escapeHtml(assignedUser.name)},</p><p>You've been assigned to interview <strong>${escapeHtml(candidate.name)}</strong> for the <strong>${ROUND_LABEL[round as InterviewRound]}</strong> round.</p><p><strong>When:</strong> ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)<br/><strong>Meeting link:</strong> <a href="${escapeHtml(interview.meeting_link)}">${escapeHtml(interview.meeting_link)}</a></p>${interview.notes ? `<p><strong>Note from HR:</strong> ${escapeHtml(interview.notes)}</p>` : ''}<p>Record your decision after the interview from your reviewer dashboard.</p><p>— Edcruiter</p>`,
+      kind: 'interview',
+      fromName: db.getSchoolById(ctx.schoolId)?.name,
+      replyTo: ctx.user.email,
     }).catch(() => null);
 
     return NextResponse.json({
