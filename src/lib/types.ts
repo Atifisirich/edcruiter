@@ -256,6 +256,30 @@ export interface User {
   role: UserRole;
   department?: string;
   branch_id?: string;
+  /** Set when a school admin added this person, before they have ever signed in. */
+  invited_at?: string;
+  invited_by?: string;
+  /** Stamped on every successful sign-in, by password or Google. Absent means never signed in. */
+  last_login_at?: string;
+}
+
+/**
+ * Proof of identity for someone who signs in with an email and password. It is
+ * deliberately separate from `User`, which says which school someone belongs to
+ * and in what role: an Account can exist before it belongs to any school (a new
+ * sign-up on its way to the setup wizard), and a User can exist before it has an
+ * Account (a colleague just invited). Both are matched by email.
+ */
+export interface Account {
+  id: string;
+  /** Always lower-case. */
+  email: string;
+  name: string;
+  /** scrypt hash, see password.ts. Never sent to a browser. */
+  password_hash: string;
+  email_verified_at: string;
+  created_at: string;
+  password_changed_at?: string;
 }
 
 export interface ResumeCareerGap {

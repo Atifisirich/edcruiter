@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Building2, ArrowRight, CheckCircle2, Plus, Trash2 } from 'lucide-react';
@@ -19,6 +19,7 @@ export default function SchoolSetupWizard() {
   const [error, setError] = useState<string | null>(null);
   const [branchCount, setBranchCount] = useState(1);
   const [branches, setBranches] = useState<BranchRow[]>([{ name: 'Main campus', location: '' }]);
+  const [account, setAccount] = useState<{ email: string; name: string } | null>(null);
   const [form, setForm] = useState({
     schoolName: '',
     trustName: '',
@@ -36,6 +37,23 @@ export default function SchoolSetupWizard() {
     whatsappNumber: '',
     whatsappDisplayName: '',
   });
+
+  // Someone who already belongs to a school has no business on this form:
+  // sending them to their workspace stops a second, empty school being created.
+  useEffect(() => {
+    fetch('/api/auth/whoami')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => {
+        if (!me) return;
+        if (me.linked && me.home) {
+          router.replace(me.home);
+          return;
+        }
+        setAccount({ email: me.email, name: me.name });
+        setForm((f) => (f.contactEmail || f.contactName ? f : { ...f, contactEmail: me.email, contactName: me.name || '' }));
+      })
+      .catch(() => { /* the form still works without it */ });
+  }, [router]);
 
   const syncBranchCount = (n: number) => {
     const count = Math.max(1, Math.min(20, n || 1));
@@ -125,9 +143,21 @@ export default function SchoolSetupWizard() {
           <BrandMark size="lg" />
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Set up your school</h1>
           <p className="text-sm text-slate-600">
-            Fill the form to walk through a real school onboarding — or skip into the demo workspace below.
+            Tell us about your school. You can add your colleagues to the team once it is set up.
           </p>
         </div>
+
+        {account && (
+          <div className="p-4 rounded-2xl border border-slate-200 bg-white text-xs text-slate-600 space-y-1.5">
+            <p>
+              You are creating a new school as <strong className="text-slate-900">{account.email}</strong>.{' '}
+              <a href="/api/auth/logout" className="text-indigo-600 font-bold hover:underline">Not you? Log out</a>
+            </p>
+            <p>
+              Does your school already use Edcruiter? Do not create another one. Ask your school admin to add this email on their Team page, then log in.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {SHOW_DEMO && (
@@ -143,10 +173,6 @@ export default function SchoolSetupWizard() {
               <p className="text-xs text-indigo-700/80 mt-1">Skip setup — show the recruiter workspace with Sample School data.</p>
             </button>
           )}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white text-left">
-            <p className="text-sm font-black text-slate-900">Complete school setup</p>
-            <p className="text-xs text-slate-500 mt-1">Use the form below to demonstrate how a school configures campuses and contact.</p>
-          </div>
         </div>
 
         <form onSubmit={onSubmit} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-5 shadow-sm">

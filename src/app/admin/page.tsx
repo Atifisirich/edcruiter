@@ -9,7 +9,7 @@ import {
   UserPlus, Copy, Send, Smartphone, MapPin, ExternalLink, Eye, HelpCircle, Award,
   FileSpreadsheet, MessageSquare, X, CheckCircle2, AlertCircle, Share2, Clock, XCircle, Filter,
   LayoutGrid, List, ChevronRight, BarChart3, TrendingUp, Search, Wand2, RefreshCw,
-  Video, CloudUpload, Radio, PlayCircle, ShieldCheck, Briefcase, GraduationCap, Zap, Phone
+  Video, CloudUpload, Radio, PlayCircle, ShieldCheck, Briefcase, GraduationCap, Zap, Phone, Menu
 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { School, Candidate, QuestionnaireItem, RubricTemplate, StageKey } from '@/lib/types';
@@ -52,6 +52,9 @@ export default function SchoolAdminWorkspace() {
 
   // Active Navigation View in Workspace
   const [currentView, setCurrentView] = useState<'overview' | 'jobs' | 'screening' | 'pipeline' | 'automation'>('overview');
+
+  // On a phone the sidebar is a slide-out menu rather than a permanent column.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Modals State
   const [showJobModal, setShowJobModal] = useState<boolean>(false);
@@ -233,7 +236,7 @@ export default function SchoolAdminWorkspace() {
   };
 
   return (
-    <div className="min-h-screen flex bg-[#f8fafc] text-slate-900 font-sans">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[#f8fafc] text-slate-900 font-sans">
       
       {/* AI Job Generator Modal */}
       <AIJobGeneratorModal
@@ -427,8 +430,41 @@ export default function SchoolAdminWorkspace() {
       {/* ========================================================================= */}
       {/* 1. LEFT SIDEBAR */}
       {/* ========================================================================= */}
-      <aside className="w-64 bg-[#0c101d] text-white flex flex-col justify-between shrink-0 min-h-screen border-r border-slate-800/80 select-none">
-        
+      <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between bg-[#0c101d] text-white px-3 h-14 border-b border-slate-800/80">
+        <button
+          type="button"
+          aria-label="Open menu"
+          onClick={() => setMenuOpen(true)}
+          className="p-2.5 rounded-lg hover:bg-slate-800 cursor-pointer"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-sm">E</div>
+          <BrandMark size="sm" variant="dark" />
+        </Link>
+        <span className="w-10" aria-hidden="true" />
+      </div>
+
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/60" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      )}
+
+      <aside
+        onClick={(e) => { if ((e.target as HTMLElement).closest('a,button')) setMenuOpen(false); }}
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] overflow-y-auto transition-transform duration-200 ${
+          menuOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:static lg:z-auto lg:w-64 lg:max-w-none lg:translate-x-0 lg:overflow-visible lg:min-h-screen bg-[#0c101d] text-white flex flex-col justify-between shrink-0 border-r border-slate-800/80 select-none`}
+      >
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+          className="lg:hidden absolute top-3 right-3 p-2.5 rounded-lg text-slate-300 hover:bg-slate-800 cursor-pointer"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <div className="p-5 space-y-6">
           
           {/* Logo Brand Header */}
@@ -560,6 +596,16 @@ export default function SchoolAdminWorkspace() {
                 <span>Leadership interviews</span>
               </div>
             </Link>
+
+            <Link
+              href="/admin/team"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>Team</span>
+              </div>
+            </Link>
           </div>
 
           {/* AI Engine & Testing */}
@@ -610,7 +656,7 @@ export default function SchoolAdminWorkspace() {
       {/* ========================================================================= */}
       {/* 2. MAIN WORKSPACE CONTENT AREA */}
       {/* ========================================================================= */}
-      <main className="flex-1 p-6 sm:p-8 space-y-6 overflow-y-auto max-h-screen">
+      <main className="flex-1 min-w-0 p-4 sm:p-8 space-y-6 lg:overflow-y-auto lg:max-h-screen">
         {school && workspaceBlockReason(school) && (
           <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-1">
             <p className="font-extrabold text-sm">
@@ -644,7 +690,7 @@ export default function SchoolAdminWorkspace() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setShowAddCandidateModal(true)}

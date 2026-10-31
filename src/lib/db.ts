@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { School, User, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import { candidateMatchesIdentifier } from './candidateMatch';
 import { createCoalescedWriter } from './coalescedWriter';
 import { workspaceBlockReason } from './schoolStatus';
@@ -9,6 +9,7 @@ import { SLOKA_DEFAULT_SCHOOL, DEFAULT_USERS, SLOKA_HR_POLICIES, DEFAULT_RUBRIC_
 interface DatabaseSchema {
   schools: School[];
   users: User[];
+  accounts?: Account[];
   candidates: Candidate[];
   stageResults: StageResult[];
   proctoringEvents: ProctoringEvent[];
@@ -51,7 +52,7 @@ function shouldSeedDemoData(): boolean {
 function getInitialDatabase(): DatabaseSchema {
   if (!shouldSeedDemoData()) {
     return {
-      schools: [], users: [], candidates: [], stageResults: [], proctoringEvents: [],
+      schools: [], users: [], accounts: [], candidates: [], stageResults: [], proctoringEvents: [],
       hrPolicies: [], rubrics: DEFAULT_RUBRIC_TEMPLATES, questionnaires: [], auditLogs: [],
       jobs: [], assessmentPacks: [], whatsappMessages: [], messagingConsents: [],
       messageWindows: [], uploadOwners: [], deletionRequests: [], scheduledInterviews: []
@@ -89,6 +90,7 @@ function getInitialDatabase(): DatabaseSchema {
   return {
     schools: [SLOKA_DEFAULT_SCHOOL],
     users: DEFAULT_USERS,
+    accounts: [],
     candidates: sampleCandidates,
     stageResults: sampleStageResults,
     proctoringEvents: sampleProctoringEvents,
@@ -117,6 +119,7 @@ class DB {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         this.data = JSON.parse(raw);
         if (!this.data.jobs) this.data.jobs = [];
+        if (!this.data.accounts) this.data.accounts = [];
         if (!this.data.evaluations) this.data.evaluations = [];
         if (!this.data.assessmentPacks) this.data.assessmentPacks = [];
         if (!this.data.whatsappMessages) this.data.whatsappMessages = [];
@@ -254,6 +257,51 @@ class DB {
     this.data.users.push(user);
     this.save();
     return user;
+  }
+
+  updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'role' | 'last_login_at' | 'invited_at'>>): User | undefined {
+    const user = this.data.users.find(u => u.id === userId);
+    if (!user) return undefined;
+    Object.assign(user, updates);
+    this.save();
+    return user;
+  }
+
+  deleteUser(userId: string): boolean {
+    const before = this.data.users.length;
+    this.data.users = this.data.users.filter(u => u.id !== userId);
+    if (this.data.users.length === before) return false;
+    this.save();
+    return true;
+  }
+
+  /** Records a successful sign-in for whoever owns this email. A no-op for an email with no User yet. */
+  recordSignIn(email: string): void {
+    const user = this.getUserByEmail(email);
+    if (!user) return;
+    user.last_login_at = new Date().toISOString();
+    this.save();
+  }
+
+  // --- Email-and-password accounts (see Account in types.ts) ---
+
+  getAccountByEmail(email: string): Account | undefined {
+    const clean = email.trim().toLowerCase();
+    return (this.data.accounts ??= []).find(a => a.email === clean);
+  }
+
+  createAccount(account: Account): Account {
+    (this.data.accounts ??= []).push(account);
+    this.save();
+    return account;
+  }
+
+  updateAccount(accountId: string, updates: Partial<Pick<Account, 'name' | 'password_hash' | 'email_verified_at' | 'password_changed_at'>>): Account | undefined {
+    const account = (this.data.accounts ??= []).find(a => a.id === accountId);
+    if (!account) return undefined;
+    Object.assign(account, updates);
+    this.save();
+    return account;
   }
 
   // Calculate dynamic aggregate AI score (0-100) across all stages

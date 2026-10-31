@@ -109,7 +109,8 @@ export async function POST(req: NextRequest) {
         school_id: newSchool.id,
         name: founderName || founderEmail,
         email: founderEmail,
-        role: 'SCHOOL_ADMIN'
+        role: 'SCHOOL_ADMIN',
+        last_login_at: new Date().toISOString()
       });
       auditActorId = founder.id;
       auditActorName = founder.name;

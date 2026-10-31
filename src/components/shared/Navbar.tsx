@@ -23,6 +23,9 @@ export default function Navbar() {
   const hideChrome =
     pathname === '/login' ||
     pathname.startsWith('/login/') ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
     pathname.startsWith('/candidate/') ||
     pathname.startsWith('/school/setup') ||
     pathname.startsWith('/admin') ||
@@ -64,16 +67,16 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs transition-all duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20 sm:h-[5.25rem]">
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-lg shadow-md group-hover:scale-105 transition-transform">
+            <Link href="/" className="flex items-center gap-2 sm:gap-3 group">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-lg shadow-md group-hover:scale-105 transition-transform">
                 E
               </div>
               <div className="flex flex-col gap-0.5">
-                <BrandMark size="md" />
-                <span className="text-xs text-slate-400 font-medium leading-none">Teacher hiring for schools</span>
+                <span className="sm:hidden"><BrandMark size="sm" /></span><span className="hidden sm:inline"><BrandMark size="md" /></span>
+                <span className="hidden sm:block text-xs text-slate-400 font-medium leading-none">Teacher hiring for schools</span>
               </div>
             </Link>
           </div>
@@ -107,28 +110,42 @@ export default function Navbar() {
           </nav>
 
           <div className="hidden lg:flex flex-col items-end leading-tight">
-            <Link
-              href="/login"
-              className="brand-primary-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
-            >
-              <span>Sign in</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/login"
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 border border-slate-300 hover:bg-slate-50 transition-colors"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="brand-primary-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
+              >
+                <span>Sign up</span>
+              </Link>
+            </div>
             <Link href="/contact#book-demo" className="mt-1 text-[11px] font-semibold text-slate-500 hover:text-indigo-600">
               Book a demo
             </Link>
           </div>
 
-          <div className="lg:hidden flex items-center gap-2">
+          <div className="lg:hidden flex items-center gap-1">
             <Link
               href="/login"
-              className="px-3.5 py-2 rounded-lg text-sm font-bold brand-primary-btn"
+              className="px-2.5 py-2.5 rounded-lg text-sm font-bold text-slate-700 whitespace-nowrap"
             >
-              Sign in
+              Log in
+            </Link>
+            <Link
+              href="/signup"
+              className="px-3 py-2.5 rounded-lg text-sm font-bold brand-primary-btn whitespace-nowrap"
+            >
+              Sign up
             </Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+              className="p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>

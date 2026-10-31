@@ -5,6 +5,19 @@ export const SESSION_COOKIE = 'edcruiter_session';
 export const OAUTH_STATE_COOKIE = 'edcruiter_oauth_state';
 export const CANDIDATE_COOKIE = 'edcruiter_candidate';
 
+export const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7;
+
+/** Cookie settings for a staff sign-in, shared by Google and email-and-password sign-in. */
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_MAX_AGE_SEC,
+  };
+}
+
 export type SessionUser = {
   sub: string;
   email: string;
@@ -63,6 +76,38 @@ export function readSessionToken(token: string | undefined): SessionUser | null 
 export async function getSessionUser() {
   const jar = await cookies();
   return readSessionToken(jar.get(SESSION_COOKIE)?.value);
+}
+
+/**
+ * A signed, expiring token for one specific purpose, such as "this link lets
+ * the owner of this email address choose a password". The purpose is part of
+ * what is signed, so a token made for one job can never be used for another.
+ */
+export function createPurposeToken(purpose: string, data: Record<string, string>, maxAgeSec: number): string {
+  const payload = { ...data, p: purpose, exp: Math.floor(Date.now() / 1000) + maxAgeSec };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return `${encoded}.${sign(encoded)}`;
+}
+
+export function readPurposeToken(token: string | undefined, purpose: string): Record<string, string> | null {
+  if (!token) return null;
+  const [encoded, signature] = token.split('.');
+  if (!encoded || !signature) return null;
+  const a = Buffer.from(signature);
+  const b = Buffer.from(sign(encoded));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Record<string, unknown>;
+    if (payload.p !== purpose) return null;
+    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const data: Record<string, string> = {};
+    for (const [k, v] of Object.entries(payload)) {
+      if (k !== 'p' && k !== 'exp' && typeof v === 'string') data[k] = v;
+    }
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export function newOAuthState() {

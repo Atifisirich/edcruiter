@@ -11,6 +11,9 @@ export default function Footer() {
   if (
     pathname === '/login' ||
     pathname.startsWith('/login/') ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
     pathname.startsWith('/candidate/') ||
     pathname.startsWith('/school/setup') ||
     pathname.startsWith('/admin') ||

@@ -3,6 +3,7 @@ import { createCandidateMagicLinkToken } from './session';
 import { sendTemplateMessage, type SendOutcome } from './whatsappClient';
 import { sendEmail } from './emailClient';
 import { appOrigin } from './googleOAuth';
+import { escapeHtml } from './escapeHtml';
 import type { Candidate, School } from './types';
 
 // The invite's sign-in button works for a week. Anything shorter and a
@@ -34,10 +35,6 @@ export async function sendAssessmentInvite(school: School, candidate: Candidate)
 export function signInLinkFor(candidate: Pick<Candidate, 'id' | 'school_id'>): string {
   const token = createCandidateMagicLinkToken(candidate.id, candidate.school_id, INVITE_LINK_VALIDITY_SEC);
   return `${appOrigin()}/api/candidates/magic-login?token=${token}`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 /** Emails the candidate their link, if they gave a real address. Does nothing without an email service set up. */

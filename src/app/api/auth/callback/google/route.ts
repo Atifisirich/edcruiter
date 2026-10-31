@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appOrigin, googleOAuthClient } from '@/lib/googleOAuth';
-import { createSessionToken, OAUTH_STATE_COOKIE, SESSION_COOKIE } from '@/lib/session';
+import { createSessionToken, OAUTH_STATE_COOKIE, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { db } from '@/lib/db';
+import { roleHome } from '@/lib/postLogin';
 
 export async function GET(request: NextRequest) {
   const origin = appOrigin();
@@ -49,27 +50,13 @@ export async function GET(request: NextRequest) {
     // makes sense for someone with no account yet. People who already have
     // one go straight to their own workspace.
     let destination = safeNext;
-    if (safeNext === '/school/setup') {
-      const existing = db.getUserByEmail(payload.email);
-      if (existing) {
-        destination =
-          existing.role === 'SUPER_ADMIN' ? '/superadmin'
-          : existing.role === 'REPORTING_MANAGER' ? '/reviewer/rm'
-          : existing.role === 'INSTITUTE_HEAD' ? '/reviewer/ih'
-          : existing.role === 'FINAL_DECISION_MAKER' ? '/reviewer/coo'
-          : '/admin';
-      }
-    }
+    const existing = db.getUserByEmail(payload.email);
+    if (safeNext === '/school/setup' && existing) destination = roleHome(existing.role);
+    if (existing) db.recordSignIn(payload.email);
 
     const res = NextResponse.redirect(`${origin}${destination}`);
     res.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/', maxAge: 0 });
-    res.cookies.set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7,
-    });
+    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
     return res;
   } catch {
     return fail('google_signin_failed');

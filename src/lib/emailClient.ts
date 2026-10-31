@@ -15,6 +15,11 @@ export type EmailOutcome =
   | { ok: true; id: string }
   | { ok: false; reason: 'not_configured' | 'send_failed'; detail?: string };
 
+/** True when RESEND_API_KEY and RESEND_FROM_EMAIL are both set, so an email can really be sent. */
+export function emailIsConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+}
+
 export async function sendEmail(params: {
   to: string;
   subject: string;

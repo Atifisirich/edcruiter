@@ -27,7 +27,7 @@ function PlanControls({ school, onActivate }: {
           months
         </label>
       )}
-      <input value={note} onChange={e => setNote(e.target.value)} placeholder="Payment ref / note" className={`${field} w-40`} />
+      <input value={note} onChange={e => setNote(e.target.value)} placeholder="Payment ref / note" className={`${field} w-full sm:w-40`} />
       <button
         type="button"
         onClick={() => onActivate(school, plan, months, note)}
@@ -184,7 +184,7 @@ export default function SuperAdminPage() {
   return (
     <div className="space-y-8">
       {/* Platform Admin Banner */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xl shadow-indigo-500/5 flex flex-wrap items-center justify-between gap-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-xl shadow-indigo-500/5 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Shield className="w-6 h-6 text-indigo-600" />
@@ -196,7 +196,7 @@ export default function SuperAdminPage() {
         </div>
 
         {/* Support Mode Toggle */}
-        <div className="flex items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
           <div className="text-xs">
             <strong className="text-slate-900 font-bold block">Candidate Support Mode</strong>
             <span className="text-[11px] text-slate-500 font-medium">
@@ -216,7 +216,7 @@ export default function SuperAdminPage() {
       </div>
 
       {/* Onboard New School Tenant */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
         <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
           <Building2 className="w-5 h-5 text-indigo-600" /> Onboard New School Tenant
         </h2>
@@ -248,7 +248,7 @@ export default function SuperAdminPage() {
       </div>
 
       {/* Tenants Table */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
         <h2 className="text-lg font-extrabold text-slate-900">
           Tenant Schools ({schools.length})
           {schools.filter(sc => sc.status === 'onboarding').length > 0 && (
@@ -270,7 +270,7 @@ export default function SuperAdminPage() {
                 <p className="text-slate-500">{sch.primary_contact.name} • {sch.primary_contact.email}</p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
                   sch.status === 'active' ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   : sch.status === 'suspended' ? 'bg-rose-50 text-rose-800 border-rose-200'
@@ -301,7 +301,7 @@ export default function SuperAdminPage() {
       </div>
 
       {/* Pending Right-to-Erasure Requests */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
         <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
           <Trash2 className="w-5 h-5 text-rose-600" /> Data Deletion Requests ({deletionRequests.length})
         </h2>
@@ -345,20 +345,20 @@ export default function SuperAdminPage() {
       </div>
 
       {/* Platform-Wide Audit Log */}
-      <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
+      <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
         <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
           <FileText className="w-5 h-5 text-indigo-600" /> Platform Security Audit Trail
         </h2>
 
         <div className="space-y-2 text-xs font-medium">
           {auditLogs.map(log => (
-            <div key={log.id} className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 flex items-start justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
+            <div key={log.id} className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 font-bold text-slate-900">
                   <span>{log.action}</span>
                   <span className="text-slate-500 font-semibold">• {log.actor_name} ({log.actor_role})</span>
                 </div>
-                <p className="text-slate-600 text-[11px]">{log.details}</p>
+                <p className="text-slate-600 text-[11px] break-words">{log.details}</p>
               </div>
               <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
                 {new Date(log.timestamp).toLocaleTimeString()}

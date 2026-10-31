@@ -1,42 +1,64 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import BrandMark from '@/components/shared/BrandMark';
-import {
-  Building2, GraduationCap, KeyRound
-} from 'lucide-react';
+import { AlertCircle, Building2, GraduationCap, KeyRound, Loader2 } from 'lucide-react';
+import { GoogleButton, OrDivider, inputClass, primaryButtonClass } from '@/components/auth/AuthShell';
 
-function GoogleIcon() {
+export default function LoginPage() {
   return (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-1.5 3.6-5.1 3.6-3.1 0-5.6-2.6-5.6-5.7s2.5-5.7 5.6-5.7c1.8 0 3 .7 3.7 1.4l2.5-2.4C16.4 3.6 14.4 2.7 12 2.7 6.9 2.7 2.7 6.9 2.7 12S6.9 21.3 12 21.3c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z" />
-    </svg>
+    <Suspense fallback={null}>
+      <LoginScreen />
+    </Suspense>
   );
 }
 
-export default function LoginPage() {
+function LoginScreen() {
+  const params = useSearchParams();
+  const googleError = params.get('error') === 'google_signin_failed';
+  const next = params.get('next');
   const [activeTab, setActiveTab] = useState<'school' | 'candidate'>('school');
-  const [googleError, setGoogleError] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setGoogleError(new URLSearchParams(window.location.search).get('error') === 'google_signin_failed');
-  }, []);
-
-  const handleGoogleSchoolSignIn = () => {
-    setSigningIn(true);
-    // A brand-new Google account with no linked school lands on the setup
-    // wizard, which creates the school and provisions this account as its
-    // admin in one step. A returning admin's session already resolves to
-    // their existing school on every request after this.
+  const handleGoogle = () => {
+    setGoogleBusy(true);
+    // Google proves who the person is. Someone who already belongs to a school
+    // is sent to it; a brand-new Google account is sent to school setup.
     window.location.href = '/api/auth/google?next=/school/setup';
+  };
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Could not log you in. Please try again.');
+        return;
+      }
+      window.location.href = data.redirect || '/admin';
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col justify-between">
-      
-      {/* Top Header Bar */}
+
       <header className="p-6 max-w-7xl mx-auto w-full flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-base shadow-md">
@@ -53,113 +75,139 @@ export default function LoginPage() {
         </Link>
       </header>
 
-      {/* Main Dual Login Container */}
       <main className="max-w-4xl mx-auto w-full px-4 py-8 sm:py-12 space-y-8">
-        
+
         <div className="text-center space-y-3">
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-            Sign in to <BrandMark size="lg" showDot={false} />
+            Log in to <BrandMark size="lg" showDot={false} />
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-            Sign in as a school (HR / Principal) or as a teacher.
+            School staff log in with their email. Teachers continue an application from the link we sent them.
           </p>
-          {googleError ? (
-            <p className="text-xs text-red-600 font-semibold">
-              Google sign-in failed. Use the Google account that is a test user, and try again.
-            </p>
-          ) : null}
         </div>
 
-        {/* Portal Switcher Tabs */}
         <div className="flex justify-center">
-          <div className="bg-slate-200/80 p-1.5 rounded-2xl inline-flex gap-2 text-xs font-bold shadow-inner">
+          <div className="bg-slate-200/80 p-1.5 rounded-2xl flex w-full max-w-sm sm:w-auto sm:max-w-none gap-2 text-xs font-bold shadow-inner">
             <button
               type="button"
               onClick={() => setActiveTab('school')}
-              className={`px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              className={`flex-1 sm:flex-none justify-center whitespace-nowrap min-h-11 px-4 sm:px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'school'
                   ? 'bg-white text-indigo-700 shadow-md font-extrabold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Building2 className="w-4 h-4" />
-              <span>School / Recruiter Portal</span>
+              <span>School staff</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('candidate')}
-              className={`px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              className={`flex-1 sm:flex-none justify-center whitespace-nowrap min-h-11 px-4 sm:px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'candidate'
                   ? 'bg-white text-indigo-700 shadow-md font-extrabold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              <span>Teacher / Candidate Portal</span>
+              <span><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher / Candidate</span></span>
             </button>
           </div>
         </div>
 
-        {/* Portal Login Cards */}
-        <div className="bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl max-w-lg mx-auto">
-          
+        <div className="bg-white rounded-3xl p-5 sm:p-10 border border-slate-200 shadow-xl max-w-lg mx-auto">
+
           {activeTab === 'school' ? (
-            /* School / Recruiter sign-in — Google is the only account system
-               this app has; there is no password login on the backend. */
             <div className="space-y-5 text-xs">
               <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="font-extrabold text-sm text-slate-900">School Administrator &amp; HOD Login</h2>
-                  <span className="text-[11px] text-slate-500">Access campus vacancies &amp; candidate reports</span>
+                  <h2 className="font-extrabold text-sm text-slate-900">School staff log in</h2>
+                  <span className="text-[11px] text-slate-500">Principals, HR, and reviewers</span>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleSchoolSignIn}
-                disabled={signingIn}
-                className="w-full py-3.5 rounded-xl font-bold text-xs bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <GoogleIcon />
-                {signingIn ? 'Opening Google sign-in…' : 'Continue with Google'}
-              </button>
+              {(error || googleError) && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error || 'Google sign-in did not work. Please try again, or log in with your email and password.'}</span>
+                </div>
+              )}
+
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <label className="block text-xs font-bold text-slate-700">
+                  Email
+                  <input
+                    required
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={`${inputClass} mt-1.5`}
+                    placeholder="you@yourschool.edu"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-700">
+                  <span className="flex items-center justify-between">
+                    Password
+                    <Link href="/forgot-password" className="text-[11px] font-semibold text-indigo-600 hover:underline">
+                      Forgot password?
+                    </Link>
+                  </span>
+                  <input
+                    required
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`${inputClass} mt-1.5`}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className={primaryButtonClass}
+                >
+                  {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Logging in…</> : 'Log in'}
+                </button>
+              </form>
+
+              <OrDivider />
+
+              <GoogleButton label="Continue with Google" busy={googleBusy} onClick={handleGoogle} />
               <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-                Continue with Google uses only your name, email, and profile to sign you in. It does not read Gmail.{' '}
+                Google sign-in uses only your name, email, and profile picture. It does not read Gmail.{' '}
                 <Link href="/privacy" className="text-indigo-600 font-semibold">Privacy</Link>
                 {' · '}
                 <Link href="/terms" className="text-indigo-600 font-semibold">Terms</Link>
               </p>
 
-              <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-indigo-900 leading-relaxed">
-                First time here? Signing in creates your school and makes this account its admin. Already set up?
-                Sign in with the same Google account you used before.
-              </div>
+              <p className="text-xs text-slate-600 text-center pt-1">
+                New to Edcruiter?{' '}
+                <Link href="/signup" className="text-indigo-600 font-bold hover:underline">Create an account</Link>
+              </p>
             </div>
           ) : (
-            /* Teacher / Candidate — the real flow needs an invite code from an
-               application already on file, so this points to that page rather
-               than faking a session inline. */
             <div className="space-y-5 text-xs">
               <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
                   <GraduationCap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="font-extrabold text-sm text-slate-900">Teacher sign in</h2>
+                  <h2 className="font-extrabold text-sm text-slate-900">Teacher log in</h2>
                   <span className="text-[11px] text-slate-500">Continue an application, or browse jobs to apply for the first time</span>
                 </div>
               </div>
 
               <Link
                 href="/candidate/login"
-                className="w-full brand-primary-btn py-3.5 rounded-xl font-bold text-xs shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02] transition-transform"
+                className="w-full min-h-12 brand-primary-btn py-3.5 rounded-xl font-bold text-sm sm:text-xs shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02] transition-transform"
               >
                 <KeyRound className="w-4 h-4" />
-                <span>Continue with my invite code</span>
+                <span>Continue my application</span>
               </Link>
 
               <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl text-[11px] text-emerald-900 leading-relaxed">
@@ -174,7 +222,6 @@ export default function LoginPage() {
 
       </main>
 
-      {/* Footer */}
       <footer className="p-6 text-center text-xs text-slate-400 border-t border-slate-200">
         © 2026 Edcruiter.{' '}
         <Link href="/privacy" className="text-indigo-600 font-semibold">Privacy</Link>
