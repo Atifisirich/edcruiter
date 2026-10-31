@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Camera, Eye, ShieldAlert, Lock, Sparkles, RefreshCw, Volume2, VolumeX, AlertTriangle, Smartphone, Scan, CheckCircle2, Target, Crosshair, BookOpen, Sliders } from 'lucide-react';
+import { Camera, Eye, Sparkles, RefreshCw, Volume2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs-backend-webgl';
@@ -84,13 +84,14 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     type: 'warning'
   });
   
-  const [liveDeltaV, setLiveDeltaV] = useState<number>(0);
+  const [, setLiveDeltaV] = useState<number>(0);
   const [liveDeltaH, setLiveDeltaH] = useState<number>(0);
   const [readingScore, setReadingScore] = useState<number>(0);
   const [headTiltStatus, setHeadTiltStatus] = useState<'Level' | 'Tilted Down' | 'Tilted Away'>('Level');
   const [modelWarning, setModelWarning] = useState<string | null>(null);
-  const [voiceMuted, setVoiceMuted] = useState<boolean>(false);
-  const [readingGuardEnabled, setReadingGuardEnabled] = useState<boolean>(true);
+  // The spoken warnings and the script check are part of the test; the candidate cannot switch them off.
+  const voiceMuted = false;
+  const readingGuardEnabled = true;
 
   // Manual Trigger to Recalibrate Neutral Center
   const startCalibration = useCallback(() => {
@@ -781,128 +782,93 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     }
   };
 
-  // Manual Test Voice Warning
-  const handleTestVoice = () => {
-    triggerVoiceWarning(
-      'Please look directly at the screen.',
-      'VOICE_PROCTOR_WARNING',
-      'Candidate triggered manual voice alert test.'
-    );
-  };
+  const gazeOk = gazeDirection === 'Center';
+  const watching = cameraActive && modelLoaded;
+  const headline = !cameraActive
+    ? 'Camera is off'
+    : isCalibrating
+    ? 'Setting up…'
+    : phoneDetected
+    ? 'Please put your phone away'
+    : gazeOk
+    ? 'All good'
+    : 'Please look at the screen';
+  const headlineTone = !cameraActive || phoneDetected || (!gazeOk && !isCalibrating) ? 'text-amber-700' : 'text-emerald-700';
 
   return (
-    <div className="bg-white p-5 rounded-3xl border border-slate-200 text-slate-800 space-y-4 shadow-sm relative overflow-hidden">
-      
-      {/* Active Voice Alert Popover Banner */}
+    <div className="bg-white p-4 rounded-3xl border border-slate-200 text-slate-800 space-y-3 shadow-sm relative overflow-hidden">
+
+      {/* Spoken warning, shown as text too */}
       {activeVoiceToast.visible && (
-        <div className="absolute top-3 left-3 right-3 z-30 bg-rose-950/90 text-white border border-rose-600 p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-white/10 text-white">
-              <Volume2 className="w-4 h-4" />
-            </span>
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300 block">
-                AI Voice Proctor Intervening
-              </span>
-              <strong className="text-xs sm:text-sm font-bold leading-tight block">
-                &ldquo;{activeVoiceToast.message}&rdquo;
-              </strong>
-            </div>
+        <div role="alert" className="absolute top-3 left-3 right-3 z-30 bg-amber-50 text-amber-950 border border-amber-300 p-3 rounded-2xl shadow-lg flex items-start gap-2.5">
+          <Volume2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />
+          <div className="text-xs leading-snug">
+            <strong className="block font-bold">{activeVoiceToast.message}</strong>
+            <span className="text-amber-800">Reminder {voiceAlertCount}. The school can see these notes.</span>
           </div>
-          <span className="px-2 py-1 bg-black/40 rounded-lg text-[10px] font-mono text-rose-300">
-            Warning #{voiceAlertCount}
-          </span>
         </div>
       )}
 
-      {/* Calibration Overlay (first 2 seconds) */}
+      {/* The first two seconds: ask the candidate to look at the screen */}
       {isCalibrating && cameraActive && !cameraError && (
-        <div className="absolute inset-0 bg-[#09090b]/85 z-20 flex flex-col items-center justify-center p-6 text-center space-y-3 backdrop-blur-xs">
-          <Target className="w-8 h-8 text-indigo-600 animate-spin" />
-          <h4 className="text-sm font-semibold text-white">Calibrating Neutral Gaze...</h4>
-          <p className="text-xs text-zinc-400 max-w-xs">
-            Please look naturally at the center of your screen for 2 seconds.
-          </p>
-          <div className="w-44 bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-700">
-            <div
-              className="bg-indigo-600 h-full rounded-full transition-all duration-100"
-              style={{ width: `${calibrationProgress}%` }}
-            />
+        <div className="absolute inset-0 bg-white/90 z-20 flex flex-col items-center justify-center p-6 text-center space-y-3 backdrop-blur-xs">
+          <Camera className="w-8 h-8 text-indigo-600" />
+          <h4 className="text-sm font-black text-slate-900">Look straight at your screen</h4>
+          <p className="text-xs text-slate-600 max-w-xs">Sit comfortably and look at the middle of the screen for two seconds.</p>
+          <div className="w-44 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-indigo-600 h-full rounded-full transition-all duration-100" style={{ width: `${calibrationProgress}%` }} />
           </div>
         </div>
       )}
 
-      {/* Header Bar */}
-      <div className="flex items-center justify-between text-xs border-b border-zinc-800 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-zinc-400" />
-          <span className="font-bold text-zinc-100 text-xs tracking-tight flex items-center gap-1.5">
-            <Scan className="w-3.5 h-3.5 text-indigo-600" /> AI 3D Gaze & Vision Guard
-          </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Camera check</p>
+          <p className={`text-sm font-black flex items-center gap-1.5 ${headlineTone}`}>
+            {headline === 'All good' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            {headline}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={startCalibration}
-            title="Recalibrate neutral eye level"
-            className="p-1 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-medium text-zinc-300 flex items-center gap-1 transition-all cursor-pointer"
-          >
-            <Crosshair className="w-3 h-3 text-indigo-600" />
-            <span>Calibrate</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setVoiceMuted(prev => !prev)}
-            title={voiceMuted ? 'Unmute AI Voice Proctor' : 'Mute AI Voice Proctor'}
-            className={`p-1 px-2.5 rounded-lg border text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-              voiceMuted
-                ? 'bg-zinc-900 border-zinc-800 text-zinc-500'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-300'
-            }`}
-          >
-            {voiceMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3 text-indigo-600" />}
-            <span>{voiceMuted ? 'Muted' : 'Voice On'}</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={startCalibration}
+          disabled={!cameraActive}
+          title="Use this if you moved your seat or the camera"
+          className="shrink-0 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Recheck
+        </button>
       </div>
 
-      {/* Main Video Window */}
-      <div className="relative w-full aspect-[4/3] min-h-[280px] rounded-2xl bg-[#09090b] overflow-hidden border border-zinc-800 flex items-center justify-center shadow-inner">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover block"
-        />
+      {/* Camera picture */}
+      <div className="relative w-full aspect-[4/3] rounded-2xl bg-slate-900 overflow-hidden border border-slate-200 flex items-center justify-center">
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover block" />
 
-        {/* Muted Border on Anomaly */}
-        {gazeDirection !== 'Center' && !isCalibrating && (
-          <div className="absolute inset-0 pointer-events-none border-2 border-rose-500 rounded-2xl z-10" />
+        {/* Soft border when they are looking away */}
+        {!gazeOk && !isCalibrating && cameraActive && (
+          <div className="absolute inset-0 pointer-events-none border-4 border-amber-400 rounded-2xl z-10" />
         )}
 
-        {/* Camera Permission / Error Overlay — only when camera itself is down */}
+        {/* Only when the camera itself is down */}
         {!cameraActive && (
-          <div className="absolute inset-0 bg-[#09090b]/95 flex flex-col items-center justify-center text-center p-6 space-y-3 text-zinc-300 z-20">
-            <Camera className="w-8 h-8 mx-auto text-indigo-600" />
-            <p className="text-xs font-medium leading-relaxed text-zinc-300 max-w-xs">
-              {cameraError || 'Initializing camera for proctoring...'}
-            </p>
+          <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center text-center p-6 space-y-3 text-slate-200 z-20">
+            <Camera className="w-8 h-8 mx-auto text-indigo-300" />
+            <p className="text-xs font-medium leading-relaxed max-w-xs">{cameraError || 'Starting your camera…'}</p>
             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={startCamera}
-                className="px-3.5 py-1.5 rounded-xl brand-primary-btn text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl brand-primary-btn text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
               >
-                <RefreshCw className="w-3 h-3" /> Enable Camera
+                <RefreshCw className="w-3.5 h-3.5" /> Turn on camera
               </button>
               {process.env.NODE_ENV !== 'production' && (
                 <button
                   type="button"
                   onClick={startDemoStream}
-                  className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium cursor-pointer flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3 h-3 text-indigo-600" /> Start Demo Stream
+                  <Sparkles className="w-3.5 h-3.5" /> Demo stream (development only)
                 </button>
               )}
             </div>
@@ -910,91 +876,36 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         )}
 
         {cameraActive && modelWarning && (
-          <div className="absolute top-2 left-2 right-2 z-20 px-2.5 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700/60 text-[10px] text-amber-100 font-medium">
+          <div className="absolute top-2 left-2 right-2 z-20 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-[11px] text-amber-900 font-medium">
             {modelWarning}
           </div>
         )}
 
         {cameraActive && !modelLoaded && !modelWarning && (
-          <div className="absolute bottom-2 left-2 z-20 px-2 py-1 rounded-lg bg-zinc-950/80 border border-zinc-700 text-[10px] text-zinc-300 font-mono">
-            Loading gaze model…
+          <div className="absolute bottom-2 left-2 z-20 px-2.5 py-1 rounded-lg bg-white/90 border border-slate-200 text-[11px] text-slate-600 font-medium">
+            Getting ready…
           </div>
         )}
 
-        {cameraActive && modelLoaded && (
-          <div className="absolute bottom-2 left-2 z-20 px-2 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700/50 text-[10px] text-emerald-300 font-mono">
-            Gaze AI active
-          </div>
-        )}
-
-        {/* Canvas Overlay */}
-        <canvas
-          ref={canvasRef}
-          width={640}
-          height={480}
-          className="absolute inset-0 w-full h-full pointer-events-none z-10"
-        />
+        <canvas ref={canvasRef} width={640} height={480} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
       </div>
 
-      {/* Structured Telemetry Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-        
-        {/* Gaze Vector */}
-        <div className="p-2.5 bg-zinc-900 rounded-xl border border-zinc-800 space-y-0.5 col-span-2 sm:col-span-2">
-          <span className="text-zinc-500 block text-[10px] font-bold uppercase tracking-wider">3D Gaze Status</span>
-          <span className="font-mono text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-            {isCalibrating ? (
-              <Target className="w-3 h-3 text-indigo-600 animate-spin" />
-            ) : gazeDirection === 'Center' ? (
-              <CheckCircle2 className="w-3 h-3 text-zinc-400" />
-            ) : (
-              <AlertTriangle className="w-3 h-3 text-indigo-600" />
-            )}
-            {isCalibrating ? 'Calibrating Neutral Center...' : gazeDirection}
-          </span>
-        </div>
-
-        {/* Vertical Delta Meter */}
-        <div className="p-2.5 bg-zinc-900 rounded-xl border border-zinc-800 space-y-0.5">
-          <span className="text-zinc-500 block text-[10px] font-bold uppercase tracking-wider">Gaze Offset</span>
-          <span className="font-mono text-xs font-semibold text-zinc-200">
-            {liveDeltaV > 0.085 ? '⬇ Down' : liveDeltaV < -0.09 ? '⬆ Up' : '⦿ Center'} ({liveDeltaV >= 0 ? `+${liveDeltaV.toFixed(2)}` : liveDeltaV.toFixed(2)})
-          </span>
-        </div>
-
-        {/* Device Detection */}
-        <div className="p-2.5 bg-zinc-900 rounded-xl border border-zinc-800 space-y-0.5">
-          <span className="text-zinc-500 block text-[10px] font-bold uppercase tracking-wider">Secondary Device</span>
-          <span className="font-mono text-xs font-semibold text-zinc-200 flex items-center gap-1">
-            <Smartphone className="w-3 h-3 text-zinc-400" />
-            {phoneDetected ? detectedObjectName : 'Clear'}
-          </span>
-        </div>
-      </div>
-
-      {/* Control Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-zinc-400">
-        <button
-          type="button"
-          onClick={() => setReadingGuardEnabled(prev => !prev)}
-          className={`px-2 py-0.5 rounded-md border text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-            readingGuardEnabled
-              ? 'bg-zinc-900 border-zinc-700 text-zinc-300'
-              : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-          }`}
-        >
-          <BookOpen className="w-3 h-3" />
-          <span>Script Guard: {readingGuardEnabled ? 'ON' : 'OFF'}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleTestVoice}
-          className="text-zinc-400 hover:text-zinc-200 font-medium flex items-center gap-1 cursor-pointer"
-        >
-          <Volume2 className="w-3 h-3 text-indigo-600" /> Test Voice Alert
-        </button>
-      </div>
+      <ul className="space-y-1.5 text-xs">
+        <li className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Camera</span>
+          <strong className={cameraActive ? 'text-emerald-700' : 'text-amber-700'}>{cameraActive ? 'On' : 'Off'}</strong>
+        </li>
+        <li className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Looking at screen</span>
+          <strong className={!watching || isCalibrating ? 'text-slate-500' : gazeOk ? 'text-emerald-700' : 'text-amber-700'}>
+            {!watching || isCalibrating ? 'Checking…' : gazeOk ? 'Yes' : 'Look at the screen'}
+          </strong>
+        </li>
+        <li className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Other device in view</span>
+          <strong className={phoneDetected ? 'text-amber-700' : 'text-emerald-700'}>{phoneDetected ? detectedObjectName || 'Yes' : 'None'}</strong>
+        </li>
+      </ul>
     </div>
   );
 }

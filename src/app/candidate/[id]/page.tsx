@@ -12,6 +12,8 @@ import { Candidate, StageConfig, StageKey, StageResult, QuestionnaireItem, Asses
 import { SLOKA_DEFAULT_STAGES, DEFAULT_QUESTIONNAIRES } from '@/lib/defaultData';
 import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
 import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
+import StageProgress from '@/components/candidate/StageProgress';
+import StageIntro from '@/components/candidate/StageIntro';
 import VideoRecorderUpload from '@/components/candidate/VideoRecorderUpload';
 import PDFResumeUploader from '@/components/candidate/PDFResumeUploader';
 import StructuredLessonPlanEditor from '@/components/candidate/StructuredLessonPlanEditor';
@@ -87,6 +89,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   // Shown inside the page. A browser pop-up (alert) takes some browsers out of
   // fullscreen, which the proctoring then counts against the candidate.
   const [stageError, setStageError] = useState('');
+  const [highlightUnanswered, setHighlightUnanswered] = useState(false);
+
+  // The error sits next to the button that caused it; bring it into view.
+  useEffect(() => {
+    if (!stageError) return;
+    document.getElementById('stage-error')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [stageError]);
 
   // Stage 1: Identity & PDF CV State
   const [identityData, setIdentityData] = useState({
@@ -461,10 +470,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         if (!assessmentPack) return fail('Your test is still being prepared. Wait a moment, then submit.');
         const unanswered = assessmentPack.mcqs.filter((q) => !mcqAnswers[q.id]);
         if (unanswered.length > 0) {
-          return fail(`Please answer every question. ${unanswered.length} still need an answer.`);
+          setHighlightUnanswered(true);
+          const numbers = unanswered.map((q) => assessmentPack.mcqs.findIndex((m) => m.id === q.id) + 1);
+          const shown = numbers.slice(0, 8).join(', ') + (numbers.length > 8 ? ` and ${numbers.length - 8} more` : '');
+          return fail(`Please answer every question in Part A. Still open: ${shown}.`);
         }
         if (words < MIN_LESSON_WORDS) {
-          return fail(`Your lesson plan has ${words} words. Please write at least ${MIN_LESSON_WORDS} words.`);
+          return fail(`Part B: your lesson plan has ${words} words. Please write at least ${MIN_LESSON_WORDS} words.`);
         }
         // Only the picks go to the server. It marks them against the answer key,
         // which never reaches this page.
@@ -566,84 +578,73 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   }
 
   const currentStageConfig = SLOKA_DEFAULT_STAGES.find(s => s.key === activeStageKey);
+  const mcqAnswered = assessmentPack ? assessmentPack.mcqs.filter((q) => mcqAnswers[q.id]).length : 0;
+  const mcqTotal = assessmentPack ? assessmentPack.mcqs.length : 0;
+  const stageErrorBox = stageError ? (
+    <div id="stage-error" role="alert" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-sm text-rose-900 font-semibold flex items-start gap-2.5">
+      <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
+      <span>{stageError}</span>
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-16">
       
       {/* Top Header Bar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-8 py-3 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xl shadow-md">
+      <header className="bg-white border-b border-slate-200 px-4 sm:px-8 py-3">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xl shadow-md">
               E
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-slate-900">
-                  {candidate.name || identityData.name || 'Candidate Assessment'}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">
-                  {candidate.applied_subject || identityData.applied_subject || 'Physics'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">{schoolName || 'Your school'} • Automated AI Pre-Screening</p>
+            <div className="min-w-0">
+              <p className="font-black text-sm text-slate-900 truncate">
+                {candidate.name || identityData.name || 'Your application'}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {candidate.applied_subject || identityData.applied_subject || 'Teacher'} · {schoolName || 'Your school'}
+              </p>
               {candidate.invite_code && (
-                <p className="text-[11px] text-slate-500">Application ID: <span className="font-mono font-bold text-slate-700">{candidate.invite_code}</span></p>
-              )}
-              {candidate.invite_code && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    // One link that opens the application anywhere, rather than a
-                    // code the candidate has to pair with their phone or email.
-                    try {
-                      const res = await fetch('/api/candidates/my-link');
-                      const data = await res.json();
-                      if (!res.ok || !data.url) throw new Error('no link');
-                      await navigator.clipboard.writeText(data.url);
-                      setCodeCopied(true);
-                      setTimeout(() => setCodeCopied(false), 2500);
-                    } catch {
-                      setStageError('Could not copy your link. Write down your application ID instead: ' + candidate.invite_code);
-                    }
-                  }}
-                  title="Copies one link that opens your application on any phone or computer for 7 days. Paste it into WhatsApp (message yourself) or your notes. Do not share it."
-                  className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[10.5px] font-bold hover:bg-amber-100 transition-colors"
-                >
-                  <KeyRound className="w-3 h-3" />
-                  {codeCopied ? 'Link copied. Paste it in your notes or WhatsApp.' : 'Save my link to come back later'}
-                  {codeCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                </button>
+                <p className="text-[11px] text-slate-500 truncate">
+                  Application ID: <span className="font-mono font-bold text-slate-700">{candidate.invite_code}</span>
+                </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            {/* Switch Candidate / Candidate Login Option */}
-            <Link
-              href="/teacher"
-              className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-indigo-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-              title="Back to teacher workspace"
-            >
-              <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Teacher space</span>
-            </Link>
-
-            {activeStageKey !== 'identity_verification' && (
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-xs font-mono">
-                <Eye className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 animate-pulse" />
-                <span className="text-slate-500 font-bold">Proctoring:</span>
-                <strong className={proctoringTrustScore > 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500 dark:text-amber-400'}>
-                  {proctoringTrustScore}% Trust
-                </strong>
-              </div>
+          <div className="flex items-center gap-2">
+            {candidate.invite_code && (
+              <button
+                type="button"
+                onClick={async () => {
+                  // One link that opens the application anywhere, rather than a
+                  // code the candidate has to pair with their phone or email.
+                  try {
+                    const res = await fetch('/api/candidates/my-link');
+                    const data = await res.json();
+                    if (!res.ok || !data.url) throw new Error('no link');
+                    await navigator.clipboard.writeText(data.url);
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 2500);
+                  } catch {
+                    setStageError('Could not copy your link. Write down your application ID instead: ' + candidate.invite_code);
+                  }
+                }}
+                title="Copies one link that opens your application on any phone or computer for 7 days. Paste it into WhatsApp (message yourself) or your notes. Do not share it."
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold hover:bg-amber-100 transition-colors cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {codeCopied ? 'Link copied' : 'Save my link'}
+                {codeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
             )}
 
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
-              title="Toggle Fullscreen"
+              className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
+              title={isFullscreen ? 'Leave fullscreen' : 'Fullscreen'}
+              aria-label={isFullscreen ? 'Leave fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
@@ -678,54 +679,11 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Clean, Prominent Stage Stepper Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-          {SLOKA_DEFAULT_STAGES.map((stg) => {
-            const isCompleted = stageResults.some(r => r.stage_key === stg.key);
-            const isActive = activeStageKey === stg.key;
-            const meta = STAGE_DISPLAY_INFO[stg.key] || { shortTitle: stg.name, subtitle: '', icon: FileText };
-            const IconComp = meta.icon;
-
-            return (
-              <button
-                key={stg.key}
-                type="button"
-                onClick={() => {
-                  if (isCompleted || isActive) setActiveStageKey(stg.key);
-                }}
-                className={`relative p-3 sm:p-3.5 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between gap-1.5 ${
-                  isActive
-                    ? 'brand-primary-btn text-white shadow-xl ring-2 ring-indigo-300'
-                    : isCompleted
-                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className={`text-[10px] font-mono font-extrabold uppercase tracking-wider ${
-                    isActive ? 'text-white/90' : isCompleted ? 'text-indigo-600' : 'text-slate-500'
-                  }`}>
-                    Stage {stg.order}
-                  </span>
-                  {isCompleted ? (
-                    <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
-                  ) : (
-                    <IconComp className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                  )}
-                </div>
-
-                <div>
-                  <div className="text-xs font-bold truncate">
-                    {meta.shortTitle}
-                  </div>
-                  <div className={`text-[10px] truncate ${isActive ? 'text-white/80' : isCompleted ? 'text-indigo-600/80' : 'text-slate-500'}`}>
-                    {meta.subtitle}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <StageProgress
+          activeKey={allCompleted ? '' : activeStageKey}
+          completedKeys={allCompleted ? SLOKA_DEFAULT_STAGES.map((st) => st.key) : stageResults.map((r) => r.stage_key)}
+          onSelect={(key) => { setStageError(''); setActiveStageKey(key); }}
+        />
 
         {/* Submission Toast */}
         {stageSubmitted && (
@@ -772,60 +730,24 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         ) : activeStageKey === 'identity_verification' ? (
           <div className="max-w-4xl mx-auto space-y-6">
             
-            {/* Stage Title Banner */}
-            <div className="glass-card p-6 sm:p-8 rounded-3xl border border-slate-200 bg-white space-y-2 shadow-xl">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold uppercase text-indigo-600 tracking-wider">
-                  Stage 1 of 5
-                </span>
-                <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                  Unproctored Profile Setup
-                </span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900">1. Basic Identity & PDF CV Upload</h2>
-              <p className="text-xs text-slate-500">
-                Personal details, academic qualifications, teaching experience & resume dossier for institutional verification.
-              </p>
-            </div>
+            <StageIntro stageKey="identity_verification" number={1} />
 
-            {/* What to expect — set expectations before a teacher commits an hour */}
-            <div className="glass-card p-6 sm:p-8 rounded-3xl border border-indigo-100 bg-indigo-50/50 space-y-4 shadow-sm">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Before you begin</p>
-                <h3 className="text-base font-black text-slate-900">What to expect — about 60 to 75 minutes in total</h3>
-              </div>
-              <ol className="grid sm:grid-cols-5 gap-2 text-[11px]">
-                {[
-                  ['1. Your profile', '5–10 min'],
-                  ['2. Written test', '30–40 min'],
-                  ['3. Teaching demo', 'up to 5 min on camera'],
-                  ['4. Classroom scenario', 'up to 2 min on camera'],
-                  ['5. School policies', '2 min'],
-                ].map(([title, time]) => (
-                  <li key={title} className="p-3 rounded-2xl bg-white border border-indigo-100">
-                    <strong className="block text-slate-900">{title}</strong>
-                    <span className="text-slate-500">{time}</span>
-                  </li>
-                ))}
-              </ol>
-              <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-700 list-disc list-inside">
-                <li><strong>Take a break between stages.</strong> Each stage is saved when you submit it.</li>
-                <li>Use a <strong>laptop or desktop</strong> with a camera and microphone, in a quiet room.</li>
-                <li>To come back later, sign in with your phone or email and the code shown above.</li>
-                <li><strong>People at the school make every decision.</strong> AI only helps them review.</li>
-              </ul>
-            </div>
+            <ul className="space-y-2 px-1 text-sm text-slate-700">
+              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>The whole application takes about <strong>60 to 75 minutes</strong>. Take a break between stages. Each one is saved when you submit it.</span></li>
+              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>To come back later, tap the link we sent you, or sign in with your phone or email and your application ID (shown at the top of this page).</span></li>
+              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>People at the school make every decision. AI only helps them review.</span></li>
+            </ul>
 
             {/* Stage 1 Form Card */}
             <div className="glass-card p-6 sm:p-8 rounded-3xl border border-slate-200 bg-white space-y-6 shadow-xl">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    Full Legal Name <span className="text-indigo-600">*</span>
+                    Full name <span className="text-indigo-600">*</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Chandra Sekhar"
+                    placeholder="As on your certificates"
                     value={identityData.name}
                     onChange={e => setIdentityData({...identityData, name: e.target.value})}
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
@@ -834,7 +756,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    Date of Birth & Age <span className="text-indigo-600">*</span>
+                    Date of birth <span className="text-indigo-600">*</span>
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -848,17 +770,19 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                       placeholder="Age"
                       value={identityData.age}
                       readOnly
-                      className="w-24 p-3 rounded-xl bg-slate-100/80 border border-slate-300 text-emerald-400 font-bold text-center focus:outline-none cursor-not-allowed"
+                      aria-label="Age"
+                      className="w-24 p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-bold text-center focus:outline-none cursor-not-allowed"
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    WhatsApp / Contact Phone <span className="text-indigo-600">*</span>
+                    WhatsApp number <span className="text-indigo-600">*</span>
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     placeholder="+91 98765 00000"
                     value={identityData.phone}
                     onChange={e => setIdentityData({...identityData, phone: e.target.value})}
@@ -868,7 +792,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    Highest Academic Qualification <span className="text-indigo-600">*</span>
+                    Highest qualification <span className="text-indigo-600">*</span>
                   </label>
                   <select
                     required
@@ -895,7 +819,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    Total Teaching Experience <span className="text-indigo-600">*</span>
+                    Teaching experience <span className="text-indigo-600">*</span>
                   </label>
                   <select
                     required
@@ -913,10 +837,10 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 font-bold mb-1.5">Previous School / Organization</label>
+                  <label className="block text-slate-600 font-bold mb-1.5">Last school or organisation <span className="text-slate-400 font-normal">(optional)</span></label>
                   <input
                     type="text"
-                    placeholder="e.g. Delhi Public School / Oakridge (or Fresher)"
+                    placeholder="Write Fresher if this is your first job"
                     value={identityData.prior_org}
                     onChange={e => setIdentityData({...identityData, prior_org: e.target.value})}
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
@@ -925,19 +849,19 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1.5">
-                    Salary Fitment (Current vs Expected) <span className="text-indigo-600">*</span>
+                    Salary: current and expected <span className="text-indigo-600">*</span>
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Current CTC (e.g. 5.0 LPA)"
+                      placeholder="Current, e.g. 5 LPA"
                       value={identityData.current_salary}
                       onChange={e => setIdentityData({...identityData, current_salary: e.target.value})}
                       className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
                     />
                     <input
                       type="text"
-                      placeholder="Expected CTC (e.g. 7.5 LPA)"
+                      placeholder="Expected, e.g. 7.5 LPA"
                       value={identityData.expected_salary}
                       onChange={e => setIdentityData({...identityData, expected_salary: e.target.value})}
                       className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
@@ -965,8 +889,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 </div>
 
                 <div>
-                  <label className="block text-indigo-600 font-bold mb-1.5">
-                    Target Teaching Subject <span className="text-indigo-600">*</span>
+                  <label className="block text-slate-600 font-bold mb-1.5">
+                    Subject you are applying for <span className="text-indigo-600">*</span>
                   </label>
                   <select
                     value={identityData.applied_subject}
@@ -984,7 +908,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 font-bold mb-1.5">Target Grade Segment</label>
+                  <label className="block text-slate-600 font-bold mb-1.5">Grades you are applying for</label>
                   <select
                     value={identityData.applied_segment}
                     onChange={e => setIdentityData({...identityData, applied_segment: e.target.value})}
@@ -1016,21 +940,22 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 />
               </div>
 
-              <div className="pt-4 flex justify-end">
+              {stageErrorBox}
+                  <div className="pt-4 flex sm:justify-end">
                 <button
                   type="button"
                   onClick={() => handleSubmitStage('identity_verification')}
                   disabled={submitting}
-                  className="brand-primary-btn px-8 py-3.5 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Saving Profile...</span>
+                      <span>Saving…</span>
                     </>
                   ) : (
                     <>
-                      <span>Save & Proceed to Proctored Stage 2</span>
+                      <span>Save and continue</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -1046,26 +971,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             {/* Left Column: Stage Tasks */}
             <div className="lg:col-span-8 space-y-6">
               
-              {/* Stage Title Banner */}
-              <div className="glass-card p-6 rounded-3xl border border-slate-200 bg-white space-y-2 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase text-indigo-600 tracking-wider">
-                    Stage {currentStageConfig?.order} of 5
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">
-                    Strict Fullscreen AI Proctoring
-                  </span>
-                </div>
-                <h2 className="text-xl font-black text-slate-900">{currentStageConfig?.name}</h2>
-                <p className="text-xs text-slate-500">{currentStageConfig?.description}</p>
-              </div>
-
-              {stageError && (
-                <div role="alert" className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-semibold flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{stageError}</span>
-                </div>
-              )}
+              <StageIntro stageKey={activeStageKey} number={currentStageConfig?.order ?? 2} />
 
               {/* STAGE 2: Written / Theory */}
               {activeStageKey === 'written_theory' && (
@@ -1092,26 +998,33 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     </div>
                   ) : (
                     <div className="glass-card p-5 rounded-3xl border border-slate-200 bg-white space-y-4">
-                      <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">MCQ test · {assessmentPack.mcqs.length} questions</p>
-                        <h3 className="text-sm font-black text-slate-900">Subject check before the lesson plan</h3>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Answered {Object.keys(mcqAnswers).filter((id) => assessmentPack.mcqs.some((q) => q.id === id)).length} of {assessmentPack.mcqs.length}
-                        </p>
+                      <div className="sticky top-0 z-30 -mx-5 -mt-5 px-5 pt-4 pb-3 bg-white/95 backdrop-blur rounded-t-3xl border-b border-slate-100 space-y-2">
+                        <div className="flex items-end justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Part A</p>
+                            <h3 className="text-base font-black text-slate-900">Subject questions</h3>
+                          </div>
+                          <span className={`shrink-0 whitespace-nowrap text-sm font-black ${mcqAnswered === mcqTotal ? 'text-emerald-700' : 'text-slate-700'}`}>
+                            {mcqAnswered} of {mcqTotal} done
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+                          <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${mcqTotal ? (mcqAnswered / mcqTotal) * 100 : 0}%` }} />
+                        </div>
                       </div>
                       {assessmentPack.mcqs.map((q, idx) => (
-                        <fieldset key={q.id} className="space-y-2 border-t border-slate-100 pt-3">
-                          <legend className="text-xs font-bold text-slate-800">
+                        <fieldset key={q.id} className={`space-y-2.5 pt-4 ${idx > 0 ? 'border-t border-slate-100' : ''} ${highlightUnanswered && !mcqAnswers[q.id] ? 'rounded-2xl ring-2 ring-rose-300 bg-rose-50/50 px-3 pb-3' : ''}`}>
+                          <legend className="text-sm font-bold text-slate-900 leading-snug">
                             {idx + 1}. {q.question_text}
                           </legend>
                           <div className="space-y-1.5">
                             {q.options.map((opt) => (
                               <label
                                 key={opt}
-                                className={`flex items-start gap-2 p-2.5 rounded-xl border text-xs cursor-pointer ${
+                                className={`flex items-start gap-3 p-3.5 rounded-xl border text-sm cursor-pointer transition-colors ${
                                   mcqAnswers[q.id] === opt
-                                    ? 'border-indigo-500 bg-indigo-100 text-indigo-900 font-semibold'
-                                    : 'border-slate-300 bg-slate-100 text-slate-800'
+                                    ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-semibold'
+                                    : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300'
                                 }`}
                               >
                                 <input
@@ -1120,7 +1033,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                                   value={opt}
                                   checked={mcqAnswers[q.id] === opt}
                                   onChange={() => setMcqAnswers((prev) => ({ ...prev, [q.id]: opt }))}
-                                  className="mt-0.5"
+                                  className="mt-1 w-4 h-4 accent-indigo-600"
                                 />
                                 <span>{opt}</span>
                               </label>
@@ -1140,21 +1053,22 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     onChange={(compiled) => setWrittenTheoryResponse(compiled)}
                   />
 
-                  <div className="pt-4 flex justify-end">
+                  {stageErrorBox}
+                  <div className="pt-4 flex sm:justify-end">
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('written_theory', writtenTheoryResponse)}
                       disabled={submitting || !assessmentPack}
-                      className="brand-primary-btn px-8 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Saving your answers...</span>
+                          <span>Saving your answers…</span>
                         </>
                       ) : (
                         <>
-                          <span>Submit MCQs, lesson plan & advance to Stage 3</span>
+                          <span>Submit and go to Stage 3</span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
@@ -1168,9 +1082,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 <div className="space-y-6">
                   <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs space-y-2">
                     <span className="text-indigo-600 font-bold uppercase text-[10px] tracking-wider block">
-                      Micro-Teaching Demo Task ({candidate.applied_subject || 'Physics'})
+                      Your topic · {candidate.applied_subject || 'Subject'}
                     </span>
-                    <p className="text-slate-900 font-bold">
+                    <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">
                       {assessmentPack?.demo_prompt || getDynamicQuestion('micro_teaching_demo')?.question_text || `Deliver a 5-minute micro-teaching demo introducing a core concept in ${candidate.applied_subject}.`}
                     </p>
                   </div>
@@ -1183,21 +1097,22 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     onVideoSubmit={(url: string) => setMicroDemoVideoUrl(url)}
                   />
 
-                  <div className="pt-4 flex justify-end">
+                  {stageErrorBox}
+                  <div className="pt-4 flex sm:justify-end">
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('micro_teaching_demo')}
                       disabled={submitting}
-                      className="brand-primary-btn px-8 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Submitting Video...</span>
+                          <span>Saving your video…</span>
                         </>
                       ) : (
                         <>
-                          <span>Submit Teaching Demo & Advance to Stage 4</span>
+                          <span>Submit and go to Stage 4</span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
@@ -1211,9 +1126,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 <div className="space-y-6">
                   <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs space-y-2">
                     <span className="text-indigo-600 font-bold uppercase text-[10px] tracking-wider block">
-                      Classroom Situational Scenario
+                      The situation
                     </span>
-                    <p className="text-slate-900 font-bold">
+                    <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">
                       {assessmentPack?.scenario_prompt || getDynamicQuestion('situational_scenario')?.question_text || 'Explain your 3-step de-escalation protocol when a student repeatedly disrupts class and refuses to engage.'}
                     </p>
                   </div>
@@ -1228,32 +1143,33 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
                   <div className="space-y-2">
                     <label className="block text-slate-600 font-bold text-xs">
-                      Supporting Rationale & Classroom Management Strategy
+                      Written notes <span className="text-slate-400 font-normal">(optional)</span>
                     </label>
                     <textarea
                       rows={4}
-                      placeholder="Write additional details regarding parent communication and restorative steps..."
+                      placeholder="Anything you want to add, for example how you would speak to the parents."
                       value={situationalNotes}
                       onChange={e => setSituationalNotes(e.target.value)}
                       className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:border-indigo-500 focus:outline-none placeholder-slate-400"
                     />
                   </div>
 
-                  <div className="pt-4 flex justify-end">
+                  {stageErrorBox}
+                  <div className="pt-4 flex sm:justify-end">
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('situational_scenario')}
                       disabled={submitting}
-                      className="brand-primary-btn px-8 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Submitting Video...</span>
+                          <span>Saving your video…</span>
                         </>
                       ) : (
                         <>
-                          <span>Submit Scenario & Advance to Final Stage</span>
+                          <span>Submit and go to the last stage</span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
@@ -1268,9 +1184,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   {schoolPolicies.length > 0 && (
                     <div className="space-y-3">
                       {schoolPolicies.map((p) => (
-                        <article key={p.id} className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-xs">
+                        <article key={p.id} className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-sm">
                           <h4 className="font-black text-slate-900 mb-1">{p.title}</h4>
-                          <pre className="whitespace-pre-wrap font-sans text-slate-700 leading-relaxed">{p.content}</pre>
+                          <pre className="whitespace-pre-wrap font-sans text-slate-700 leading-relaxed max-h-72 overflow-y-auto pr-1">{p.content}</pre>
                         </article>
                       ))}
                     </div>
@@ -1304,29 +1220,30 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                         className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <div>
-                        <strong className="text-slate-900 block">POCSO & Child Safeguarding Zero-Tolerance Code</strong>
+                        <strong className="text-slate-900 block">Child safety promise</strong>
                         <span className="text-slate-500 text-[11px]">
-                          I agree to uphold the school's child protection protocols and background clearance verification.
+                          I will follow the school’s child protection rules and agree to a background check.
                         </span>
                       </div>
                     </label>
                   </div>
 
-                  <div className="pt-4 flex justify-end">
+                  {stageErrorBox}
+                  <div className="pt-4 flex sm:justify-end">
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('hr_policy_briefing')}
                       disabled={submitting}
-                      className="brand-primary-btn px-8 py-3 rounded-2xl font-bold text-xs shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Finalizing Assessment...</span>
+                          <span>Finishing…</span>
                         </>
                       ) : (
                         <>
-                          <span>Submit final assessment</span>
+                          <span>Submit and finish</span>
                           <CheckCircle2 className="w-4 h-4" />
                         </>
                       )}
@@ -1340,46 +1257,18 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             {/* Right Column: AI Proctoring Webcam HUD & Stage Scores */}
             <div className="lg:col-span-4 space-y-6">
               
-              {/* Live AI Proctoring Camera HUD */}
-              <div className="glass-card p-4 rounded-3xl border border-slate-200 dark:border-slate-200 bg-white dark:bg-white space-y-3 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500 tracking-wider flex items-center gap-1">
-                    <Camera className="w-3.5 h-3.5 text-indigo-600" /> AI Proctoring HUD
-                  </span>
-                  <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                    Active Vision
-                  </span>
-                </div>
-
-                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-200">
-                  <LiveProctoringWebcam
-                    stageKey={activeStageKey}
-                    schoolId={candidate.school_id}
-                    candidateId={candidate.id}
-                    onViolation={(type, details) => handleProctoringAnomaly(type, details)}
-                  />
-                </div>
-
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-50 rounded-2xl border border-slate-200 dark:border-slate-200 text-[11.5px] space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 dark:text-slate-500">Environment:</span>
-                    <strong className="text-emerald-700 dark:text-emerald-400 font-bold">Secure Proctored</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 dark:text-slate-500">Integrity Trust:</span>
-                    <strong className="text-emerald-700 dark:text-emerald-400 font-mono">{proctoringTrustScore}%</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 dark:text-slate-500">Status:</span>
-                    <strong className="text-slate-800 dark:text-zinc-200">{proctoringStatus}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 dark:text-slate-500">Warnings Logged:</span>
-                    <strong className="text-indigo-600 dark:text-indigo-600 font-mono">{proctoringWarnings}</strong>
-                  </div>
-                </div>
+              <div className="lg:sticky lg:top-4 space-y-3">
+                <LiveProctoringWebcam
+                  stageKey={activeStageKey}
+                  schoolId={candidate.school_id}
+                  candidateId={candidate.id}
+                  onViolation={(type, details) => handleProctoringAnomaly(type, details)}
+                />
+                <p className="text-xs text-slate-500 leading-relaxed px-1">
+                  Your camera is checked while you take this test. The school sees short notes, such as leaving the page, next to your answers. A person reviews them.
+                  {proctoringWarnings > 0 ? ` Notes so far: ${proctoringWarnings}.` : ''}
+                </p>
               </div>
-
             </div>
 
           </div>
@@ -1440,7 +1329,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             </div>
             {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
             <ol className="grid sm:grid-cols-2 gap-3 text-left text-xs">
-              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 2 — Written</strong> About 25 MCQs, then a lesson plan. No score is given until you submit.</li>
+              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 2 — Subject test</strong> Subject questions, then a lesson plan. You will not see marks.</li>
               <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 3 — Teaching demo</strong> One minute to prepare. Recording starts on its own. Speak to the camera as if it is a class.</li>
               <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 4 — Classroom scenario</strong> Same live-camera rule. Answer the situation out loud.</li>
               <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 5 — School policies</strong> Confirm this school’s notice, hours, and safeguarding. This stage is not scored.</li>

@@ -386,7 +386,7 @@ export default function VideoRecorderUpload({
         <label className="font-bold text-slate-900 text-sm flex items-center gap-2">
           <Video className="w-4 h-4 text-indigo-600" /> {label}
         </label>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Live camera only</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Recorded live</span>
       </div>
 
       {errorMessage && (
@@ -417,6 +417,7 @@ export default function VideoRecorderUpload({
             </button>
           </div>
         ) : !recordedVideoUrl && !isUploading ? (
+          <>
           <div className="relative aspect-video rounded-xl bg-slate-900 overflow-hidden border border-slate-200">
             <video
               ref={liveVideoRef}
@@ -426,28 +427,9 @@ export default function VideoRecorderUpload({
               className="w-full h-full object-cover"
             />
             {phase === 'prep' && !isRecording && (
-              <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-center p-6">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Preparation time</p>
-                <p className="text-4xl font-black text-white font-mono mt-2">{prepLeft}s</p>
-                <p className="text-xs text-slate-300 mt-2 max-w-sm">Read the question and face the camera. Recording starts by itself when the timer ends, or start it yourself when you&apos;re ready.</p>
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 text-[11px] font-bold">
-                  {hasAudioTrack ? <Mic className="w-3.5 h-3.5 text-emerald-300" /> : <MicOff className="w-3.5 h-3.5 text-rose-400" />}
-                  <span className="text-white">
-                    {!hasAudioTrack ? 'Microphone not found — check permissions' : audioLevel > 5 ? 'Microphone is picking you up' : 'Say something to test your microphone'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (prepTimerRef.current) window.clearInterval(prepTimerRef.current);
-                    prepTimerRef.current = null;
-                    setPrepLeft(0);
-                    startRecording();
-                  }}
-                  className="mt-4 px-5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-xs cursor-pointer hover:bg-slate-100"
-                >
-                  I&apos;m ready — start recording now
-                </button>
+              <div className="absolute inset-0 bg-slate-950/55 flex flex-col items-center justify-center text-center p-3">
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-200">Get ready</p>
+                <p className="text-5xl font-black text-white font-mono leading-none mt-1">{prepLeft}s</p>
               </div>
             )}
             {isRecording && (
@@ -463,6 +445,32 @@ export default function VideoRecorderUpload({
               </>
             )}
           </div>
+          {phase === 'prep' && !isRecording && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Read the question above and face the camera. Recording starts by itself when the timer ends, or tap Start when you are ready.
+              </p>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-xs font-bold text-slate-700">
+                {hasAudioTrack ? <Mic className="w-3.5 h-3.5 text-emerald-600" /> : <MicOff className="w-3.5 h-3.5 text-rose-500" />}
+                <span>
+                  {!hasAudioTrack ? 'Microphone not found. Check your browser permissions.' : audioLevel > 5 ? 'Microphone is picking you up' : 'Say something to test your microphone'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (prepTimerRef.current) window.clearInterval(prepTimerRef.current);
+                  prepTimerRef.current = null;
+                  setPrepLeft(0);
+                  startRecording();
+                }}
+                className="w-full py-3.5 rounded-xl brand-primary-btn font-bold text-sm cursor-pointer"
+              >
+                I am ready. Start recording now
+              </button>
+            </div>
+          )}
+          </>
         ) : isUploading ? (
           <div className="aspect-video rounded-xl bg-slate-900 flex flex-col items-center justify-center space-y-3 p-6">
             <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
