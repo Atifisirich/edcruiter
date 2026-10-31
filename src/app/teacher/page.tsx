@@ -55,7 +55,7 @@ export default function TeacherWorkspacePage() {
             Welcome back
           </h1>
           <p className="text-sm text-slate-600 max-w-2xl">
-            Browse open teaching roles, apply when you are ready, and start a school assessment only when you have the WhatsApp invite code or link.
+            Browse open teaching roles, apply when you are ready, and start a school assessment only when you have the link or application ID the school sent you.
           </p>
         </div>
 
@@ -128,7 +128,7 @@ export default function TeacherWorkspacePage() {
 
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <BookOpen className="w-3.5 h-3.5" />
-          Demo invite code: SAMPLE-PHY-2026
+          Demo application ID: SAMPLE-PHY-2026
         </div>
       </div>
     </div>

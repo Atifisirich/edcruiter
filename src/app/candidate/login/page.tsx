@@ -124,7 +124,7 @@ export default function CandidateLoginPage() {
               onBlur={(e) => setInviteCode(extractInviteCode(e.target.value))}
               className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm font-mono focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
             />
-            <p className="text-[11px] text-slate-500">It starts with EDC and is in the message we sent you. You can paste the whole message and we will pick it out.</p>
+            <p className="text-[11px] text-slate-500">Your personal ID for this application. It starts with EDC and is in the WhatsApp message or email we sent you ("Your application ID is…"). You can paste the whole message and we will pick it out.</p>
           </div>
 
           <button

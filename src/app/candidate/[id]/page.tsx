@@ -11,6 +11,7 @@ import {
 import { Candidate, StageConfig, StageKey, StageResult, QuestionnaireItem, AssessmentPack, HRPolicyDocument, ScheduledInterview } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES, DEFAULT_QUESTIONNAIRES } from '@/lib/defaultData';
 import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
+import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
 import VideoRecorderUpload from '@/components/candidate/VideoRecorderUpload';
 import PDFResumeUploader from '@/components/candidate/PDFResumeUploader';
 import StructuredLessonPlanEditor from '@/components/candidate/StructuredLessonPlanEditor';
@@ -587,6 +588,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               </div>
               <p className="text-[11px] text-slate-500">{schoolName || 'Your school'} • Automated AI Pre-Screening</p>
               {candidate.invite_code && (
+                <p className="text-[11px] text-slate-500">Application ID: <span className="font-mono font-bold text-slate-700">{candidate.invite_code}</span></p>
+              )}
+              {candidate.invite_code && (
                 <button
                   type="button"
                   onClick={async () => {
@@ -753,11 +757,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   </li>
                 ))}
               </ol>
-              {candidate.invite_code && (
-                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  To come back later, use the link we sent you, or tap &ldquo;Save my link&rdquo; at the top of this page. If you need to type it, your application ID is <strong className="font-mono text-slate-700">{candidate.invite_code}</strong>.
-                </p>
-              )}
+              {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
               <div className="pt-2">
                 <Link
                   href="/jobs"
@@ -1438,6 +1438,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 Profile is saved. The next four stages take about 45–60 minutes, in fullscreen with your camera on. You can take a break between stages — each one is saved when you submit it.
               </p>
             </div>
+            {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
             <ol className="grid sm:grid-cols-2 gap-3 text-left text-xs">
               <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 2 — Written</strong> About 25 MCQs, then a lesson plan. No score is given until you submit.</li>
               <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 3 — Teaching demo</strong> One minute to prepare. Recording starts on its own. Speak to the camera as if it is a class.</li>

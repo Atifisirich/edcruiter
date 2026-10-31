@@ -287,8 +287,8 @@ export default function CandidateProfileDashboard({
                 <p className="text-2xl font-black text-slate-900 font-mono">{stageResults.length}/5</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Invite code</p>
-                <p className="text-sm font-bold text-indigo-700 font-mono mt-1">{candidate.invite_code || candidateId}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Application ID</p>
+                <p className="text-sm font-bold text-indigo-700 font-mono mt-1 break-all" title="The ID in the candidate's invite message. The candidate signs in with it if their link expires.">{candidate.invite_code || '—'}</p>
               </div>
             </section>
 

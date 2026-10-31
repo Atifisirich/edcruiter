@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
     const { identifier, invite_code } = body;
 
     if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
-      return NextResponse.json({ error: 'Enter your Application ID, phone number, or email.' }, { status: 400 });
+      return NextResponse.json({ error: 'Enter your mobile number or email.' }, { status: 400 });
     }
     if (!invite_code || typeof invite_code !== 'string' || !invite_code.trim()) {
-      return NextResponse.json({ error: 'Enter the invite code we sent you on WhatsApp or email.' }, { status: 400 });
+      return NextResponse.json({ error: 'Enter your application ID. It is in the WhatsApp message or email we sent you.' }, { status: 400 });
     }
 
     const matched = db.findCandidateByIdentifierAndCode(identifier.trim(), invite_code.trim());
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // to anyone who mistyped their own details.
     if (!matched) {
       return NextResponse.json(
-        { success: false, error: 'Those details did not match an application. Check your ID and invite code.' },
+        { success: false, error: 'Those details did not match an application. Check your mobile number or email and your application ID.' },
         { status: 401 }
       );
     }

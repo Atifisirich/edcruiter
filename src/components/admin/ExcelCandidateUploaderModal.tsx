@@ -624,7 +624,7 @@ export default function ExcelCandidateUploaderModal({
               />
               <span>
                 <strong>Send each teacher their test invite on WhatsApp right after the import.</strong>{' '}
-                Teachers with a phone number get a message with their code and a button that opens their test.
+                Teachers with a phone number get a message with their application ID and a button that opens their test.
               </span>
             </label>
             {importError && <p className="text-xs text-rose-600 font-semibold">{importError}</p>}
