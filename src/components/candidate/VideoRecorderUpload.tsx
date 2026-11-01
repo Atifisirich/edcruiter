@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { trackStream } from '@/lib/mediaRegistry';
 import {
   Video, Square, CheckCircle2,
   Loader2, AlertCircle, Mic, MicOff, ShieldAlert
@@ -180,8 +181,8 @@ export default function VideoRecorderUpload({
       return null;
     }
 
-    audioStreamRef.current = aStream;
-    videoStreamRef.current = vStream;
+    audioStreamRef.current = trackStream(aStream);
+    videoStreamRef.current = trackStream(vStream);
 
     const tracks: MediaStreamTrack[] = [];
     if (vStream) tracks.push(...vStream.getVideoTracks());
@@ -201,7 +202,7 @@ export default function VideoRecorderUpload({
       setMicWarning('Microphone access was denied or not detected! Please allow microphone permissions so your voice is recorded.');
     }
 
-    const combined = new MediaStream(tracks);
+    const combined = trackStream(new MediaStream(tracks));
     streamRef.current = combined;
     return combined;
   };

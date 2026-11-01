@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { assertSchoolActive, authErrorResponse, requireCandidate } from '@/lib/auth';
-import { ensureActivePack, sanitizeForCandidate } from '@/lib/ensurePack';
-import { testFor } from '@/lib/candidateTest';
-import type { AssessmentPack } from '@/lib/types';
+import { ensureActivePack } from '@/lib/ensurePack';
 
 /**
- * The signed-in candidate's own test. If the school has no test written for
- * their subject and grade level yet, one is written in the background and
- * this answers "preparing" until it is ready, so the candidate waits on a
- * screen that says so instead of being given a different subject's questions.
+ * Whether the signed-in candidate's test is ready. If the school has no test
+ * written for their subject and grade level yet, one is written in the
+ * background and this answers "preparing" until it is ready, so the candidate
+ * waits on a screen that says so instead of being given a different subject's
+ * questions.
+ *
+ * It only says whether the test is ready. The questions themselves are sent
+ * when the candidate starts each stage (see /api/stage-attempt), so nobody can
+ * read the paper from this page before they sit it.
  */
 export async function GET() {
   try {
@@ -19,12 +22,7 @@ export async function GET() {
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
     const result = ensureActivePack(session.schoolId, candidate.applied_subject, candidate.applied_segment);
-    if (result.state === 'ready') {
-      // The school's test supplies the lesson, demo and scenario tasks; the questions are this candidate's own draw.
-      const test = testFor(candidate, result.pack);
-      const pack = { ...result.pack, mcqs: test.questions as AssessmentPack['mcqs'] };
-      return NextResponse.json({ state: 'ready', pack: sanitizeForCandidate(pack) });
-    }
+    if (result.state === 'ready') return NextResponse.json({ state: 'ready' });
     if (result.state === 'failed') return NextResponse.json({ state: 'failed', error: result.error });
     return NextResponse.json({ state: 'preparing' });
   } catch (error) {

@@ -403,9 +403,14 @@ export interface Candidate {
     notes: string;
     gmeet_link?: string;
     completed_at?: string;
+    reviewer_name?: string;
     offer_letter?: OfferLetterDetails;
   };
   current_stage_key: StageKey;
+  /** Taken in stage 1. Later stages are compared with it to notice a different person taking the test. */
+  face_reference?: FaceReference;
+  /** Extra goes at a stage that the school allowed, by stage. */
+  extra_attempts?: Partial<Record<StageKey, number>>;
   /** The questions drawn for this candidate from the platform bank, so the same test is served and marked every time. */
   test_set?: { subject: string; ids: string[]; drawn_at: string };
   /** Worked out when the list is served (how many of the five test stages are done); never stored. */
@@ -540,6 +545,10 @@ export interface StageResult {
   transcript?: string;
   written_submission?: string;
   media_url?: string;
+  /** The task wording this candidate was shown (it differs when a stage was restarted). */
+  task_prompt?: string;
+  /** Which go at the stage this answer came from. */
+  attempt_number?: number;
   /** How the written answers were produced (typing pattern, answer pace). For the reviewer; never changes a score. */
   behaviour?: AnswerBehaviour;
   completed_at: string;
@@ -563,7 +572,11 @@ export type ProctoringEventType =
   | 'MULTIPLE_DISPLAYS'
   | 'CAMERA_LOST'
   | 'RECALIBRATED'
-  | 'TYPING_ANOMALY';
+  | 'TYPING_ANOMALY'
+  /** The face on camera did not match the photo taken at the start. */
+  | 'IDENTITY_MISMATCH'
+  /** A stage was left unfinished and started again, with new questions. */
+  | 'STAGE_RESTARTED';
 
 export interface ProctoringEvent {
   id: string;
@@ -572,7 +585,37 @@ export interface ProctoringEvent {
   stage_key: StageKey;
   event_type: ProctoringEventType;
   details: string;
+  /** A small picture kept as evidence for the reviewer (for example the face that did not match). */
+  snapshot_url?: string;
   timestamp: string;
+}
+
+/** One go at one stage. A stage left half done is closed and the next go gets new questions. */
+export interface StageAttempt {
+  id: string;
+  school_id: string;
+  candidate_id: string;
+  stage_key: StageKey;
+  /** 1 for the first go. */
+  number: number;
+  status: 'open' | 'submitted' | 'abandoned';
+  started_at: string;
+  /** Last time the page said it was still open. */
+  last_seen_at: string;
+  ended_at?: string;
+  /** Bank question ids shown in this go (the subject test only). */
+  test_ids?: string[];
+  /** The task wording shown in this go (lesson plan, demo or scenario). */
+  prompt?: string;
+}
+
+/** The photo and face measurements taken when the candidate began. */
+export interface FaceReference {
+  photo_url: string;
+  descriptors: number[][];
+  captured_at: string;
+  /** Set on the copy sent to a browser, which never receives the measurements themselves. */
+  measured?: boolean;
 }
 
 export interface AuditLogEntry {

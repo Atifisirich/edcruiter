@@ -9,6 +9,11 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { findActivePack } from '@/lib/ensurePack';
 import { maybeGenerateTeachingProfile } from '@/lib/profileGenerator';
 import { testFor } from '@/lib/candidateTest';
+import { resolveTest } from '@/lib/testBank';
+import { closeAttempt, openAttempt } from '@/lib/attemptService';
+import { canStart } from '@/lib/stageAttempts';
+import { CANDIDATE_SELF_FIELDS, pickAllowed } from '@/lib/candidateFields';
+import { ageFromDob } from '@/lib/age';
 import { countWords, gradeMcqs, MIN_LESSON_WORDS, type GradableMcq } from '@/lib/testRules';
 import { buildBehaviour, type AnswerBehaviour } from '@/lib/answerBehaviour';
 import { createProctoringEvent } from '@/lib/proctoringEngine';
@@ -47,9 +52,45 @@ export async function POST(req: NextRequest) {
       ? media_url.trim()
       : (typeof video_url === 'string' && video_url.trim() ? video_url.trim() : '');
 
-    // Apply any candidate updates first if provided (e.g. from Stage 1 profile submission)
-    if (candidate_updates) {
-      db.updateCandidate(school_id, candidate_id, candidate_updates);
+    const existing = db.getCandidateById(school_id, candidate_id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
+    }
+
+    // Stages are taken one at a time, in order, each as its own go. The details
+    // stage can be saved again; every other stage is final once handed in.
+    const doneKeys = db.getStageResultsByCandidate(school_id, candidate_id).map((r) => r.stage_key);
+    const attempt = stage_key === 'identity_verification' ? undefined : openAttempt(school_id, candidate_id, stage_key as StageKey);
+    if (stage_key !== 'identity_verification') {
+      if (doneKeys.includes(stage_key)) {
+        return NextResponse.json({ error: 'This stage is already finished.' }, { status: 409 });
+      }
+      if (!canStart(stage_key as StageKey, doneKeys)) {
+        return NextResponse.json({ error: 'Please finish the earlier stages first.' }, { status: 409 });
+      }
+      if (!attempt) {
+        return NextResponse.json({ error: 'This stage was not opened, or was closed because it was left for a while. Open it again from your list of stages.', code: 'no_open_attempt' }, { status: 409 });
+      }
+    }
+
+    if (resolvedMediaUrl) {
+      const owner = db.findCandidateByMediaUrl(resolvedMediaUrl);
+      if (owner && owner.candidateId !== candidate_id) {
+        return NextResponse.json({ error: 'That recording does not belong to this application.' }, { status: 403 });
+      }
+    }
+
+    // Apply any candidate updates first if provided (the stage 1 details). Only the
+    // fields a candidate may set about themselves go through; their age follows
+    // their date of birth. The CV link is accepted only if it points at an uploaded file.
+    if (candidate_updates && typeof candidate_updates === 'object') {
+      const safe: Record<string, unknown> = { ...pickAllowed(candidate_updates, CANDIDATE_SELF_FIELDS) };
+      if (typeof safe.dob === 'string') safe.age = ageFromDob(safe.dob) ?? undefined;
+      if (typeof candidate_updates.resume_url === 'string' && candidate_updates.resume_url.startsWith('/api/media/')) {
+        const owner = db.findCandidateByMediaUrl(candidate_updates.resume_url);
+        if (!owner || owner.candidateId === candidate_id) safe.resume_url = candidate_updates.resume_url;
+      }
+      db.updateCandidate(school_id, candidate_id, safe);
     }
 
     const candidate = db.getCandidateById(school_id, candidate_id);
@@ -69,11 +110,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Must be exactly the test the candidate was shown, which is the school's
-      // active test for their subject and grade level and nothing else.
+      // Must be exactly the test the candidate was shown in this go.
       const pack = findActivePack(school_id, candidate.applied_subject, candidate.applied_segment);
       // Marked against exactly the questions this candidate was given.
-      const given = pack ? testFor(candidate, pack).questions : [];
+      const given = attempt?.test_ids?.length
+        ? resolveTest(attempt.test_ids, candidate.id)
+        : pack ? testFor(candidate, pack).questions : [];
       const questions: GradableMcq[] | null = given.length ? given : null;
       if (!questions) {
         return NextResponse.json(
@@ -107,11 +149,14 @@ export async function POST(req: NextRequest) {
       written_submission,
       transcript,
       media_url: resolvedMediaUrl || undefined,
+      task_prompt: attempt?.prompt,
+      attempt_number: attempt?.number,
       behaviour,
       completed_at: new Date().toISOString()
     };
 
     db.saveStageResult(newResult);
+    if (attempt) closeAttempt(attempt);
 
     // Two or more signals are worth a line in the proctoring record. They are signals, not proof.
     if (behaviour && behaviour.signals.length >= 2) {

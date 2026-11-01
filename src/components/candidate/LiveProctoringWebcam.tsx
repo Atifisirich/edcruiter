@@ -6,12 +6,16 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import '@tensorflow/tfjs-backend-webgl';
 import '@tensorflow/tfjs-backend-cpu';
+import { trackStream, stopStream } from '@/lib/mediaRegistry';
+import { describeFace, faceSnapshot, loadFaceModels } from '@/lib/faceClient';
 
 interface LiveProctoringWebcamProps {
   stageKey: string;
   candidateId: string;
   schoolId: string;
   onViolation?: (type: string, details: string) => void;
+  /** Compare the face on camera with the photo taken at the start, every few seconds. */
+  checkIdentity?: boolean;
 }
 
 /** A reason the candidate can act on, instead of one message for every failure. */
@@ -35,7 +39,7 @@ function describeCameraError(err: any): string {
   }
 }
 
-export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, onViolation }: LiveProctoringWebcamProps) {
+export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, onViolation, checkIdentity = true }: LiveProctoringWebcamProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -387,9 +391,13 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
   }, [triggerVoiceWarning]);
 
   const retriesRef = useRef(0);
+  // Set when this component is removed, so a camera request still waiting then does not leave the camera on.
+  const goneRef = useRef(false);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Camera Initialization
   const startCamera = async () => {
+    if (goneRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('This browser cannot open the camera on this page. Use the latest Chrome or Edge, and make sure the address starts with https://.');
       setCameraActive(false);
@@ -410,10 +418,16 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
         });
       }
 
+      trackStream(stream);
+      if (goneRef.current) {
+        // The page moved on while the browser was opening the camera.
+        stopStream(stream);
+        return;
+      }
       if (videoRef.current) {
         const video = videoRef.current;
         // Stop prior tracks before attaching a new stream
-        streamRef.current?.getTracks().forEach((track) => track.stop());
+        stopStream(streamRef.current);
         streamRef.current = stream;
         video.srcObject = stream;
         setCameraActive(true);
@@ -424,10 +438,11 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
           // A covered lens or a privacy shutter pauses the feed without ending it.
           track.onmute = () => onViolation?.('CAMERA_LOST', 'The camera feed paused (covered, switched off or taken by another app).');
           track.onended = () => {
+            if (goneRef.current) return;
             onViolation?.('CAMERA_LOST', 'The camera stopped during the test.');
             setCameraActive(false);
             setCameraError('The camera stopped. Close any other app using it. Reconnecting…');
-            setTimeout(() => { startCamera(); }, 1500);
+            restartTimerRef.current = setTimeout(() => { startCamera(); }, 1500);
           };
         });
 
@@ -452,21 +467,60 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
       // Another app or tab may be holding the camera for a moment (a video
       // call that is still closing, the recorder handing over). Try again by
       // itself a couple of times before leaving the candidate on an error.
-      if ((err?.name === 'NotReadableError' || err?.name === 'AbortError') && retriesRef.current < 3) {
+      if ((err?.name === 'NotReadableError' || err?.name === 'AbortError') && retriesRef.current < 3 && !goneRef.current) {
         retriesRef.current += 1;
-        setTimeout(() => { startCamera(); }, 2000);
+        restartTimerRef.current = setTimeout(() => { startCamera(); }, 2000);
       }
     }
   };
 
   useEffect(() => {
+    goneRef.current = false;
     startCamera();
     return () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      goneRef.current = true;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      stopStream(streamRef.current);
       streamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Who is in front of the camera. Every few seconds the face is measured and the
+  // server compares it with the photo taken at the start. The page never sees the
+  // photo or the verdict's threshold; it only sends what the camera shows, and a
+  // flag is raised on the server after several misses in a row.
+  const lastVerdictRef = useRef<string>('match');
+  const checkingRef = useRef(false);
+  useEffect(() => {
+    if (!checkIdentity) return;
+    let stopped = false;
+    loadFaceModels().catch(() => {});
+    const timer = setInterval(async () => {
+      const video = videoRef.current;
+      if (stopped || checkingRef.current || !video || video.readyState < 2 || !cameraActive || isCalibrating) return;
+      if (document.hidden) return;
+      checkingRef.current = true;
+      try {
+        const found = await describeFace(video);
+        if (!found || stopped) return;
+        const image = lastVerdictRef.current === 'mismatch' ? faceSnapshot(video, 200) : undefined;
+        const res = await fetch('/api/identity/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descriptor: found.descriptor, stage_key: stageKey, phase: 'live', image }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (typeof data.verdict === 'string') lastVerdictRef.current = data.verdict;
+      } catch {
+        /* a missed check is not a finding */
+      } finally {
+        checkingRef.current = false;
+      }
+    }, 6000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [checkIdentity, cameraActive, isCalibrating, stageKey]);
 
   // Main High-Frequency Frame Processing Loop
   useEffect(() => {

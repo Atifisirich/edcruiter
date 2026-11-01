@@ -45,6 +45,10 @@ const VIOLATION_WEIGHTS: Record<ProctoringEventType, number> = {
   CAMERA_LOST: 8,
   // The gaze baseline was reset. A reset is allowed twice; each one is noted.
   RECALIBRATED: 3,
+  // The face on camera did not match the photo taken at the start. The strongest sign that someone else is taking the test.
+  IDENTITY_MISMATCH: 30,
+  // A stage was left half done and started again with new questions. Noted, lightly: it is allowed.
+  STAGE_RESTARTED: 4,
   // A large block of text appeared at once (autocomplete, dictation or an
   // extension). Paste and drop are blocked outright and count as COPY_PASTE_ATTEMPT.
   TYPING_ANOMALY: 6,

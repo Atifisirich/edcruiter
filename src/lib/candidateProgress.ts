@@ -65,6 +65,9 @@ export function candidateState(c: ProgressInput): CandidateState {
   if (c.status === 'passed' || c.shortlist_status === 'shortlisted') {
     return { tab: 'shortlisted', label: 'Shortlisted', tone: 'indigo', stagesDone: done };
   }
+  if (c.shortlist_status === 'hold') {
+    return { tab: 'ready', label: 'On hold', tone: 'amber', stagesDone: done };
+  }
   if (done >= TEST_STAGE_COUNT) {
     return { tab: 'ready', label: 'Ready to review', tone: 'amber', stagesDone: done };
   }

@@ -119,11 +119,11 @@ function forGrades(q: BankQuestion, grades: string[]): boolean {
   return q.g.some((g) => grades.includes(g));
 }
 
-/** Questions that may be used now: right grades, not retired. */
-export function poolFor(bank: BankQuestion[], grades: string[], state: BankState): BankQuestion[] {
+/** Questions that may be used now: right grades, not retired, and not in `exclude`. */
+export function poolFor(bank: BankQuestion[], grades: string[], state: BankState, exclude: ReadonlySet<string> = new Set()): BankQuestion[] {
   const retired = new Set(state.retired);
   const wanted = cleanGrades(grades);
-  return bank.filter((q) => !retired.has(q.id) && forGrades(q, wanted));
+  return bank.filter((q) => !retired.has(q.id) && !exclude.has(q.id) && forGrades(q, wanted));
 }
 
 /** Takes `count` questions, rotating through the topics and preferring those used least. */
@@ -178,19 +178,28 @@ export function drawTest(input: {
   state: BankState;
   subjectCount?: number;
   pedagogyCount?: number;
+  /** Which go at the test this is. Each go draws a different set; the first matches what candidates always got. */
+  attempt?: number;
+  /** Questions this candidate has already seen. Avoided when enough others remain. */
+  seen?: string[];
 }): DrawResult {
   const bank = SUBJECT_BANKS[input.subject];
   if (!bank) return { ok: false, reason: 'no_bank', poolSize: 0 };
 
   const subjectCount = input.subjectCount ?? SUBJECT_QUESTIONS;
   const pedagogyCount = input.pedagogyCount ?? PEDAGOGY_QUESTIONS;
-  const subjectPool = poolFor(bank, input.grades, input.state);
-  const pedagogyPool = poolFor(PEDAGOGY_BANK, input.grades, input.state);
+  const seen = new Set(input.seen ?? []);
+  let subjectPool = poolFor(bank, input.grades, input.state, seen);
+  let pedagogyPool = poolFor(PEDAGOGY_BANK, input.grades, input.state, seen);
+  // Fresh questions first. If a candidate has seen so many that too few are left, reuse the older ones.
+  if (subjectPool.length < subjectCount) subjectPool = poolFor(bank, input.grades, input.state);
+  if (pedagogyPool.length < pedagogyCount) pedagogyPool = poolFor(PEDAGOGY_BANK, input.grades, input.state);
   if (subjectPool.length < subjectCount || pedagogyPool.length < pedagogyCount) {
     return { ok: false, reason: 'pool_too_small', poolSize: subjectPool.length };
   }
 
-  const random = seededRandom(`${input.candidateId}|${input.subject}|${[...input.grades].sort().join(',')}`);
+  const goSuffix = input.attempt && input.attempt > 1 ? `|go${input.attempt}` : '';
+  const random = seededRandom(`${input.candidateId}|${input.subject}|${[...input.grades].sort().join(',')}${goSuffix}`);
   const subjectPick = pick(subjectPool, subjectCount, input.state, random);
   const pedagogyPick = pick(pedagogyPool, pedagogyCount, input.state, random);
   // Questions are mixed together, so the test does not run in topic order or put teaching questions last.

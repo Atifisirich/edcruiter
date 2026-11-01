@@ -8,6 +8,7 @@ import { Candidate, ResumeAnalysisReport } from '@/lib/types';
 import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
 import { ensureUploadsDir, extensionForMime, mediaUrlFor, randomUploadFilename, safeUploadPath } from '@/lib/uploads';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { readCvText } from '@/lib/cvText';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -204,9 +205,15 @@ Output ONLY valid JSON:
     // of the CV; a reviewer now sees "not read" and opens the file instead.
     const read = Boolean(report);
 
+    // The CV's own words, kept so the teaching profile can score the CV and quote
+    // from it. Before this the upload kept only the audit, and the profile's CV
+    // review had nothing to read.
+    const resumeText = await readCvText(new Uint8Array(buffer));
+
     if (schoolId && candidateId) {
       const updates: Record<string, unknown> = {
         resume_url: publicUrl,
+        resume_text: resumeText,
         ...(report ? { resume_analysis: report } : {})
       };
       if (claimedName) updates.name = claimedName;

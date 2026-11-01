@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -29,6 +29,7 @@ interface DatabaseSchema {
   deletionRequests?: DeletionRequest[];
   scheduledInterviews?: ScheduledInterview[];
   teachingProfiles?: TeachingProfile[];
+  stageAttempts?: StageAttempt[];
   questionBank?: BankState;
 }
 
@@ -133,6 +134,7 @@ class DB {
         if (!this.data.deletionRequests) this.data.deletionRequests = [];
         if (!this.data.scheduledInterviews) this.data.scheduledInterviews = [];
         if (!this.data.teachingProfiles) this.data.teachingProfiles = [];
+        if (!this.data.stageAttempts) this.data.stageAttempts = [];
       } catch (err) {
         // Never overwrite a store we could not read: set it aside so the data
         // can still be recovered, then start fresh.
@@ -488,6 +490,22 @@ class DB {
     return event;
   }
 
+  // Stage attempts - Tenant Scoped
+  getStageAttempts(schoolId: string, candidateId: string, stageKey?: StageKey): StageAttempt[] {
+    return (this.data.stageAttempts ?? []).filter(
+      a => a.school_id === schoolId && a.candidate_id === candidateId && (!stageKey || a.stage_key === stageKey)
+    );
+  }
+
+  saveStageAttempt(attempt: StageAttempt): StageAttempt {
+    const list = (this.data.stageAttempts ??= []);
+    const idx = list.findIndex(a => a.id === attempt.id);
+    if (idx >= 0) list[idx] = attempt;
+    else list.push(attempt);
+    this.save();
+    return attempt;
+  }
+
   // HR Policies - Tenant Scoped
   getHRPoliciesBySchool(schoolId: string): HRPolicyDocument[] {
     return this.data.hrPolicies.filter(p => p.school_id === schoolId);
@@ -588,6 +606,9 @@ class DB {
       }
       if (this.data.teachingProfiles) {
         this.data.teachingProfiles = this.data.teachingProfiles.filter(p => p.candidate_id !== candidateId);
+      }
+      if (this.data.stageAttempts) {
+        this.data.stageAttempts = this.data.stageAttempts.filter(a => a.candidate_id !== candidateId);
       }
       if (this.data.whatsappMessages) {
         this.data.whatsappMessages = this.data.whatsappMessages.filter(m => m.candidate_id !== candidateId);

@@ -11,6 +11,7 @@ import { logAiUsage } from './aiUsage';
 import { prepareMediaPart, scanMisconductAndRefusal } from './aiScoringEngine';
 import { calculateAuthenticityScore } from './proctoringEngine';
 import { findActivePack } from './ensurePack';
+import { ensureResumeText } from './cvText';
 import { SCORED_STAGE_KEYS } from './scoredStages';
 import {
   buildTextPrompt, buildVideoPrompt, parseTextReply, parseVideoReply, textFactorDefs, videoFactorDefs,
@@ -134,7 +135,8 @@ async function writeProfile(schoolId: string, candidateId: string): Promise<Teac
     const lessonPlan = lessonPlanText(written?.written_submission);
     const demoTranscript = demo?.transcript || '';
     const scenarioTranscript = scenario?.transcript || '';
-    const resumeText = candidate.resume_text || '';
+    // Candidates who uploaded their CV before it was kept as text get it read from the file now.
+    const resumeText = await ensureResumeText(candidate).catch(() => candidate.resume_text || '');
     const policyText = [policy?.transcript, policy?.written_submission].filter(Boolean).join('\n');
     const marks = parseMcqMarks(written?.written_submission);
     const mcqBlock = (written?.written_submission || '').split('--- LESSON PLAN ---')[0].replace(/^MCQ TEST\s*/, '').trim();
@@ -147,11 +149,11 @@ async function writeProfile(schoolId: string, candidateId: string): Promise<Teac
       board: school?.curriculum_guidelines?.board,
       qualification: candidate.qualification,
       experience: candidate.experience_band,
-      lessonPrompt: pack?.lesson_prompt,
+      lessonPrompt: written?.task_prompt || pack?.lesson_prompt,
       lessonPlan,
-      demoPrompt: pack?.demo_prompt,
+      demoPrompt: demo?.task_prompt || pack?.demo_prompt,
       demoTranscript,
-      scenarioPrompt: pack?.scenario_prompt,
+      scenarioPrompt: scenario?.task_prompt || pack?.scenario_prompt,
       scenarioTranscript,
       policyAcknowledgement: policyText,
       resumeText,
@@ -206,9 +208,9 @@ async function writeProfile(schoolId: string, candidateId: string): Promise<Teac
     const overall = computeOverall(factors, misconduct);
 
     const questions = [
-      { id: 'lesson', question: pack?.lesson_prompt || 'Lesson plan task' },
-      { id: 'demo', question: pack?.demo_prompt || 'Teaching demonstration task' },
-      { id: 'scenario', question: pack?.scenario_prompt || 'Classroom scenario' },
+      { id: 'lesson', question: written?.task_prompt || pack?.lesson_prompt || 'Lesson plan task' },
+      { id: 'demo', question: demo?.task_prompt || pack?.demo_prompt || 'Teaching demonstration task' },
+      { id: 'scenario', question: scenario?.task_prompt || pack?.scenario_prompt || 'Classroom scenario' },
     ];
     const submitted: Record<string, string> = { lesson: lessonPlan, demo: demoTranscript, scenario: scenarioTranscript };
 

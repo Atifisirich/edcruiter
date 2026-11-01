@@ -62,5 +62,6 @@ describe('buildProfilePdf', () => {
     const p = profile({ summary: 'x'.repeat(3000) });
     const bytes = await buildProfilePdf({ profile: p, candidate, schoolName: 'Green Valley School' });
     expect(bytes.length).toBeGreaterThan(1000);
-  });
+    // Slow on a busy machine (about six seconds), so it gets more than the default five.
+  }, 30_000);
 });

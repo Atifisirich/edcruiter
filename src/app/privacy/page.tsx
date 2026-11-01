@@ -46,6 +46,11 @@ export default function PrivacyPolicyPage() {
         <li>CV / resume files you upload</li>
         <li>Assessment answers, lesson plans, teaching demo video/audio, and scores</li>
         <li>Proctoring signals generated during a test (camera frames processed in the browser, integrity warnings)</li>
+        <li>
+          A photo of your face taken at the start of your application, and numbers measured from it, used only to
+          check that the same person takes every stage. A small picture is also kept if the face on camera does not
+          match. Only the school you applied to can see these, and they are deleted with your application.
+        </li>
         <li>Job applications and school hiring decisions</li>
       </ul>
       <h3>Technical data</h3>

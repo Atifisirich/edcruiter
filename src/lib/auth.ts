@@ -189,20 +189,27 @@ export async function requireCandidateOrStaff(candidateId: string): Promise<
   { kind: 'candidate'; schoolId: string } | { kind: 'staff'; ctx: StaffContext; schoolId: string }
 > {
   const candidateSession = await getCandidateSession();
+  const staff = await getStaffContext();
+
+  // A reviewer who has also opened this application as the candidate in the same
+  // browser is still a reviewer: school-only pages (the report) must not refuse them.
+  if (staff) {
+    const candidate = db.getCandidateByIdPublic(candidateId);
+    if (candidate && (staff.isSuperAdmin || staff.schoolId === candidate.school_id)) {
+      return { kind: 'staff', ctx: staff, schoolId: candidate.school_id };
+    }
+  }
+
   if (candidateSession?.cid === candidateId) {
     return { kind: 'candidate', schoolId: candidateSession.school_id };
   }
 
-  const staff = await getStaffContext();
   if (staff) {
     const candidate = db.getCandidateByIdPublic(candidateId);
     if (!candidate) {
       throw new AuthError('Candidate not found.', 403);
     }
-    if (!staff.isSuperAdmin && staff.schoolId !== candidate.school_id) {
-      throw new AuthError('That candidate belongs to another school.', 403);
-    }
-    return { kind: 'staff', ctx: staff, schoolId: candidate.school_id };
+    throw new AuthError('That candidate belongs to another school.', 403);
   }
 
   throw new AuthError('Sign in to continue.', 401);

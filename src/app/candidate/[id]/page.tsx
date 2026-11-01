@@ -14,6 +14,13 @@ import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
 import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
 import StageProgress from '@/components/candidate/StageProgress';
 import StageIntro from '@/components/candidate/StageIntro';
+import StageHub from '@/components/candidate/StageHub';
+import StageBriefing from '@/components/candidate/StageBriefing';
+import PracticeTest from '@/components/candidate/PracticeTest';
+import IdentityPhoto from '@/components/candidate/IdentityPhoto';
+import { stopAllMedia } from '@/lib/mediaRegistry';
+import { ageFromDob, dobProblem } from '@/lib/age';
+import { STAGE_ORDER } from '@/lib/candidateStageGuide';
 import type { TypingRaw } from '@/lib/answerBehaviour';
 import VideoRecorderUpload from '@/components/candidate/VideoRecorderUpload';
 import PDFResumeUploader from '@/components/candidate/PDFResumeUploader';
@@ -70,14 +77,32 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   const [activeStageKey, setActiveStageKey] = useState<StageKey>('identity_verification');
   const [loading, setLoading] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [showFullscreenModal, setShowFullscreenModal] = useState<boolean>(false);
 
   // Live AI Proctoring Telemetry State
   const [proctoringWarnings, setProctoringWarnings] = useState<number>(0);
   const [proctoringTrustScore, setProctoringTrustScore] = useState<number>(100);
   const [proctoringStatus, setProctoringStatus] = useState<string>('Clear & Verified');
   const [customQuestions, setCustomQuestions] = useState<QuestionnaireItem[]>([]);
-  const [assessmentPack, setAssessmentPack] = useState<AssessmentPack | null>(null);
+  // Which screen the candidate is on. Each stage is taken on its own: the list of
+  // stages, then a briefing, then the stage itself, then back to the list.
+  const [view, setView] = useState<'hub' | 'practice' | 'briefing' | 'stage'>('hub');
+  const [hubNotice, setHubNotice] = useState('');
+  const [attemptInfo, setAttemptInfo] = useState<{ id: string; number: number; allowed: number; resumed: boolean } | null>(null);
+  // The questions and task wording for the go in progress. They arrive when the stage is
+  // opened, not when the page loads, and are different if a stage was left and restarted.
+  const [attemptContent, setAttemptContent] = useState<{
+    mcqs?: { id: string; question_text: string; options: string[]; category: 'subject' | 'pedagogy' }[];
+    prompt?: string;
+  } | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoLocked, setPhotoLocked] = useState(false);
+  // Read by handlers that were created before the stage changed.
+  const stageKeyRef = useRef<StageKey>('identity_verification');
+  const attemptIdRef = useRef('');
+  // The moment fullscreen may drop for a reason that is not the candidate's doing (a browser prompt).
+  const fsGraceUntilRef = useRef(0);
   const [schoolPolicies, setSchoolPolicies] = useState<HRPolicyDocument[]>([]);
   const [scheduledInterviews, setScheduledInterviews] = useState<ScheduledInterview[]>([]);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -86,6 +111,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   const [schoolSubjects, setSchoolSubjects] = useState<string[]>([]);
   const [schoolSegments, setSchoolSegments] = useState<string[]>([]);
   const [packState, setPackState] = useState<'checking' | 'ready' | 'preparing' | 'failed'>('checking');
+  // The subject and grades the test was last confirmed ready for.
+  const [readyFor, setReadyFor] = useState('');
   const [packError, setPackError] = useState('');
   // Shown inside the page. A browser pop-up (alert) takes some browsers out of
   // fullscreen, which the proctoring then counts against the candidate.
@@ -145,25 +172,14 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   const [hrCustomStatement, setHrCustomStatement] = useState<string>('');
 
   const [submitting, setSubmitting] = useState(false);
-  const [stageSubmitted, setStageSubmitted] = useState<boolean>(false);
   const [allCompleted, setAllCompleted] = useState<boolean>(false);
   const [showTabViolationModal, setShowTabViolationModal] = useState<boolean>(false);
 
-  // Automatic Age Calculation from DOB
+  // Age is worked out from the date of birth, so it shows on screen as soon as the date
+  // is chosen, and again whenever the page is opened. It is never typed.
+  const ageYears = ageFromDob(identityData.dob);
   const handleDobChange = (newDob: string) => {
-    if (!newDob) {
-      setIdentityData(prev => ({ ...prev, dob: '', age: '' }));
-      return;
-    }
-    const birthDate = new Date(newDob);
-    const today = new Date();
-    let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-      calculatedAge--;
-    }
-    const ageStr = calculatedAge > 0 ? calculatedAge.toString() : '0';
-    setIdentityData(prev => ({ ...prev, dob: newDob, age: ageStr }));
+    setIdentityData(prev => ({ ...prev, dob: newDob, age: ageFromDob(newDob)?.toString() ?? '' }));
   };
 
   useEffect(() => {
@@ -174,9 +190,10 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   // not been written yet, the server writes it and this keeps asking until it
   // is ready, so the candidate waits on a clear screen instead of getting two
   // stray questions or another subject's paper.
+  const packKey = candidate ? `${candidate.applied_subject}|${candidate.applied_segment}` : '';
   useEffect(() => {
     if (!candidate || loadError) return;
-    if (assessmentPack && pickActivePack([assessmentPack], candidate.applied_subject, candidate.applied_segment)) return;
+    if (readyFor === packKey) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = async () => {
@@ -185,8 +202,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         const data = await res.json();
         if (cancelled) return;
         if (data.state === 'ready') {
-          setAssessmentPack(data.pack);
           setPackState('ready');
+          setReadyFor(packKey);
           return;
         }
         if (data.state === 'failed') {
@@ -205,18 +222,51 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [candidate?.id, candidate?.applied_subject, candidate?.applied_segment, assessmentPack, loadError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate?.id, packKey, readyFor, loadError]);
+  const packReady = readyFor === packKey && packKey !== '';
 
+  // Fullscreen is left once everything is done, and the camera is switched off
+  // whenever the candidate is on the list of stages, not in a stage.
   useEffect(() => {
     if (allCompleted && document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
   }, [allCompleted]);
+  useEffect(() => {
+    if (allCompleted || view === 'hub') stopAllMedia();
+  }, [allCompleted, view]);
+
+  // A stage the candidate is sitting right now (stage 1 is a form and is not watched).
+  const proctored = view === 'stage' && activeStageKey !== 'identity_verification';
+
+  // Tell the server this stage is still open. A page that goes quiet for a few
+  // minutes counts as left, and opening the stage again then gives new questions.
+  useEffect(() => {
+    if (view !== 'stage' || !attemptInfo) return;
+    const body = JSON.stringify({ attempt_id: attemptInfo.id });
+    const ping = () => { fetch('/api/stage-attempt/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {}); };
+    const timer = setInterval(ping, 20_000);
+    const onHide = () => {
+      try { navigator.sendBeacon('/api/stage-attempt/ping', new Blob([body], { type: 'application/json' })); } catch { /* best effort */ }
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => { clearInterval(timer); window.removeEventListener('pagehide', onHide); };
+  }, [view, attemptInfo]);
+
+  // A refresh or a dropped connection should not lose the answers typed so far.
+  useEffect(() => {
+    if (view !== 'stage' || !attemptInfo || activeStageKey !== 'written_theory') return;
+    const timer = setTimeout(() => {
+      try { sessionStorage.setItem(`edc-draft-${attemptInfo.id}`, JSON.stringify({ mcq: mcqAnswers, lesson: writtenTheoryResponse })); } catch { /* storage may be blocked */ }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [view, attemptInfo, activeStageKey, mcqAnswers, writtenTheoryResponse]);
 
   // Visibility & Fullscreen Telemetry & Active Alert Modal
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && activeStageKey !== 'identity_verification') {
+      if (document.hidden && proctored) {
         setProctoringWarnings(prev => prev + 1);
         setProctoringTrustScore(prev => Math.max(10, prev - 15));
         setProctoringStatus('Tab Switch Detected');
@@ -228,8 +278,11 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     const handleFullscreenChange = () => {
       const isFS = !!document.fullscreenElement;
       setIsFullscreen(isFS);
-      if (!isFS && activeStageKey !== 'identity_verification' && !allCompleted) {
+      if (!isFS && proctored && !allCompleted) {
         setShowTabViolationModal(true);
+        // The browser can drop fullscreen by itself when it shows a permission question. That is
+        // not the candidate's doing, so it is not written against them; they are just asked to return.
+        if (Date.now() < fsGraceUntilRef.current) return;
         logProctoringEvent('FULLSCREEN_EXIT', 'Candidate exited fullscreen mode during proctored exam.');
       }
     };
@@ -240,14 +293,14 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [activeStageKey, allCompleted]);
+  }, [proctored, allCompleted]);
 
   // Overlays and other windows. A floating app, a screen-share overlay or a
   // chat window on top of the test does not change the tab, so the tab-switch
   // check never sees it, but the page loses keyboard focus. Check for that, and
   // for a second screen, while a proctored stage is open.
   useEffect(() => {
-    if (activeStageKey === 'identity_verification' || allCompleted) return;
+    if (!proctored || allCompleted) return;
     let lastLogged = 0;
     const reportFocusLoss = () => {
       if (document.hidden || document.hasFocus()) return;
@@ -269,7 +322,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       clearInterval(poll);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStageKey, allCompleted]);
+  }, [proctored, allCompleted]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -313,11 +366,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
         setCandidate(cData.candidate);
         setStageResults(cData.stageResults || []);
+        setPhotoUrl(cData.candidate.face_reference?.photo_url || '');
+        setPhotoLocked(Array.isArray(cData.stageAttempts) && cData.stageAttempts.length > 0);
 
         setIdentityData({
           name: cData.candidate.name || '',
           dob: cData.candidate.dob || '',
-          age: cData.candidate.age?.toString() || '',
+          age: ageFromDob(cData.candidate.dob)?.toString() ?? '',
           phone: cData.candidate.phone || '',
           // Left blank when not already on file, not defaulted to a specific
           // plausible-looking choice (a fresher candidate silently
@@ -354,6 +409,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         } else if (completedKeys.length >= SLOKA_DEFAULT_STAGES.length) {
           setAllCompleted(true);
         }
+        // Whatever stage they were on when they left, they come back to the list.
+        setView('hub');
       } else {
         // A genuine failure to load (bad link, deleted record, backend
         // error) used to be invisible — this branch fabricated a complete
@@ -378,7 +435,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           candidate_id: candidateId,
-          stage_key: activeStageKey,
+          // A ref, because the camera's callbacks were made when an earlier stage was open.
+          stage_key: stageKeyRef.current,
           event_type: type,
           details: description,
         })
@@ -435,6 +493,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     if (stageKey === 'identity_verification') {
       if (!identityData.name.trim()) return fail('Please fill in your Full Legal Name before proceeding.');
       if (!identityData.phone.trim()) return fail('Please provide your WhatsApp / Contact Phone number.');
+      const dobIssue = dobProblem(identityData.dob);
+      if (dobIssue) return fail(dobIssue);
       if (!identityData.qualification) return fail('Please choose your highest qualification.');
       if (identityData.qualification === OTHER_QUALIFICATION && !otherQualification.trim()) {
         return fail('Please type your qualification.');
@@ -442,6 +502,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       if (!resumePdfUrl && !candidate?.resume_url) {
         return fail('Please upload your CV as a PDF. It must be a proper CV with your name, qualifications and experience.');
       }
+      if (!photoUrl) return fail('Please take your photo before you continue. The next stages are checked against it.');
     }
 
     setSubmitting(true);
@@ -457,7 +518,6 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             qualification: identityData.qualification === OTHER_QUALIFICATION ? otherQualification.trim() : identityData.qualification,
             name: identityData.name.trim(),
             phone: identityData.phone.trim(),
-            age: identityData.age ? parseInt(identityData.age) : undefined,
             resume_url: effectiveResume
           },
           written_submission: `Candidate Profile Saved & Dossier Verified. Name: ${identityData.name}, Subject: ${identityData.applied_subject}, Qualification: ${identityData.qualification}, Experience: ${identityData.experience_band}. Resume: ${effectiveResume}`
@@ -477,11 +537,12 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       } else if (stageKey === 'written_theory') {
         const textToSubmit = customResponseText !== undefined ? customResponseText : writtenTheoryResponse;
         const words = countWords(textToSubmit);
-        if (!assessmentPack) return fail('Your test is still being prepared. Wait a moment, then submit.');
-        const unanswered = assessmentPack.mcqs.filter((q) => !mcqAnswers[q.id]);
+        const questions = attemptContent?.mcqs;
+        if (!questions) return fail('Your questions did not load. Go back to your list of stages and open this stage again.');
+        const unanswered = questions.filter((q) => !mcqAnswers[q.id]);
         if (unanswered.length > 0) {
           setHighlightUnanswered(true);
-          const numbers = unanswered.map((q) => assessmentPack.mcqs.findIndex((m) => m.id === q.id) + 1);
+          const numbers = unanswered.map((q) => questions.findIndex((m) => m.id === q.id) + 1);
           const shown = numbers.slice(0, 8).join(', ') + (numbers.length > 8 ? ` and ${numbers.length - 8} more` : '');
           return fail(`Please answer every question in Part A. Still open: ${shown}.`);
         }
@@ -547,19 +608,30 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
       if (returnedResult) {
         setStageResults(prev => [...prev.filter(r => r.stage_key !== stageKey), returnedResult]);
-        setStageSubmitted(true);
-        setTimeout(() => setStageSubmitted(false), 2000);
+        if (attemptInfo) { try { sessionStorage.removeItem(`edc-draft-${attemptInfo.id}`); } catch { /* ignore */ } }
+        attemptIdRef.current = '';
+        setAttemptInfo(null);
+        setAttemptContent(null);
 
-        if (stageKey === 'identity_verification') {
-          setShowFullscreenModal(true);
+        const currentStageIndex = SLOKA_DEFAULT_STAGES.findIndex(s => s.key === stageKey);
+        const nextStage = SLOKA_DEFAULT_STAGES[currentStageIndex + 1];
+        if (nextStage) {
+          const number = currentStageIndex + 1;
+          setHubNotice(number === 1
+            ? 'Stage 1 saved. Take Stage 2 whenever you are ready.'
+            : `Stage ${number} saved. ${number === 4 ? 'One short stage left.' : 'You can carry on now or come back later.'}`);
+          setActiveStageKey(nextStage.key);
+          setView('hub');
+          window.scrollTo({ top: 0 });
         } else {
-          const currentStageIndex = SLOKA_DEFAULT_STAGES.findIndex(s => s.key === stageKey);
-          if (currentStageIndex < SLOKA_DEFAULT_STAGES.length - 1) {
-            setActiveStageKey(SLOKA_DEFAULT_STAGES[currentStageIndex + 1].key);
-          } else {
-            setAllCompleted(true);
-          }
+          setAllCompleted(true);
         }
+      } else if (res.status === 409 && data.code === 'no_open_attempt') {
+        attemptIdRef.current = '';
+        setAttemptInfo(null);
+        setAttemptContent(null);
+        setHubNotice('That stage was closed because it was left for a while. Open it again to get a fresh set of questions.');
+        setView('hub');
       } else {
         throw new Error(data.error || 'Failed to record stage result');
       }
@@ -570,12 +642,67 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     }
   };
 
-  const handleEnterFullscreenAndBeginStage2 = () => {
-    setShowFullscreenModal(false);
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+  // Opens a timed stage: the server hands over this go's questions (the same ones if
+  // the page was only refreshed, new ones if the stage was left and restarted).
+  const beginStage = async (key: StageKey) => {
+    setStartError('');
+    setStarting(true);
+    try {
+      const res = await fetch('/api/stage-attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_key: key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStartError(data.error || 'We could not open this stage. Please try again.');
+        return;
+      }
+
+      setStageError('');
+      setHighlightUnanswered(false);
+      let restored: { mcq?: Record<string, string>; lesson?: string } = {};
+      if (data.attempt.resumed) {
+        try { restored = JSON.parse(sessionStorage.getItem(`edc-draft-${data.attempt.id}`) || '{}'); } catch { restored = {}; }
+      } else {
+        mcqFirstAnswerRef.current = {};
+        mcqChangesRef.current = 0;
+        typingRef.current = { chars_typed: 0, deletions: 0, pauses_over_4s: 0, active_seconds: 0, touch: false };
+      }
+      setMcqAnswers(restored.mcq || {});
+      setWrittenTheoryResponse(restored.lesson || '');
+      if (!data.attempt.resumed) {
+        setMicroDemoVideoUrl('');
+        setSituationalVideoUrl('');
+        setSituationalNotes('');
+        setHrNoticeConfirmed(false);
+        setHrSafeguardingConfirmed(false);
+      }
+
+      stageKeyRef.current = key;
+      attemptIdRef.current = data.attempt.id;
+      // Entering fullscreen and the first camera use can each shake the browser; do not count that.
+      fsGraceUntilRef.current = Date.now() + 8000;
+      setAttemptInfo(data.attempt);
+      setAttemptContent(data.content);
+      setActiveStageKey(key);
+      setView('stage');
+      window.scrollTo({ top: 0 });
+    } catch {
+      setStartError('We could not reach the server. Check your connection and try again.');
+    } finally {
+      setStarting(false);
     }
-    setActiveStageKey('written_theory');
+  };
+
+  const openStage = (key: StageKey) => {
+    setStageError('');
+    setStartError('');
+    setHubNotice('');
+    setActiveStageKey(key);
+    stageKeyRef.current = key;
+    setView(key === 'identity_verification' ? 'stage' : 'briefing');
+    window.scrollTo({ top: 0 });
   };
 
   if (loading) {
@@ -598,8 +725,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   }
 
   const currentStageConfig = SLOKA_DEFAULT_STAGES.find(s => s.key === activeStageKey);
-  const mcqAnswered = assessmentPack ? assessmentPack.mcqs.filter((q) => mcqAnswers[q.id]).length : 0;
-  const mcqTotal = assessmentPack ? assessmentPack.mcqs.length : 0;
+  const mcqAnswered = attemptContent?.mcqs ? attemptContent.mcqs.filter((q) => mcqAnswers[q.id]).length : 0;
+  const mcqTotal = attemptContent?.mcqs ? attemptContent.mcqs.length : 0;
   const stageErrorBox = stageError ? (
     <div id="stage-error" role="alert" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-sm text-rose-900 font-semibold flex items-start gap-2.5">
       <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
@@ -700,17 +827,10 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         )}
 
         <StageProgress
-          activeKey={allCompleted ? '' : activeStageKey}
+          activeKey={allCompleted ? '' : (STAGE_ORDER.find((k) => !stageResults.some((r) => r.stage_key === k)) ?? activeStageKey)}
           completedKeys={allCompleted ? SLOKA_DEFAULT_STAGES.map((st) => st.key) : stageResults.map((r) => r.stage_key)}
-          onSelect={(key) => { setStageError(''); setActiveStageKey(key); }}
+          onSelect={() => { if (!proctored) { setStageError(''); setView('hub'); } }}
         />
-
-        {/* Submission Toast */}
-        {stageSubmitted && (
-          <div className="p-4 bg-indigo-50 text-indigo-800 rounded-2xl border border-indigo-200 text-xs font-bold flex items-center gap-3 shadow-lg">
-            <CheckCircle2 className="w-5 h-5 text-indigo-600" /> Stage saved. Moving you forward…
-          </div>
-        )}
 
         {/* STAGE 1: Full-Width Layout (No unnecessary right-side box) */}
         {allCompleted ? (
@@ -747,9 +867,39 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               </div>
             </div>
           </div>
+        ) : view === 'hub' ? (
+          <StageHub
+            doneKeys={stageResults.map((r) => r.stage_key)}
+            candidateName={candidate.name || identityData.name}
+            schoolName={schoolName}
+            applicationId={candidate.invite_code}
+            testReady={packReady}
+            notice={hubNotice || undefined}
+            onStart={(key) => openStage(key as StageKey)}
+            onPractice={() => { setHubNotice(''); setView('practice'); window.scrollTo({ top: 0 }); }}
+          />
+        ) : view === 'practice' ? (
+          <PracticeTest onBack={() => { setView('hub'); window.scrollTo({ top: 0 }); }} />
+        ) : view === 'briefing' ? (
+          <StageBriefing
+            key={activeStageKey}
+            stageKey={activeStageKey}
+            number={currentStageConfig?.order ?? 2}
+            applicationId={candidate.invite_code}
+            faceReference={candidate.face_reference}
+            testReady={packReady}
+            starting={starting}
+            startError={startError}
+            onStart={() => beginStage(activeStageKey)}
+            onBack={() => { setStartError(''); setView('hub'); window.scrollTo({ top: 0 }); }}
+          />
         ) : activeStageKey === 'identity_verification' ? (
           <div className="max-w-4xl mx-auto space-y-6">
             
+            <button type="button" onClick={() => { setStageError(''); setView('hub'); }} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer">
+              <ArrowRight className="w-3.5 h-3.5 rotate-180" /> Back to my stages
+            </button>
+
             <StageIntro stageKey="identity_verification" number={1} />
 
             {typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && (
@@ -758,13 +908,6 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 Stages 2 to 5 work best on a laptop or desktop with a camera. Some checks, like fullscreen, are not available on phones. If you can, open your link on a computer before you continue.
               </div>
             )}
-
-            <ul className="space-y-2 px-1 text-sm text-slate-700">
-              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>Use a <strong>laptop or desktop</strong> with a camera and microphone, in a quiet room.</span></li>
-              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>The whole application takes about <strong>60 to 75 minutes</strong>. Take a break between stages. Each one is saved when you submit it.</span></li>
-              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>To come back later, tap the link we sent you, or sign in with your phone or email and your application ID (shown at the top of this page).</span></li>
-              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>People at the school make every decision. AI only helps them review.</span></li>
-            </ul>
 
             {/* Stage 1 Form Card */}
             <div className="glass-card p-6 sm:p-8 rounded-3xl border border-slate-200 bg-white space-y-6 shadow-xl">
@@ -790,17 +933,17 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     <input
                       type="date"
                       value={identityData.dob}
+                      max={new Date().toISOString().slice(0, 10)}
                       onChange={e => handleDobChange(e.target.value)}
                       className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none"
                     />
-                    <input
-                      type="number"
-                      placeholder="Age"
-                      value={identityData.age}
-                      readOnly
-                      aria-label="Age"
-                      className="w-24 p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-bold text-center focus:outline-none cursor-not-allowed"
-                    />
+                    <div
+                      aria-live="polite"
+                      className="shrink-0 min-w-24 px-3 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-900 flex flex-col items-center justify-center leading-tight"
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Age</span>
+                      <span className="text-base font-black">{ageYears !== null ? `${ageYears} yrs` : '—'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -968,6 +1111,21 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 />
               </div>
 
+              <div className="pt-2 border-t border-slate-200 space-y-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Your photo <span className="text-indigo-600">*</span></h3>
+                  <p className="text-xs text-slate-500 mt-0.5">We take one photo now and check it is you in the next stages. Allow the camera and microphone when your browser asks.</p>
+                </div>
+                <IdentityPhoto
+                  existingUrl={photoUrl || undefined}
+                  locked={photoLocked}
+                  onSaved={(url, measured) => {
+                    setPhotoUrl(url);
+                    setCandidate((prev) => prev ? ({ ...prev, face_reference: { photo_url: url, descriptors: [], captured_at: new Date().toISOString(), measured } }) : prev);
+                  }}
+                />
+              </div>
+
               {stageErrorBox}
                   <div className="pt-4 flex sm:justify-end">
                 <button
@@ -1004,25 +1162,13 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               {/* STAGE 2: Written / Theory */}
               {activeStageKey === 'written_theory' && (
                 <div className="space-y-6">
-                  {!assessmentPack ? (
+                  {!attemptContent?.mcqs ? (
                     <div className="glass-card p-6 rounded-3xl border border-slate-200 bg-white text-center space-y-3">
-                      {packState === 'failed' ? (
-                        <>
-                          <AlertTriangle className="w-7 h-7 text-amber-600 mx-auto" />
-                          <h3 className="text-sm font-black text-slate-900">We could not prepare your test yet</h3>
-                          <p className="text-xs text-slate-600">
-                            {packError || 'Something went wrong while writing your test.'} We are trying again automatically. You can also close this page and come back in a few minutes with your link.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <Loader2 className="w-7 h-7 text-indigo-600 animate-spin mx-auto" />
-                          <h3 className="text-sm font-black text-slate-900">Preparing your {candidate.applied_subject} test</h3>
-                          <p className="text-xs text-slate-600">
-                            Your questions are written for {candidate.applied_subject} at {candidate.applied_segment}. This takes about a minute the first time. Please keep this page open.
-                          </p>
-                        </>
-                      )}
+                      <AlertTriangle className="w-7 h-7 text-amber-600 mx-auto" />
+                      <h3 className="text-sm font-black text-slate-900">Your questions did not load</h3>
+                      <p className="text-xs text-slate-600">
+                        {packError || 'Go back to your list of stages and open this stage again.'}
+                      </p>
                     </div>
                   ) : (
                     <div className="glass-card p-5 rounded-3xl border border-slate-200 bg-white space-y-4">
@@ -1040,7 +1186,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                           <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${mcqTotal ? (mcqAnswered / mcqTotal) * 100 : 0}%` }} />
                         </div>
                       </div>
-                      {assessmentPack.mcqs.map((q, idx) => (
+                      {attemptContent.mcqs.map((q, idx) => (
                         <fieldset key={q.id} className={`space-y-2.5 pt-4 ${idx > 0 ? 'border-t border-slate-100' : ''} ${highlightUnanswered && !mcqAnswers[q.id] ? 'rounded-2xl ring-2 ring-rose-300 bg-rose-50/50 px-3 pb-3' : ''}`}>
                           <legend className="text-sm font-bold text-slate-900 leading-snug">
                             {idx + 1}. {q.question_text}
@@ -1075,7 +1221,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   <StructuredLessonPlanEditor
                     subject={candidate.applied_subject || identityData.applied_subject || 'Physics'}
                     segment={candidate.applied_segment || identityData.applied_segment || 'Secondary (Grades 9-10)'}
-                    questionPrompt={assessmentPack?.lesson_prompt || getDynamicQuestion('written_theory')?.question_text}
+                    questionPrompt={attemptContent?.prompt || getDynamicQuestion('written_theory')?.question_text}
                     rubricHint={getDynamicQuestion('written_theory')?.rubric_hint}
                     initialValue={writtenTheoryResponse}
                     onChange={(compiled) => setWrittenTheoryResponse(compiled)}
@@ -1087,7 +1233,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     <button
                       type="button"
                       onClick={() => handleSubmitStage('written_theory', writtenTheoryResponse)}
-                      disabled={submitting || !assessmentPack}
+                      disabled={submitting || !attemptContent?.mcqs}
                       className="brand-primary-btn w-full sm:w-auto justify-center px-8 py-3.5 rounded-2xl font-bold text-sm shadow-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submitting ? (
@@ -1114,7 +1260,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                       Your topic · {candidate.applied_subject || 'Subject'}
                     </span>
                     <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">
-                      {assessmentPack?.demo_prompt || getDynamicQuestion('micro_teaching_demo')?.question_text || `Deliver a 5-minute micro-teaching demo introducing a core concept in ${candidate.applied_subject}.`}
+                      {attemptContent?.prompt || getDynamicQuestion('micro_teaching_demo')?.question_text || `Deliver a 5-minute micro-teaching demo introducing a core concept in ${candidate.applied_subject}.`}
                     </p>
                   </div>
 
@@ -1158,7 +1304,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                       The situation
                     </span>
                     <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">
-                      {assessmentPack?.scenario_prompt || getDynamicQuestion('situational_scenario')?.question_text || 'Explain your 3-step de-escalation protocol when a student repeatedly disrupts class and refuses to engage.'}
+                      {attemptContent?.prompt || getDynamicQuestion('situational_scenario')?.question_text || 'Explain your 3-step de-escalation protocol when a student repeatedly disrupts class and refuses to engage.'}
                     </p>
                   </div>
 
@@ -1288,6 +1434,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               
               <div className="lg:sticky lg:top-4 space-y-3">
                 <LiveProctoringWebcam
+                  key={attemptInfo?.id || activeStageKey}
                   stageKey={activeStageKey}
                   schoolId={candidate.school_id}
                   candidateId={candidate.id}
@@ -1341,54 +1488,6 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           </div>
         </div>
       )}
-
-      {/* Interstitial Fullscreen Enforcement Modal */}
-      {showFullscreenModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 overflow-y-auto">
-          <div className="max-w-3xl w-full bg-white p-8 sm:p-10 rounded-[28px] border border-slate-200 shadow-2xl space-y-6 my-6">
-            <div className="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto border border-indigo-200">
-              <Monitor className="w-8 h-8" />
-            </div>
-            <div className="text-center space-y-2">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600">Before you start</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900">Your five-stage teacher test</h3>
-              <p className="text-sm text-slate-600 leading-relaxed max-w-xl mx-auto">
-                Profile is saved. The next four stages take about 45–60 minutes, in fullscreen with your camera on. You can take a break between stages — each one is saved when you submit it.
-              </p>
-            </div>
-            {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
-            <ol className="grid sm:grid-cols-2 gap-3 text-left text-xs">
-              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 2 — Subject test</strong> Subject questions, then a lesson plan. You will not see marks.</li>
-              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 3 — Teaching demo</strong> One minute to prepare. Recording starts on its own. Speak to the camera as if it is a class.</li>
-              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 4 — Classroom scenario</strong> Same live-camera rule. Answer the situation out loud.</li>
-              <li className="p-4 rounded-2xl bg-slate-50 border border-slate-100"><strong className="block text-slate-900">Stage 5 — School policies</strong> Confirm this school’s notice, hours, and safeguarding. This stage is not scored.</li>
-            </ol>
-            <div className="p-5 bg-indigo-50 rounded-2xl border border-indigo-100 text-left text-xs space-y-2">
-              <div className="flex items-center gap-2 text-indigo-800 font-bold">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Rules while the camera is on</span>
-              </div>
-              <ul className="list-disc list-inside text-slate-700 space-y-1.5 leading-relaxed">
-                <li>Stay in fullscreen. Do not switch tabs or open another window.</li>
-                <li>Keep your face clearly in the frame. Sit in a quiet, well-lit room.</li>
-                <li>Put phones, notes, and extra screens away. Do not read from another device.</li>
-                <li>No other person should be in the room or speaking off-camera.</li>
-                <li>Use a laptop or desktop with a working webcam and microphone. Headphones are fine.</li>
-                <li>Leaving the test or covering the camera is logged on your report.</li>
-              </ul>
-            </div>
-            <button
-              type="button"
-              onClick={handleEnterFullscreenAndBeginStage2}
-              className="w-full brand-primary-btn py-4 rounded-2xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>I understand — start the proctored test</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

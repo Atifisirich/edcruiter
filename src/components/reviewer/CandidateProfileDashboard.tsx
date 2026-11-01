@@ -5,8 +5,12 @@ import {
   ArrowLeft, Check, CheckCircle2, Clock, Copy, Download, ExternalLink,
   FileText, Loader2, ShieldAlert, Sparkles, Video, X
 } from 'lucide-react';
-import { Candidate, EvaluationRecord, ProctoringEvent, StageResult } from '@/lib/types';
-import { SLOKA_SCHOOL_ID, SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
+import { Candidate, EvaluationRecord, ProctoringEvent, StageAttempt, StageResult } from '@/lib/types';
+import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
+import { ageFromDob } from '@/lib/age';
+import { candidateState } from '@/lib/candidateProgress';
+import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
+import HiringDecision from './HiringDecision';
 import { isScoredStage } from '@/lib/scoredStages';
 import { cleanResumeReport } from '@/lib/reportText';
 import TeachingProfilePanel from './TeachingProfilePanel';
@@ -54,13 +58,7 @@ export default function CandidateProfileDashboard({
   const [evaluations, setEvaluations] = useState<EvaluationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [rmNotes, setRmNotes] = useState('');
-  const [ihNotes, setIhNotes] = useState('');
-  const [cooNotes, setCooNotes] = useState('');
-  const [savingClearance, setSavingClearance] = useState(false);
-  const [schoolRejectReason, setSchoolRejectReason] = useState('');
-  const [candidateRejectReason, setCandidateRejectReason] = useState('');
-  const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [attempts, setAttempts] = useState<StageAttempt[]>([]);
 
   useEffect(() => {
     if (isOpen && candidateId) loadCandidateData();
@@ -69,21 +67,20 @@ export default function CandidateProfileDashboard({
   const loadCandidateData = async () => {
     setLoading(true);
     try {
-      const candRes = await fetch(`/api/candidates/${candidateId}?school_id=${SLOKA_SCHOOL_ID}`);
+      const candRes = await fetch(`/api/candidates/${candidateId}`);
       const candData = await candRes.json();
       if (candData.candidate) {
         setCandidate(candData.candidate);
         setStageResults(candData.stageResults || []);
         setProctoringEvents(candData.proctoringEvents || []);
         setEvaluations(candData.evaluations || []);
-        if (candData.candidate.rm_clearance?.notes) setRmNotes(candData.candidate.rm_clearance.notes);
-        if (candData.candidate.ih_clearance?.notes) setIhNotes(candData.candidate.ih_clearance.notes);
-        if (candData.candidate.coo_clearance?.notes) setCooNotes(candData.candidate.coo_clearance.notes);
+        setAttempts(candData.stageAttempts || []);
       } else {
         setCandidate(null);
         setStageResults([]);
         setProctoringEvents([]);
         setEvaluations([]);
+        setAttempts([]);
       }
     } catch (err) {
       console.error('Failed to load candidate profile:', err);
@@ -101,106 +98,6 @@ export default function CandidateProfileDashboard({
     navigator.clipboard.writeText(`Code: ${code}\nLink: ${testUrl}`);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const handleUpdateClearance = async (role: 'rm' | 'ih' | 'coo', status: 'cleared' | 'rejected' | 'hold') => {
-    if (!candidate) return;
-    const notes = role === 'rm' ? rmNotes : role === 'ih' ? ihNotes : cooNotes;
-    if (status === 'rejected' && !notes.trim()) {
-      alert('Please enter a rejection reason before rejecting.');
-      return;
-    }
-    setSavingClearance(true);
-    try {
-      const updates: Record<string, unknown> = {
-        [`${role}_clearance`]: {
-          role,
-          reviewer_name: role === 'rm' ? 'Head of Department' : role === 'ih' ? 'Principal' : 'Management Board',
-          status,
-          notes: notes || `${role.toUpperCase()} updated to ${status}.`,
-          rating: 5,
-          completed_at: new Date().toISOString()
-        },
-        status: status === 'cleared' && role === 'coo' ? 'hired' : status === 'rejected' ? 'rejected' : candidate.status
-      };
-      if (status === 'rejected') {
-        updates.rejected_by_school_at = new Date().toISOString();
-        updates.rejected_by_school_reason = notes.trim();
-      }
-      if (status === 'cleared' && role === 'coo') {
-        updates.selected_at = new Date().toISOString();
-        updates.offer_letter_sent_at = new Date().toISOString();
-      }
-      const res = await fetch(`/api/candidates/${candidate.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          school_id: SLOKA_SCHOOL_ID,
-          updates
-        })
-      });
-      const data = await res.json();
-      if (data.candidate) {
-        setCandidate(data.candidate);
-        onCandidateUpdated?.(data.candidate);
-      }
-    } catch {
-      alert('Failed to update clearance');
-    } finally {
-      setSavingClearance(false);
-    }
-  };
-
-  const recordOutcome = async (kind: 'selected' | 'offer' | 'school_reject' | 'candidate_reject') => {
-    if (!candidate) return;
-    if (kind === 'school_reject' && !schoolRejectReason.trim()) {
-      alert('Enter why the school is rejecting this teacher.');
-      return;
-    }
-    if (kind === 'candidate_reject' && !candidateRejectReason.trim()) {
-      alert('Enter why the candidate declined (required).');
-      return;
-    }
-    setOutcomeBusy(true);
-    try {
-      const now = new Date().toISOString();
-      const updates: Record<string, unknown> = {};
-      if (kind === 'selected') {
-        updates.status = 'hired';
-        updates.selected_at = now;
-        updates.shortlist_status = 'shortlisted';
-      }
-      if (kind === 'offer') {
-        updates.offer_letter_sent_at = now;
-        updates.selected_at = candidate.selected_at || now;
-        updates.status = 'hired';
-      }
-      if (kind === 'school_reject') {
-        updates.status = 'rejected';
-        updates.rejected_by_school_at = now;
-        updates.rejected_by_school_reason = schoolRejectReason.trim();
-        updates.shortlist_status = 'rejected';
-      }
-      if (kind === 'candidate_reject') {
-        updates.rejected_by_candidate_at = now;
-        updates.rejected_by_candidate_reason = candidateRejectReason.trim();
-        updates.status = 'rejected';
-      }
-      const res = await fetch(`/api/candidates/${candidate.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ school_id: candidate.school_id || SLOKA_SCHOOL_ID, updates })
-      });
-      const data = await res.json();
-      if (data.candidate) {
-        setCandidate(data.candidate);
-        onCandidateUpdated?.(data.candidate);
-        setSchoolRejectReason('');
-        setCandidateRejectReason('');
-      }
-    } finally {
-      setOutcomeBusy(false);
-    }
   };
 
   // Each point once: the summary, the mismatches and the red flags used to repeat one another.
@@ -237,7 +134,7 @@ export default function CandidateProfileDashboard({
           </div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
-              {candidate?.status?.replace('_', ' ') || 'In progress'}
+              {candidate ? candidateState({ ...candidate, stages_completed: stageResults.length }).label : 'In progress'}
             </span>
             <button
               type="button"
@@ -294,6 +191,11 @@ export default function CandidateProfileDashboard({
 
             <TeachingProfilePanel candidateId={candidateId} scoredStagesDone={completedScored >= 3} />
 
+            <HiringDecision
+              candidate={candidate}
+              onChanged={(next) => { setCandidate(next); onCandidateUpdated?.(next); }}
+            />
+
             {(usedDeterministic || scoredWithoutAi.length > 0) && (
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs space-y-1">
                 <p className="font-bold flex items-center gap-1.5">
@@ -320,62 +222,13 @@ export default function CandidateProfileDashboard({
             )}
 
             <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-              <div>
-                <h2 className="text-sm font-black text-slate-900">Hiring outcome actions</h2>
-                <p className="text-xs text-slate-500">Marks feed the dashboard timelines (today / 30 days / year / till date). Rejections require a reason.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={outcomeBusy} onClick={() => recordOutcome('selected')} className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">
-                  Mark selected
-                </button>
-                <button type="button" disabled={outcomeBusy} onClick={() => recordOutcome('offer')} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">
-                  Offer letter sent
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2 p-3 rounded-2xl border border-rose-100 bg-rose-50/50">
-                  <p className="text-xs font-bold text-rose-900">Rejected by school — why?</p>
-                  <textarea
-                    value={schoolRejectReason}
-                    onChange={(e) => setSchoolRejectReason(e.target.value)}
-                    rows={2}
-                    className="w-full text-xs p-2 rounded-xl border border-rose-200 bg-white"
-                    placeholder="e.g. Subject depth weak in demo; board preference not met"
-                  />
-                  <button type="button" disabled={outcomeBusy} onClick={() => recordOutcome('school_reject')} className="px-3 py-1.5 rounded-xl border border-rose-300 text-rose-800 text-xs font-bold bg-white">
-                    Save school rejection
-                  </button>
-                  {candidate.rejected_by_school_reason && (
-                    <p className="text-[11px] text-rose-800">Saved: {candidate.rejected_by_school_reason}</p>
-                  )}
-                </div>
-                <div className="space-y-2 p-3 rounded-2xl border border-amber-100 bg-amber-50/50">
-                  <p className="text-xs font-bold text-amber-950">Rejected by candidate — why?</p>
-                  <textarea
-                    value={candidateRejectReason}
-                    onChange={(e) => setCandidateRejectReason(e.target.value)}
-                    rows={2}
-                    className="w-full text-xs p-2 rounded-xl border border-amber-200 bg-white"
-                    placeholder="e.g. Accepted another offer; salary; location; notice period"
-                  />
-                  <button type="button" disabled={outcomeBusy} onClick={() => recordOutcome('candidate_reject')} className="px-3 py-1.5 rounded-xl border border-amber-300 text-amber-950 text-xs font-bold bg-white">
-                    Save candidate decline
-                  </button>
-                  {candidate.rejected_by_candidate_reason && (
-                    <p className="text-[11px] text-amber-900">Saved: {candidate.rejected_by_candidate_reason}</p>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
               <h2 className="text-sm font-black text-slate-900">Application details</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 {[
                   ['Full name', candidate.name],
                   ['Email', candidate.email || '—'],
                   ['Phone', candidate.phone || '—'],
-                  ['Date of birth', candidate.dob || '—'],
+                  ['Date of birth', candidate.dob ? `${candidate.dob}${ageFromDob(candidate.dob) !== null ? ` (age ${ageFromDob(candidate.dob)})` : ''}` : '—'],
                   ['Qualification (form)', candidate.qualification || '—'],
                   ['Experience claimed', candidate.experience_band || '—'],
                   ['Prior organisation', candidate.prior_org || '—'],
@@ -617,16 +470,64 @@ export default function CandidateProfileDashboard({
                 <ShieldAlert className="w-4 h-4 text-indigo-600" />
                 <h2 className="text-sm font-black text-slate-900">Proctoring</h2>
               </div>
+              {candidate.face_reference?.photo_url ? (
+                <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={candidate.face_reference.photo_url} alt="Photo taken at the start" className="w-16 h-16 rounded-xl object-cover border border-slate-200 -scale-x-100" />
+                  <p className="text-xs text-slate-600">
+                    <strong className="block text-slate-900">Photo taken at the start</strong>
+                    {candidate.face_reference.measured
+                      ? 'Each stage and a check every few seconds are compared with this photo. Different faces are listed below.'
+                      : 'The automatic face check was not available on this device, so compare this photo with the video yourself.'}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-2xl p-3">No start photo was taken, so nobody could check that the same person took every stage.</p>
+              )}
+              {attempts.some((a) => a.number > 1 || a.status === 'abandoned') && (
+                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-1">
+                  <p className="font-bold">Stages that were left and started again</p>
+                  <ul className="list-disc list-inside">
+                    {Object.entries(attempts.reduce<Record<string, StageAttempt[]>>((m, a) => { (m[a.stage_key] ||= []).push(a); return m; }, {}))
+                      .filter(([, list]) => list.length > 1)
+                      .map(([stage, list]) => (
+                        <li key={stage}>{stage.replace(/_/g, ' ')}: {list.length} goes ({list.filter((a) => a.status === 'abandoned').length} left unfinished). Each restart had different questions.</li>
+                      ))}
+                  </ul>
+                  {Object.entries(attempts.reduce<Record<string, StageAttempt[]>>((m, a) => { (m[a.stage_key] ||= []).push(a); return m; }, {}))
+                    .filter(([stage, list]) => list.length >= MAX_ATTEMPTS + (candidate.extra_attempts?.[stage as keyof typeof candidate.extra_attempts] ?? 0) && list.every((a) => a.status !== 'open'))
+                    .map(([stage]) => (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={async () => {
+                          const res = await fetch(`/api/candidates/${candidate.id}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'allow_retry', stage_key: stage }) });
+                          const data = await res.json().catch(() => ({}));
+                          if (data.candidate) { setCandidate(data.candidate); onCandidateUpdated?.(data.candidate); }
+                        }}
+                        className="mt-1 px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-xs font-bold text-amber-950 cursor-pointer"
+                      >
+                        Allow one more go at {stage.replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                </div>
+              )}
               {proctoringEvents.length === 0 ? (
                 <p className="text-xs text-slate-500">No proctoring events recorded for this candidate.</p>
               ) : (
                 <ul className="space-y-2">
                   {proctoringEvents.map((evt) => (
-                    <li key={evt.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs flex flex-wrap justify-between gap-2">
+                    <li key={evt.id} className={`p-3 rounded-2xl border text-xs flex flex-wrap justify-between gap-2 ${evt.event_type === 'IDENTITY_MISMATCH' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-100'}`}>
                       <div>
                         <span className="font-bold text-slate-900">{evt.event_type.replace(/_/g, ' ')}</span>
                         <span className="text-slate-500"> · {evt.stage_key.replace(/_/g, ' ')}</span>
                         {evt.details ? <p className="text-slate-600 mt-0.5">{evt.details}</p> : null}
+                        {evt.snapshot_url ? (
+                          <a href={evt.snapshot_url} target="_blank" rel="noreferrer" className="inline-block mt-1.5">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={evt.snapshot_url} alt="Camera picture at the time" className="w-24 h-auto rounded-lg border border-rose-200 -scale-x-100" />
+                          </a>
+                        ) : null}
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono shrink-0">
                         {evt.timestamp ? new Date(evt.timestamp).toLocaleString() : ''}
@@ -648,54 +549,6 @@ export default function CandidateProfileDashboard({
               </section>
             )}
 
-            {candidate.shortlist_status === 'shortlisted' && (
-              <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-                <div>
-                  <h2 className="text-sm font-black text-slate-900">Leadership interview</h2>
-                  <p className="text-xs text-slate-500">Subject lead, then principal, then management. Use this only after the school shortlists the teacher.</p>
-                </div>
-                {(candidate.interview_decisions || []).length > 0 && (
-                  <ul className="space-y-2">
-                    {(candidate.interview_decisions || []).map((d, i) => (
-                      <li key={`${d.decided_at}-${i}`} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
-                        <div className="flex justify-between gap-2">
-                          <span className="font-bold">{d.round_label} · {d.reviewer_name}</span>
-                          <span className={d.decision === 'accepted' ? 'text-indigo-700 font-bold' : 'text-rose-700 font-bold'}>
-                            {d.decision === 'accepted' ? 'Accepted' : 'Declined'}
-                          </span>
-                        </div>
-                        <p className="text-slate-600 mt-1">{d.reason}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {(['rm', 'ih', 'coo'] as const).map((role) => {
-                  const notes = role === 'rm' ? rmNotes : role === 'ih' ? ihNotes : cooNotes;
-                  const setNotes = role === 'rm' ? setRmNotes : role === 'ih' ? setIhNotes : setCooNotes;
-                  const label = role === 'rm' ? 'Subject lead' : role === 'ih' ? 'Principal' : 'Management';
-                  return (
-                    <div key={role} className="p-4 rounded-2xl border border-slate-200 space-y-2">
-                      <p className="text-xs font-bold text-slate-900">{label}</p>
-                      <input
-                        type="text"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Interview notes"
-                        className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50"
-                      />
-                      <div className="flex gap-2">
-                        <button type="button" disabled={savingClearance} onClick={() => handleUpdateClearance(role, 'cleared')} className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">
-                          Clear
-                        </button>
-                        <button type="button" disabled={savingClearance} onClick={() => handleUpdateClearance(role, 'rejected')} className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
-            )}
           </>
         )}
       </div>

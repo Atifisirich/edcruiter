@@ -3,36 +3,10 @@ import { db } from '@/lib/db';
 import { evaluateStageWithAI, isMisappliedHrPolicyScore } from '@/lib/aiScoringEngine';
 import { isScoredStage } from '@/lib/scoredStages';
 import { Candidate, StageResult } from '@/lib/types';
+import { CANDIDATE_SELF_FIELDS, candidateView, pickAllowed } from '@/lib/candidateFields';
+import { ageFromDob } from '@/lib/age';
 import { assertSchoolActive, authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
-
-/**
- * Fields a candidate may set about themselves — the stage-1 profile capture.
- * Everything scoring- or decision-related (total_ai_score, status,
- * shortlist_status, resume_analysis, the rm/ih/coo clearance objects,
- * current_stage_key) is deliberately excluded: those are written by the
- * scoring engine, the stage-result route, and staff-side reviewer actions,
- * never taken verbatim from a client PUT. The previous version applied
- * `updates` to any candidate with no field restriction at all — a candidate
- * could set their own total_ai_score or status: 'hired' directly.
- */
-const CANDIDATE_SELF_FIELDS = new Set<keyof Candidate>([
-  'name', 'email', 'phone', 'dob', 'qualification', 'experience_band',
-  'prior_org', 'current_salary', 'expected_salary', 'current_location',
-  'relocation_branches', 'languages', 'notice_period', 'applied_segment',
-  'applied_subject', 'target_branch_id', 'video_intro_url',
-  'reading_passage_text', 'reading_passage_score'
-]);
-
-function pickAllowed(updates: Record<string, unknown>, allowed: Set<keyof Candidate>) {
-  const out: Partial<Candidate> = {};
-  for (const key of Object.keys(updates)) {
-    if (allowed.has(key as keyof Candidate)) {
-      (out as Record<string, unknown>)[key] = updates[key];
-    }
-  }
-  return out;
-}
 
 function repairStageResults(schoolId: string, candidateId: string, results: StageResult[]): StageResult[] {
   const candidate = db.getCandidateById(schoolId, candidateId);
@@ -92,7 +66,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const schoolSubjects = school?.subjects || [];
     const schoolSegments = school?.segments || [];
 
-    return NextResponse.json({ candidate, stageResults, proctoringEvents, evaluations, schoolName, schoolSubjects, schoolSegments });
+    const stageAttempts = db.getStageAttempts(candidate.school_id, candidate.id);
+    return NextResponse.json({ candidate: candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidate profile' }, { status: 500 });
   }
@@ -117,6 +92,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'No permitted fields in update.' }, { status: 400 });
     }
 
+    // Age follows the date of birth, never a typed number.
+    if (typeof updates.dob === 'string') {
+      (updates as Record<string, unknown>).age = ageFromDob(updates.dob) ?? undefined;
+    }
+
     const before = db.getCandidateById(access.schoolId, id);
     const updated = db.updateCandidate(access.schoolId, id, updates);
     if (!updated) {
@@ -132,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const enriched = db.getCandidateById(access.schoolId, id) || updated;
-    return NextResponse.json({ success: true, candidate: enriched, candidate_notified: candidateNotified });
+    return NextResponse.json({ success: true, candidate: candidateView(enriched), candidate_notified: candidateNotified });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to update candidate profile' }, { status: 500 });
   }
