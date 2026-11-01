@@ -29,6 +29,11 @@ export default function PublicJobApplicationPage() {
         if (!j) return;
         setJob({
           id: j.id,
+          // Which school posted it, which campus, and the exact grades. Without
+          // school_id the application had no school to go to.
+          school_id: j.school_id,
+          target_branch_id: j.target_branch_id,
+          grades: j.grades,
           title: j.title,
           school_name: j.school_name,
           school_type: j.school_type || '',
@@ -127,6 +132,7 @@ export default function PublicJobApplicationPage() {
           current_location: applicantData.current_location,
           applied_subject: job.subject,
           applied_segment: job.segment,
+          applied_grades: job.grades,
           target_branch_id: job.target_branch_id,
           status: 'in_progress',
           whatsapp_consent: whatsappConsent

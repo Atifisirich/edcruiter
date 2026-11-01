@@ -3,7 +3,6 @@ import { warmPack } from '@/lib/ensurePack';
 import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
-import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { makeInviteCode } from '@/lib/inviteCode';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId, assertSchoolActive } from '@/lib/auth';
@@ -160,7 +159,7 @@ export async function POST(req: NextRequest) {
     }
 
     const {
-      school_id: requestedSchoolId = SLOKA_SCHOOL_ID,
+      school_id: requestedSchoolId,
       name,
       email,
       phone,
@@ -199,6 +198,10 @@ export async function POST(req: NextRequest) {
     // resolveSchoolId is skipped and their supplied school_id (or the
     // default) is used as-is.
     const school_id = staffCtx ? resolveSchoolId(staffCtx, requestedSchoolId) : requestedSchoolId;
+    // An applicant is never quietly placed with a default school.
+    if (!school_id || typeof school_id !== 'string') {
+      return NextResponse.json({ error: 'Open the vacancy from the school job page and apply from there, so we know which school you are applying to.' }, { status: 400 });
+    }
 
     // Public applications only go to a school that exists and has been approved
     // — otherwise applicants (and their personal data) pile up against a school

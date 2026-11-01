@@ -115,3 +115,24 @@ describe('a teacher applying on the job board', () => {
     expect(setConsent).toHaveBeenCalledWith(expect.objectContaining({ granted: false, source: 'apply_form' }));
   });
 });
+
+describe('someone applying from a public vacancy page', () => {
+  it('is turned away, with a clear message, when no school is given, instead of landing in a default school', async () => {
+    staff = null;
+    const { school_id, ...noSchool } = lead;
+    void school_id;
+    const res = await post(noSchool);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/which school/);
+    expect(createCandidate).not.toHaveBeenCalled();
+  });
+
+  it('is placed with the school that posted the vacancy, with the exact grades', async () => {
+    staff = null;
+    const res = await post({ ...lead, applied_grades: ['1', '2', '5'] });
+    expect(res.status).toBe(201);
+    const saved = createCandidate.mock.calls[0][0];
+    expect(saved.school_id).toBe('s1');
+    expect(saved.applied_grades).toEqual(['1', '2', '5']);
+  });
+});
