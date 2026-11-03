@@ -411,8 +411,9 @@ export default function PublicJobApplicationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
+                {/* One field per row: side by side, the date box and age box spilled into Highest Qualification. */}
+                <div className="space-y-3">
+                  <div className="min-w-0">
                     <label className="block text-slate-700 font-bold mb-1">Date of Birth &amp; Age *</label>
                     <div className="flex gap-2">
                       <input
@@ -420,18 +421,19 @@ export default function PublicJobApplicationPage() {
                         required
                         value={applicantData.dob}
                         onChange={e => handleDobChange(e.target.value)}
-                        className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
+                        className="min-w-0 flex-1 p-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
                       />
                       <input
                         type="text"
                         value={applicantData.age ? `Age: ${applicantData.age}` : 'Age: —'}
                         readOnly
-                        className="w-24 p-3 rounded-xl bg-slate-100 border border-slate-200 text-indigo-700 font-bold text-center text-xs"
+                        aria-label="Age"
+                        className="w-24 shrink-0 px-1 py-3 rounded-xl bg-slate-100 border border-slate-200 text-indigo-700 font-bold text-center text-xs"
                       />
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-slate-700 font-bold mb-1">Highest Qualification *</label>
                     <select
                       required
