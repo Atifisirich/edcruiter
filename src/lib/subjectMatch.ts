@@ -8,7 +8,12 @@ const SYNONYMS: Array<[RegExp, string]> = [
   [/\b(chem|chemistry)\b/, 'chemistry'],
   [/\b(eng|english|english literature|english language)\b/, 'english'],
   [/\b(cs|computer|computers|computer science|computer applications|information technology|it|ict|informatics)\b/, 'computer science'],
-  [/\b(social|social studies|social science|sst|history|geography|civics|economics)\b/, 'social studies'],
+  // History, geography and economics are posted as vacancies of their own, so
+  // each gets its own test rather than sharing the social studies one.
+  [/\b(history)\b/, 'history'],
+  [/\b(geography)\b/, 'geography'],
+  [/\b(economics)\b/, 'economics'],
+  [/\b(social|social studies|social science|sst|civics)\b/, 'social studies'],
   [/\b(hindi)\b/, 'hindi'],
   [/\b(telugu)\b/, 'telugu'],
   [/\b(sanskrit)\b/, 'sanskrit'],

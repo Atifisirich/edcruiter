@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import GradePicker from '@/components/admin/GradePicker';
+import { VACANCY_SUBJECTS } from '@/lib/subjects';
 
 interface AIJobGeneratorModalProps {
   isOpen: boolean;
@@ -166,14 +167,9 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
                     onChange={e => setFormData({ ...formData, subject: e.target.value })}
                     className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-zinc-900 dark:text-white font-bold focus:border-indigo-500 focus:outline-none"
                   >
-                    <option value="Physics">Physics</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Biology">Biology</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="English">English Literature & Pedagogy</option>
-                    <option value="Computer Science">Computer Science & AI</option>
-                    <option value="Social Studies">Social Studies & History</option>
-                    <option value="Primary Homeroom">Primary Homeroom Lead</option>
+                    {VACANCY_SUBJECTS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
 

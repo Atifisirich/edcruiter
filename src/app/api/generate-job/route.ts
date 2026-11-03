@@ -4,6 +4,7 @@ import { PublicVacancy } from '@/lib/types';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { authErrorResponse, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { postingText } from '@/lib/jobPosting';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
     const campusLocation = branchRecord?.location || '';
     const ctcRange = salary_range || '₹7.5 LPA – ₹9.5 LPA';
     const jobId = `job_${Date.now()}`;
+    const posting = postingText(subjectName, campus, segmentLevel, boardType, expBand);
 
     // Structured AI Job Description & Assessment Generation
     const jobDescription = {
@@ -50,21 +52,7 @@ export async function POST(req: NextRequest) {
       salary_range: ctcRange,
       status: 'active',
       created_at: new Date().toISOString(),
-      summary: `We are seeking an outstanding ${subjectName} Educator for our ${campus} to teach ${segmentLevel} aligned with ${boardType} standards. The ideal faculty possesses deep conceptual mastery, inquiry-based pedagogical techniques, and strong laboratory/visual scaffolding skills.`,
-      responsibilities: [
-        `Deliver high-impact daily classroom lessons adhering to ${boardType} curriculum frameworks.`,
-        `Diagnose student conceptual misconceptions and implement 3-tier differentiated learning plans.`,
-        `Conduct 5-minute diagnostic checks, formative exit tickets, and continuous board exam remediation.`,
-        `Maintain modern laboratory safety protocols and integrate smartboard/digital learning simulations.`,
-        `Participate in weekly Department Head (RM) curriculum pacing syncs and parent-teacher conferences.`
-      ],
-      requirements: [
-        `Master's Degree (M.Sc / M.A.) in ${subjectName} from an accredited university.`,
-        `B.Ed / M.Ed degree is mandatory; CTET / State TET certification preferred.`,
-        `Minimum ${expBand} of demonstrated teaching success in reputed ${boardType} schools.`,
-        `Demonstrated expertise in Bloom's Taxonomy, SMART lesson objectives, and Danielson Domain 3.`,
-        `Fluency in English communication with strong voice projection and classroom leadership.`
-      ],
+      ...posting,
       ai_assessment_rubric: {
         stage_1_mcqs: [
           {

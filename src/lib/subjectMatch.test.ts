@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hasBuiltInBank, normalizeSubject, pickActivePack, sameSubject } from './subjectMatch';
+import { VACANCY_SUBJECTS } from './subjects';
 import type { AssessmentPack } from './types';
 
 const pack = (over: Partial<AssessmentPack>): AssessmentPack =>
@@ -18,6 +19,21 @@ describe('normalizeSubject', () => {
     expect(sameSubject('Chemistry', 'Physics')).toBe(false);
     expect(sameSubject('Computer Science', 'Biology')).toBe(false);
     expect(normalizeSubject('Sanskrit')).toBe('sanskrit');
+  });
+
+  it('gives history, geography and economics their own subject, apart from social studies', () => {
+    expect(sameSubject('Social', 'Social Studies')).toBe(true);
+    expect(sameSubject('History', 'Social')).toBe(false);
+    expect(sameSubject('Geography', 'Social')).toBe(false);
+    expect(sameSubject('Economics', 'Social')).toBe(false);
+  });
+
+  it('keeps every vacancy subject apart from every other one', () => {
+    // ICT/AI and Computer Science are the one pair meant to share a test.
+    const subjects = VACANCY_SUBJECTS.filter((s) => s !== 'ICT/AI');
+    const names = subjects.map((s) => normalizeSubject(s));
+    expect(new Set(names).size).toBe(subjects.length);
+    expect(sameSubject('ICT/AI', 'Computer Science')).toBe(true);
   });
 
   it('keeps an unknown subject as itself and never matches an empty one', () => {
