@@ -14,7 +14,7 @@ interface OfferLetterModalProps {
   joiningDate: string;
   targetBranchName: string;
   onClose: () => void;
-  onDispatched?: () => void;
+  onDispatched?: (candidate?: Candidate) => void;
 }
 
 export default function OfferLetterModal({
@@ -71,24 +71,22 @@ export default function OfferLetterModal({
     if (!canIssue) return; // button is also disabled, but never trust the click alone for something this consequential
     setDispatched(true);
     try {
-      await fetch(`/api/candidates/${candidate.id}`, {
-        method: 'PUT',
+      // Recorded as a decision, so it is checked (HR or admin, after the final
+      // yes) and appears in the team's activity, like every other step.
+      const res = await fetch(`/api/candidates/${candidate.id}/decision`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          school_id: school?.id,
-          updates: {
-            status: 'hired',
-            coo_clearance: {
-              status: 'cleared',
-              decision: 'offer_issued',
-              notes: `Formal offer letter (${offeredSalary}) approved and dispatched.`,
-              completed_at: new Date().toISOString()
-            }
-          }
-        })
+        body: JSON.stringify({ action: 'offer_sent' }),
       });
-      onDispatched?.();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDispatched(false);
+        alert(data.error || 'Could not mark the offer as sent.');
+        return;
+      }
+      onDispatched?.(data.candidate);
     } catch (err) {
+      setDispatched(false);
       console.error('Dispatch error:', err);
     }
   };

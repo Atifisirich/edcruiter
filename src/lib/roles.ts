@@ -1,5 +1,5 @@
 /**
- * A school's own role names. Each name sits on top of one of the four access
+ * A school's own role names. Each name sits on top of one of the access
  * levels the platform already enforces, so renaming "Principal" to "Head of
  * School", or adding "Science HOD", changes what people see and never what
  * they are allowed to do.
@@ -7,13 +7,26 @@
 
 import { ROLE_LABEL, TEAM_ROLES } from './team';
 import { MAX_ROLE_NAMES } from './planLimits';
+import { accessOf } from './permissions';
 import type { RoleDef, School, User, UserRole } from './types';
 
-/** The standard four, used until a school defines its own. Their id is their level, which is also what older members carry. */
+/** The standard roles, used until a school defines its own. Their id is their level, which is also what older members carry. */
 export const DEFAULT_ROLES: RoleDef[] = TEAM_ROLES.map((level) => ({ id: level, name: ROLE_LABEL[level], level }));
 
+const HR_ROLE = DEFAULT_ROLES.find((r) => r.level === 'HR') as RoleDef;
+
+/**
+ * A school's roles. A school that named its roles before HR existed gets the
+ * standard HR role added, so it can be given to someone without first being
+ * set up in settings.
+ */
 export function rolesOf(school: Pick<School, 'roles'> | null | undefined): RoleDef[] {
-  return school?.roles?.length ? school.roles : DEFAULT_ROLES;
+  if (!school?.roles?.length) return DEFAULT_ROLES;
+  if (school.roles.some((r) => r.level === 'HR')) return school.roles;
+  const at = school.roles.findIndex((r) => r.level !== 'SCHOOL_ADMIN');
+  const list = [...school.roles];
+  list.splice(at < 0 ? list.length : at, 0, HR_ROLE);
+  return list;
 }
 
 /** The role a member holds, by the school's names. Older members carry no role id, so their level is used. */
@@ -74,7 +87,8 @@ export function parseRoles(
       return { ok: false, error: `${m.name} still has a role you removed (${label}). Move them to another role first.` };
     }
     // A role may be renamed freely, but a person in it must not quietly gain or lose access.
-    if (stillThere.level !== m.role) {
+    // The older reviewer levels all carry the same access, so moving between them is fine.
+    if (accessOf(stillThere.level) !== accessOf(m.role)) {
       return { ok: false, error: `${m.name} holds "${stillThere.name}". Change who holds that role before changing what it can do.` };
     }
   }

@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { PublicVacancy } from '@/lib/types';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
-import { authErrorResponse, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
+import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { postingText } from '@/lib/jobPosting';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
     const rl = checkRateLimit(req, 'generate-job', { max: 30, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
@@ -122,6 +123,11 @@ export async function POST(req: NextRequest) {
     };
 
     const saved = db.createJob(vacancy);
+    auditAsStaff(ctx, schoolId, {
+      action: 'JOB_POSTED',
+      resource: `Vacancy: ${roleTitle}`,
+      details: `Posted ${subjectName} / ${segmentLevel}${campus ? ` at ${campus}` : ''}.`,
+    });
 
     return NextResponse.json({ success: true, job: { ...jobDescription, ...saved } });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { ScheduledInterview } from '@/lib/types';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -11,7 +12,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const existing = db.getScheduledInterviewById(id);
     if (!existing) return NextResponse.json({ error: 'Interview not found' }, { status: 404 });
 
-    const ctx = await requireSchoolAccess(existing.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(existing.school_id, { anyOf: HIRING_TEAM });
 
     const rl = checkRateLimit(req, 'update-interview', { max: 60, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { assertSchoolActive, authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { readCv } from '@/lib/cvIntake';
 import type { CvLead } from '@/lib/cvLead';
@@ -20,7 +21,7 @@ type CvRowResult =
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
-    const ctx = await requireSchoolAccess(String(form.get('school_id') || ''), { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(String(form.get('school_id') || ''), { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
 
     const files = form.getAll('files').filter((f): f is File => f instanceof File);

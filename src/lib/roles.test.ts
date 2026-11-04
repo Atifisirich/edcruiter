@@ -5,8 +5,8 @@ import { MAX_ROLE_NAMES, teamLimit, teamLimitMessage } from './planLimits';
 const ids = () => 'role_new';
 
 describe('role names', () => {
-  it('start as the four standard roles', () => {
-    expect(rolesOf(undefined).map((r) => r.id)).toEqual(['SCHOOL_ADMIN', 'REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER']);
+  it('start as the standard roles, HR included', () => {
+    expect(rolesOf(undefined).map((r) => r.id)).toEqual(['SCHOOL_ADMIN', 'HR', 'REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER']);
     expect(rolesOf({ roles: [] })).toBe(DEFAULT_ROLES);
   });
 

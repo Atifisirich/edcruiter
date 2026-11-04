@@ -4,6 +4,7 @@ import { AssessmentPack } from '@/lib/types';
 import { generateAssessmentPackData } from '@/lib/assessmentPackGenerator';
 import { sanitizeForCandidate, savePackWithRubrics } from '@/lib/ensurePack';
 import { authErrorResponse, auditAsStaff, requireCandidate, requireSchoolAccess, AuthError, assertSchoolActive } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function GET(req: NextRequest) {
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'assessment-pack-generate', { max: 15, windowMs: 60 * 60_000 });

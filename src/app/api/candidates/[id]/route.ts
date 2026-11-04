@@ -7,6 +7,7 @@ import { CANDIDATE_SELF_FIELDS, candidateView, pickAllowed } from '@/lib/candida
 import { ageFromDob } from '@/lib/age';
 import { assertSchoolActive, authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
+import { isAdmin } from '@/lib/permissions';
 
 function repairStageResults(schoolId: string, candidateId: string, results: StageResult[]): StageResult[] {
   const candidate = db.getCandidateById(schoolId, candidateId);
@@ -81,9 +82,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
     const requestedUpdates = (body.updates || body) as Record<string, unknown>;
 
-    // A candidate may only ever touch their own stage-1 profile fields; staff
-    // at the owning school may update anything (clearances, status, etc.) —
-    // which is exactly what the reviewer console needs to do.
+    // A candidate may only ever touch their own stage-1 profile fields. Among
+    // staff, only the school admin may change a candidate's data directly;
+    // HR and reviewers act through decisions (/api/candidates/[id]/decision),
+    // which are checked and recorded.
+    if (access.kind === 'staff' && !isAdmin(access.ctx.role)) {
+      return NextResponse.json({ error: 'Only the school admin can change a candidate’s details.' }, { status: 403 });
+    }
     const updates = access.kind === 'candidate'
       ? pickAllowed(requestedUpdates, CANDIDATE_SELF_FIELDS)
       : requestedUpdates;

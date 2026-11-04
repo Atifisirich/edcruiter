@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
@@ -12,7 +13,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 export async function GET(req: NextRequest) {
   try {
     const schoolId = new URL(req.url).searchParams.get('school_id');
-    const ctx = await requireSchoolAccess(schoolId, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(schoolId, { anyOf: HIRING_TEAM });
 
     const rl = checkRateLimit(req, 'list-staff', { max: 120, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
       name: u.name,
       email: u.email,
       role: u.role,
+      role_id: u.role_id ?? u.role,
       department: u.department,
     }));
 

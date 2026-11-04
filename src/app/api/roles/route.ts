@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { MAX_ROLE_NAMES } from '@/lib/planLimits';
 import { parseRoles, rolesOf } from '@/lib/roles';
-import { ROLE_HELP, ROLE_LABEL, TEAM_ROLES } from '@/lib/team';
+import { ACCESS_CHOICES } from '@/lib/team';
 
 function schoolIdParam(req: NextRequest) {
   return new URL(req.url).searchParams.get('school_id');
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       roles: rolesOf(school),
       max: MAX_ROLE_NAMES,
-      levels: TEAM_ROLES.map((level) => ({ level, label: ROLE_LABEL[level], help: ROLE_HELP[level] })),
+      levels: ACCESS_CHOICES,
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not load roles.' }, { status: 500 });

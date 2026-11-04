@@ -4,20 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/ui';
 import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, ThumbsDown, User, Video, XCircle } from 'lucide-react';
-import { Candidate, InterviewRound, ScheduledInterview } from '@/lib/types';
+import { Candidate, InterviewRound, ScheduledInterview, UserRole } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
+import { canDecideRound, roundResultOf } from '@/lib/reviewRounds';
+import { isAdmin } from '@/lib/permissions';
+import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
 
-const ROUNDS: { key: InterviewRound; label: string; blurb: string }[] = [
-  { key: 'subject_lead', label: 'Subject lead', blurb: 'Department conversation on subject and classroom practice' },
-  { key: 'principal', label: 'Principal', blurb: 'School leadership, culture, and safeguarding' },
-  { key: 'management', label: 'Management', blurb: 'Fitment, offer, and joining' }
-];
-
-type StaffMember = { id: string; name: string; email: string; role: string; department?: string };
-
-function latestDecision(c: Candidate, round: InterviewRound) {
-  return [...(c.interview_decisions || [])].reverse().find((d) => d.round === round);
-}
+type StaffMember = { id: string; name: string; email: string; role: UserRole; role_id: string; department?: string };
 
 function toDatetimeLocalValue(d = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -31,7 +24,13 @@ export default function LeadershipInterviewsPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [interviews, setInterviews] = useState<ScheduledInterview[]>([]);
-  const [round, setRound] = useState<InterviewRound>('subject_lead');
+  const access = useReviewAccess();
+  const rounds = useMemo(() => access?.rounds ?? [], [access]);
+  const [pickedRound, setRound] = useState<InterviewRound>('');
+  const round = pickedRound || rounds[0]?.id || '';
+  const currentRoundDef = rounds.find((r) => r.id === round);
+  const roundIndex = rounds.findIndex((r) => r.id === round);
+  const roleName = (id: string) => access?.roles.find((r) => r.id === id)?.name ?? id;
   const [view, setView] = useState<'queue' | 'accepted' | 'declined'>('queue');
   const [selected, setSelected] = useState<Candidate | null>(null);
   const [error, setError] = useState('');
@@ -63,25 +62,25 @@ export default function LeadershipInterviewsPage() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const roundStaff = useMemo(() => {
-    // Any real staff member can be assigned to any round — HR knows who's
-    // actually covering a subject or standing in for the principal this
-    // week — so this offers everyone rather than guessing from role.
-    return staff;
-  }, [staff]);
+  // Only people who review this round can record its outcome, so only they are offered.
+  const roundStaff = useMemo(
+    () => (currentRoundDef ? staff.filter((s) => canDecideRound(s, currentRoundDef)) : []),
+    [staff, currentRoundDef]
+  );
 
   const interviewFor = (candidateId: string, r: InterviewRound) =>
     interviews.find((i) => i.candidate_id === candidateId && i.round === r && i.status !== 'cancelled');
 
   const inRound = (c: Candidate) => {
-    const d = latestDecision(c, round);
-    if (view === 'accepted') return d?.decision === 'accepted';
-    if (view === 'declined') return d?.decision === 'rejected';
-    if (d) return false;
-    // Only candidates who passed the previous round are waiting for this one.
-    const previous = round === 'principal' ? 'subject_lead' : round === 'management' ? 'principal' : null;
-    if (previous && latestDecision(c, previous)?.decision !== 'accepted') return false;
-    return c.status !== 'rejected' && (c.shortlist_status === 'shortlisted' || c.status === 'passed' || c.status === 'in_progress');
+    if (!round) return false;
+    const result = roundResultOf(c, round);
+    if (view === 'accepted') return result?.status === 'cleared';
+    if (view === 'declined') return result?.status === 'rejected';
+    if (result) return false;
+    // Only shortlisted teachers who cleared the previous round are waiting for this one.
+    const previous = roundIndex > 0 ? rounds[roundIndex - 1] : null;
+    if (previous && roundResultOf(c, previous.id)?.status !== 'cleared') return false;
+    return c.status !== 'rejected' && (c.shortlist_status === 'shortlisted' || c.status === 'passed');
   };
 
   const list = candidates.filter(inRound);
@@ -149,7 +148,7 @@ export default function LeadershipInterviewsPage() {
   const decide = async (decision: 'accepted' | 'rejected') => {
     if (!selected || !selectedInterview) return;
     if (!reason.trim()) {
-      setError('Write why you are accepting or declining this teacher.');
+      setError('Write your opinion of this teacher before giving the yes or no.');
       return;
     }
     setSaving(true);
@@ -178,17 +177,22 @@ export default function LeadershipInterviewsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Interviews"
-          description="After the shortlist, your school meets the teacher: subject lead, then principal, then management. Pick the person and a time. The candidate and the interviewer are both told."
+          description="After the shortlist, your school meets the teacher in each review round, in order. Pick the reviewer and a time. The candidate and the reviewer are both told."
         />
 
         <div className="flex flex-wrap gap-2">
-          {ROUNDS.map((r) => (
-            <button key={r.key} type="button" onClick={() => { setRound(r.key); setSelected(null); }} className={`px-4 py-2 rounded-2xl text-xs font-bold border ${round === r.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600'}`}>
-              {r.label}
+          {rounds.map((r, i) => (
+            <button key={r.id} type="button" onClick={() => { setRound(r.id); setSelected(null); }} className={`px-4 py-2 rounded-2xl text-xs font-bold border ${round === r.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-600'}`}>
+              {i + 1}. {r.name}
             </button>
           ))}
         </div>
-        <p className="text-xs text-slate-500">{ROUNDS.find((r) => r.key === round)?.blurb}</p>
+        {currentRoundDef && (
+          <p className="text-xs text-slate-500">
+            Reviewed by {currentRoundDef.role_ids.map(roleName).join(', ')}.{roundIndex === rounds.length - 1 ? ' This is the final yes or no.' : ''}
+            {isAdmin(access?.me.role) ? ' Change the rounds in Settings.' : ''}
+          </p>
+        )}
 
         <div className="flex gap-2">
           {(['queue', 'accepted', 'declined'] as const).map((v) => (
@@ -223,7 +227,7 @@ export default function LeadershipInterviewsPage() {
 
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
             {!selected ? (
-              <p className="text-xs text-slate-500">Select a teacher to schedule or record their {ROUNDS.find(r=>r.key===round)?.label.toLowerCase()} interview.</p>
+              <p className="text-xs text-slate-500">Select a teacher to schedule or record their {currentRoundDef?.name} interview.</p>
             ) : (
               <>
                 <div className="flex items-center gap-3">
@@ -262,12 +266,15 @@ export default function LeadershipInterviewsPage() {
                     <p className="text-xs font-black text-slate-800 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-indigo-600" /> Schedule this interview</p>
                     <label className="block text-xs font-bold">Who is taking it
                       <select value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-                        <option value="">Select staff member…</option>
+                        <option value="">Select reviewer…</option>
                         {roundStaff.map((s) => (
-                          <option key={s.id} value={s.id}>{s.name} — {s.role}{s.department ? ` · ${s.department}` : ''}</option>
+                          <option key={s.id} value={s.id}>{s.name} — {roleName(s.role_id)}{s.department ? ` · ${s.department}` : ''}</option>
                         ))}
                       </select>
                     </label>
+                    {roundStaff.length === 0 && (
+                      <p className="text-[11px] text-amber-700">Nobody on your team reviews this round yet. Add a reviewer in Team, or change who reviews it in Settings.</p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-xs font-bold">Date & time
                         <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
@@ -308,18 +315,24 @@ export default function LeadershipInterviewsPage() {
                       </button>
                     </div>
 
+                    {(isAdmin(access?.me.role) || access?.me.id === selectedInterview.assigned_user_id) ? (
+                    <>
                     <p className="text-xs font-black text-slate-800">Record the outcome</p>
                     <p className="text-[11px] text-slate-500">
-                      This is recorded under your own signed-in account — only {selectedInterview.assigned_user_name} or a school admin can submit it.
+                      This is recorded under your own signed-in account — only {selectedInterview.assigned_user_name} or the school admin can submit it.
                     </p>
-                    <label className="block text-xs font-bold">Why (required)
+                    <label className="block text-xs font-bold">Opinion (required)
                       <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" placeholder="Subject gaps, classroom presence, offer terms…" />
                     </label>
                     {error && <p className="text-xs text-rose-600 font-semibold">{error}</p>}
                     <div className="flex gap-2">
-                      <button type="button" disabled={saving} onClick={() => decide('accepted')} className="flex-1 brand-primary-btn py-2.5 rounded-xl text-xs font-bold">Accept at this round</button>
-                      <button type="button" disabled={saving} onClick={() => decide('rejected')} className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-slate-200 bg-white">Decline</button>
+                      <button type="button" disabled={saving} onClick={() => decide('accepted')} className="flex-1 brand-primary-btn py-2.5 rounded-xl text-xs font-bold">Yes at this round</button>
+                      <button type="button" disabled={saving} onClick={() => decide('rejected')} className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-slate-200 bg-white">No</button>
                     </div>
+                    </>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">{selectedInterview.assigned_user_name} gives the yes or no after the interview.</p>
+                    )}
                   </div>
                 )}
               </>

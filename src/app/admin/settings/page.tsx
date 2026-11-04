@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Building2, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Badge, Card, CardHeader, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
-import type { RoleDef } from '@/lib/types';
+import type { ReviewRound, RoleDef } from '@/lib/types';
+import { accessOf } from '@/lib/permissions';
 import { DEFAULT_SHORTLIST_BANDS, normalizeBands, type ShortlistBand } from '@/lib/shortlistBands';
 import { reportSettingsOf } from '@/lib/teachingProfile';
 
@@ -115,7 +116,16 @@ function RolesCard() {
                 maxLength={40}
                 className={inputClass}
               />
-              <select value={r.level} onChange={(e) => update(r.id, { level: e.target.value as RoleDef['level'] })} aria-label="Access" className={`${selectClass} w-full`}>
+              <select
+                // The older Principal and Management levels are reviewer access too, shown as Reviewer.
+                value={accessOf(r.level) === 'reviewer' ? 'REPORTING_MANAGER' : r.level}
+                onChange={(e) => {
+                  const level = e.target.value as RoleDef['level'];
+                  if (!(accessOf(level) === 'reviewer' && accessOf(r.level) === 'reviewer')) update(r.id, { level });
+                }}
+                aria-label="Access"
+                className={`${selectClass} w-full`}
+              >
                 {levels.map((l) => <option key={l.level} value={l.level}>{l.label}</option>)}
               </select>
               <button type="button" onClick={() => remove(r.id)} aria-label={`Remove ${r.name || 'role'}`} className={buttonClass('ghost', 'sm')}>
@@ -134,6 +144,141 @@ function RolesCard() {
               <span key={l.level} className="block"><strong className="text-slate-700">{l.label}:</strong> {l.help}</span>
             ))}
           </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * The review rounds after the shortlist: their names, their order, and which
+ * roles give the yes or no in each. The last round is the final decision.
+ */
+function RoundsCard() {
+  const { schoolId, toast } = useAdmin();
+  const [rounds, setRounds] = useState<ReviewRound[] | null>(null);
+  const [roles, setRoles] = useState<RoleDef[]>([]);
+  const [max, setMax] = useState(6);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/review-rounds?school_id=${schoolId}`);
+        const data = await res.json();
+        if (cancelled || !res.ok) return;
+        setRounds(data.rounds);
+        setRoles(data.roles);
+        setMax(data.max);
+      } catch { /* the card stays empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, [schoolId]);
+
+  const reviewerRoles = roles.filter((r) => accessOf(r.level) === 'reviewer');
+
+  const change = (next: ReviewRound[]) => { setRounds(next); setDirty(true); };
+  const update = (id: string, patch: Partial<ReviewRound>) => rounds && change(rounds.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const toggleRole = (round: ReviewRound, roleId: string) =>
+    update(round.id, { role_ids: round.role_ids.includes(roleId) ? round.role_ids.filter((x) => x !== roleId) : [...round.role_ids, roleId] });
+  const move = (index: number, by: -1 | 1) => {
+    if (!rounds) return;
+    const next = [...rounds];
+    const [item] = next.splice(index, 1);
+    next.splice(index + by, 0, item);
+    change(next);
+  };
+
+  const save = async () => {
+    if (!rounds) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/review-rounds?school_id=${schoolId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        // A round added here has a temporary id; the server gives it a real one.
+        body: JSON.stringify({ rounds: rounds.map((r) => (r.id.startsWith('new_') ? { name: r.name, role_ids: r.role_ids } : r)) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast(data.error || 'Could not save the review rounds.', 'error');
+        return;
+      }
+      setRounds(data.rounds);
+      setDirty(false);
+      toast('Review rounds saved.', 'success');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader
+        title="Review rounds"
+        description="After HR shortlists a teacher, they go through these rounds in order. In each round, the roles you tick give their yes or no with their opinion. The last round is the final decision."
+        action={
+          <button type="button" onClick={save} disabled={saving || !dirty} className={buttonClass('primary', 'sm')}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        }
+      />
+      {!rounds ? (
+        <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+      ) : (
+        <div className="space-y-3">
+          {reviewerRoles.length === 0 && (
+            <p className="text-sm text-amber-700">No role has reviewer access yet. Add one under Role names first.</p>
+          )}
+          {rounds.map((r, i) => (
+            <div key={r.id} className="rounded-xl border border-slate-200 p-3.5 space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 text-sm font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                <input
+                  value={r.name}
+                  onChange={(e) => update(r.id, { name: e.target.value })}
+                  placeholder="e.g. Subject lead"
+                  aria-label={`Round ${i + 1} name`}
+                  maxLength={40}
+                  className={`${inputClass} flex-1 min-w-[10rem]`}
+                />
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move earlier" className={buttonClass('ghost', 'sm')}>↑</button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === rounds.length - 1} aria-label="Move later" className={buttonClass('ghost', 'sm')}>↓</button>
+                  <button type="button" onClick={() => change(rounds.filter((x) => x.id !== r.id))} disabled={rounds.length === 1} aria-label={`Remove ${r.name || 'round'}`} className={buttonClass('ghost', 'sm')}>
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <fieldset>
+                <legend className="text-sm text-slate-500 mb-1.5">
+                  Who gives the yes or no{i === rounds.length - 1 ? ' (final decision)' : ''}:
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {reviewerRoles.map((role) => (
+                    <label key={role.id} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm cursor-pointer ${r.role_ids.includes(role.id) ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 text-slate-600'}`}>
+                      <input type="checkbox" checked={r.role_ids.includes(role.id)} onChange={() => toggleRole(r, role.id)} className="accent-indigo-600" />
+                      {role.name}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => change([...rounds, { id: `new_${Date.now()}`, name: '', role_ids: [] }])}
+              disabled={rounds.length >= max}
+              className={buttonClass('secondary', 'sm')}
+            >
+              <Plus className="w-4 h-4" /> Add a round
+            </button>
+            <p className="text-sm text-slate-500">{rounds.length} of {max} rounds</p>
+          </div>
+          <p className="text-sm text-slate-500">The school admin can always give the yes or no in any round. Teachers already part-way through keep the rounds they have cleared.</p>
         </div>
       )}
     </Card>
@@ -299,6 +444,8 @@ export default function SettingsPage() {
       </Card>
 
       <RolesCard />
+
+      <RoundsCard />
 
       <Card>
         <CardHeader title="More" />

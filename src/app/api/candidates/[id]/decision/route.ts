@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { assertSchoolActive, auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
-import { decide, type DecisionAction, type DecisionInput } from '@/lib/hiringDecision';
+import { decide, mayTake, type DecisionAction, type DecisionInput } from '@/lib/hiringDecision';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { roundsOf } from '@/lib/reviewRounds';
 import { ATTEMPT_STAGES } from '@/lib/stageAttempts';
-import type { InterviewRound, StageKey } from '@/lib/types';
+import type { StageKey } from '@/lib/types';
 
 const ACTIONS = new Set<DecisionAction>(['shortlist', 'hold', 'reject', 'reopen', 'round_pass', 'round_reject', 'offer_sent', 'candidate_declined']);
-const ROUND_IDS = new Set<InterviewRound>(['subject_lead', 'principal', 'management']);
+
+function refusal(action: unknown, roundName?: string): string {
+  if (action === 'reopen') return 'Only the school admin can reopen a decision.';
+  if (action === 'round_pass' || action === 'round_reject') {
+    return roundName ? `Your role does not review the ${roundName} round.` : 'Choose an interview round.';
+  }
+  return 'Only HR or the school admin can do this. Reviewers give their yes or no in their own round.';
+}
 
 /**
  * A school's decision about a candidate after reading the report: shortlist,
@@ -23,15 +31,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const found = db.getCandidateByIdPublic(id);
     if (!found) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
-    const ctx = await requireSchoolAccess(found.school_id, {
-      anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN'],
-    });
+    const ctx = await requireSchoolAccess(found.school_id);
     assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'hiring-decision', { max: 120, windowMs: 60 * 60_000 });
     if (!rl.allowed) return NextResponse.json({ error: 'Too many decisions this hour. Try again shortly.' }, { status: 429 });
 
     const body = await req.json().catch(() => ({}));
+    const rounds = roundsOf(db.getSchoolById(ctx.schoolId));
+    const round = rounds.find((r) => r.id === body.round);
+    const me = { role: ctx.role, role_id: ctx.user.role_id };
+    if (!mayTake(body.action, me, round)) {
+      return NextResponse.json({ error: refusal(body.action, round?.name) }, { status: 403 });
+    }
 
     // Not a decision about the candidate: the school lets them have one more go at a stage
     // after they have used the goes they are given.
@@ -53,14 +65,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!ACTIONS.has(body.action)) return NextResponse.json({ error: 'That action is not recognised.' }, { status: 400 });
     const input: DecisionInput = {
       action: body.action,
-      round: ROUND_IDS.has(body.round) ? body.round : undefined,
+      round: round?.id,
       note: typeof body.note === 'string' ? body.note.slice(0, 1000) : undefined,
     };
 
     const candidate = db.getCandidateById(ctx.schoolId, id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
-    const outcome = decide(candidate, input, { id: ctx.user.id, name: ctx.user.name });
+    const outcome = decide(candidate, input, { id: ctx.user.id, name: ctx.user.name }, undefined, rounds);
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: 400 });
 
     const updated = db.updateCandidate(ctx.schoolId, id, outcome.updates);

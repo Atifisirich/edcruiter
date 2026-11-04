@@ -21,6 +21,7 @@ const ROLE_RANK: Record<UserRole, number> = {
   REPORTING_MANAGER: 1,
   INSTITUTE_HEAD: 2,
   FINAL_DECISION_MAKER: 3,
+  HR: 3,
   SCHOOL_ADMIN: 4,
   SUPER_ADMIN: 5
 };

@@ -6,6 +6,7 @@ import { Candidate } from '@/lib/types';
 import { makeInviteCode } from '@/lib/inviteCode';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId, assertSchoolActive } from '@/lib/auth';
+import { HIRING_TEAM, isHiringTeam } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { CANDIDATE_COOKIE, createCandidateToken } from '@/lib/session';
 
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
       const rows: BulkImportRow[] = Array.isArray(body) ? body : body.candidates;
       const schoolAttested = Boolean(body.school_attested ?? false);
       const requestedSchoolId = Array.isArray(body) ? rows[0]?.school_id : body.school_id;
-      const ctx = await requireSchoolAccess(requestedSchoolId, { minRole: 'SCHOOL_ADMIN' });
+      const ctx = await requireSchoolAccess(requestedSchoolId, { anyOf: HIRING_TEAM });
       assertSchoolActive(ctx.schoolId);
 
       if (!schoolAttested) {
@@ -151,6 +152,10 @@ export async function POST(req: NextRequest) {
     // over anything the request claims; only a true anonymous applicant's
     // supplied school_id is trusted, exactly as the public apply flow needs.
     const staffCtx = await getStaffContext();
+    // Adding candidates is HR's and the admin's work; a reviewer only reviews.
+    if (staffCtx && !isHiringTeam(staffCtx.role)) {
+      return NextResponse.json({ error: 'Only HR or the school admin can add candidates.' }, { status: 403 });
+    }
     if (!staffCtx) {
       const rl = checkRateLimit(req, 'candidate-apply', { max: 10, windowMs: 60 * 60_000 });
       if (!rl.allowed) {

@@ -13,7 +13,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-let staff: { user: { id: string; name: string; branch_id?: string } } | null = null;
+let staff: { user: { id: string; name: string; branch_id?: string }; role: string } | null = null;
 vi.mock('@/lib/auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth');
   return {
@@ -49,11 +49,19 @@ const post = (body: object) =>
 beforeEach(() => {
   vi.clearAllMocks();
   school = connected;
-  staff = { user: { id: 'u1', name: 'Admin' } };
+  staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
   sendAssessmentInvite.mockResolvedValue({ ok: true, waMessageId: 'wamid.1' });
 });
 
 describe('a school adding a lead by hand', () => {
+  it('lets HR add a candidate, but not a reviewer', async () => {
+    staff = { user: { id: 'u2', name: 'Priya' }, role: 'HR' };
+    expect((await post({ ...lead, school_attested: true })).status).toBe(201);
+    staff = { user: { id: 'u3', name: 'Dr Rao' }, role: 'REPORTING_MANAGER' };
+    expect((await post({ ...lead, school_attested: true })).status).toBe(403);
+    expect(createCandidate).toHaveBeenCalledTimes(1);
+  });
+
   it('records the school\'s permission and sends the approved invite straight away', async () => {
     const res = await post({ ...lead, school_attested: true, send_invite: true });
     const body = await res.json();

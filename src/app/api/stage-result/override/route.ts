@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx = await requireSchoolAccess(body.school_id, {
-      anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN']
+      minRole: 'SCHOOL_ADMIN'
     });
     assertSchoolActive(ctx.schoolId);
 

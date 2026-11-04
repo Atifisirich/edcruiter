@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Briefcase, CalendarCheck2, CheckCircle2, ChevronDown, CloudUpload, FileCheck2, LayoutDashboard, LogOut,
+  Activity, Briefcase, CalendarCheck2, CheckCircle2, ClipboardCheck, ChevronDown, CloudUpload, FileCheck2, LayoutDashboard, LogOut,
   Menu, MessageSquare, Plus, Settings, ShieldCheck, TriangleAlert, UserPlus, Users, UsersRound, X, XCircle, Globe,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -18,36 +18,41 @@ import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { workspaceBlockReason } from '@/lib/schoolStatus';
 import { countByTab } from '@/lib/candidateProgress';
 import type { Candidate, School } from '@/lib/types';
+import { accessOf, type Access } from '@/lib/permissions';
 
 interface NavItem {
   href: string;
   label: string;
   Icon: LucideIcon;
+  /** Who sees it. The pages behind admin-only items refuse everyone else anyway. */
+  for: Access[];
 }
 
 const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: 'Hiring',
     items: [
-      { href: '/admin', label: 'Overview', Icon: LayoutDashboard },
-      { href: '/admin/candidates', label: 'Candidates', Icon: Users },
-      { href: '/admin/jobs', label: 'Vacancies', Icon: Briefcase },
-      { href: '/admin/interviews', label: 'Interviews', Icon: CalendarCheck2 },
+      { href: '/admin', label: 'Overview', Icon: LayoutDashboard, for: ['admin', 'hr', 'reviewer'] },
+      { href: '/admin/candidates', label: 'Candidates', Icon: Users, for: ['admin', 'hr', 'reviewer'] },
+      { href: '/reviewer/me', label: 'My reviews', Icon: ClipboardCheck, for: ['reviewer'] },
+      { href: '/admin/jobs', label: 'Vacancies', Icon: Briefcase, for: ['admin', 'hr'] },
+      { href: '/admin/interviews', label: 'Interviews', Icon: CalendarCheck2, for: ['admin', 'hr'] },
     ],
   },
   {
     title: 'Set up',
     items: [
-      { href: '/admin/tests', label: 'AI tests', Icon: FileCheck2 },
-      { href: '/admin/policies', label: 'Policies', Icon: ShieldCheck },
-      { href: '/admin/whatsapp', label: 'WhatsApp', Icon: MessageSquare },
+      { href: '/admin/tests', label: 'AI tests', Icon: FileCheck2, for: ['admin', 'hr'] },
+      { href: '/admin/policies', label: 'Policies', Icon: ShieldCheck, for: ['admin'] },
+      { href: '/admin/whatsapp', label: 'WhatsApp', Icon: MessageSquare, for: ['admin'] },
     ],
   },
   {
     title: 'School',
     items: [
-      { href: '/admin/team', label: 'Team', Icon: UsersRound },
-      { href: '/admin/settings', label: 'Settings', Icon: Settings },
+      { href: '/admin/activity', label: 'Team activity', Icon: Activity, for: ['admin'] },
+      { href: '/admin/team', label: 'Team', Icon: UsersRound, for: ['admin'] },
+      { href: '/admin/settings', label: 'Settings', Icon: Settings, for: ['admin'] },
     ],
   },
 ];
@@ -154,6 +159,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const counts = useMemo(() => countByTab(candidates), [candidates]);
   const blocked = school ? workspaceBlockReason(school) : null;
   const initial = (user?.name || school?.name || 'E').trim().charAt(0).toUpperCase();
+  // Until we know who is signed in, show only what everyone sees.
+  const access = accessOf(user?.role);
+  const nav = NAV
+    .map((g) => ({ ...g, items: g.items.filter((i) => (access ? i.for.includes(access) : i.for.length === 3)) }))
+    .filter((g) => g.items.length > 0);
 
   const Sidebar = (
     <aside
@@ -176,7 +186,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {NAV.map((group) => (
+        {nav.map((group) => (
           <div key={group.title} className="space-y-1">
             <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{group.title}</p>
             {group.items.map(({ href, label, Icon }) => {
@@ -239,19 +249,23 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="flex-1 sm:hidden" />
 
             <div className="flex items-center gap-2">
-              <div className="hidden md:block">
-                <button type="button" onClick={() => setBulkOpen(true)} className={buttonClass('secondary', 'sm')}>
-                  <CloudUpload className="w-4 h-4" /> Upload CVs
-                </button>
-              </div>
-              <div className="hidden sm:block">
-                <button type="button" onClick={() => setVacancyOpen(true)} className={buttonClass('secondary', 'sm')}>
-                  <Plus className="w-4 h-4" /> New vacancy
-                </button>
-              </div>
-              <button type="button" onClick={() => setAddOpen(true)} className={buttonClass('primary', 'sm')}>
-                <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">Add candidate</span><span className="sm:hidden">Add</span>
-              </button>
+              {(access === 'admin' || access === 'hr') && (
+                <>
+                  <div className="hidden md:block">
+                    <button type="button" onClick={() => setBulkOpen(true)} className={buttonClass('secondary', 'sm')}>
+                      <CloudUpload className="w-4 h-4" /> Upload CVs
+                    </button>
+                  </div>
+                  <div className="hidden sm:block">
+                    <button type="button" onClick={() => setVacancyOpen(true)} className={buttonClass('secondary', 'sm')}>
+                      <Plus className="w-4 h-4" /> New vacancy
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setAddOpen(true)} className={buttonClass('primary', 'sm')}>
+                    <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">Add candidate</span><span className="sm:hidden">Add</span>
+                  </button>
+                </>
+              )}
 
               <div className="relative" ref={accountRef}>
                 <button

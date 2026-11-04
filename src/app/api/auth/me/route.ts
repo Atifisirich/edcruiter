@@ -17,6 +17,7 @@ export async function GET() {
       name: ctx.user.name,
       email: ctx.user.email,
       role: ctx.role,
+      role_id: ctx.user.role_id ?? ctx.role,
       school_id: ctx.schoolId,
     });
   } catch (error) {

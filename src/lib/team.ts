@@ -1,24 +1,42 @@
 import { isValidEmail, normalizeEmail } from './emailAddress';
 import type { User, UserRole } from './types';
 
-/** The roles a school admin can hand out. The platform owner role is never one of them. */
-export const TEAM_ROLES: UserRole[] = ['SCHOOL_ADMIN', 'REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER'];
+/**
+ * The levels a school admin can hand out. The platform owner role is never one
+ * of them. INSTITUTE_HEAD and FINAL_DECISION_MAKER are older reviewer levels:
+ * still valid for the people and roles that carry them, so a school's standard
+ * Principal and Management roles keep working. See permissions.ts.
+ */
+export const TEAM_ROLES: UserRole[] = ['SCHOOL_ADMIN', 'HR', 'REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER'];
+
+/** The three kinds of access a school chooses between when it names a role. */
+export const ACCESS_CHOICES: { level: UserRole; label: string; help: string }[] = [
+  { level: 'SCHOOL_ADMIN', label: 'School admin', help: 'Management. Everything, including deleting or changing data, the team, settings and review rounds, and seeing everyone’s work.' },
+  { level: 'HR', label: 'HR', help: 'Posts vacancies, adds and invites candidates, creates tests, schedules interviews, shortlists, and sends offers. Cannot delete or change data.' },
+  { level: 'REPORTING_MANAGER', label: 'Reviewer', help: 'Reads candidate reports and gives a yes or no with their opinion, in the review rounds their role is assigned to.' },
+];
 
 export const MAX_TEAM_SIZE = 25;
 
+/** The standard role names, which are also the names used before a school renames them. */
 export const ROLE_LABEL: Record<string, string> = {
   SCHOOL_ADMIN: 'School admin',
-  REPORTING_MANAGER: 'Reporting manager (HOD)',
-  INSTITUTE_HEAD: 'Institute head (Principal)',
-  FINAL_DECISION_MAKER: 'Final decision maker',
+  HR: 'HR',
+  REPORTING_MANAGER: 'Subject lead (HOD)',
+  INSTITUTE_HEAD: 'Principal',
+  FINAL_DECISION_MAKER: 'Management',
   SUPER_ADMIN: 'Platform owner',
 };
 
+const ACCESS_HELP = Object.fromEntries(ACCESS_CHOICES.map((c) => [c.level, c.help]));
+
+/** What a role at this level can do, in a sentence. */
 export const ROLE_HELP: Record<string, string> = {
-  SCHOOL_ADMIN: 'Full access: vacancies, candidates, tests, WhatsApp, and managing this team.',
-  REPORTING_MANAGER: 'Reviews candidates in the subject-lead round.',
-  INSTITUTE_HEAD: 'Reviews candidates in the principal round.',
-  FINAL_DECISION_MAKER: 'Makes the final hiring decision.',
+  SCHOOL_ADMIN: ACCESS_HELP.SCHOOL_ADMIN,
+  HR: ACCESS_HELP.HR,
+  REPORTING_MANAGER: ACCESS_HELP.REPORTING_MANAGER,
+  INSTITUTE_HEAD: ACCESS_HELP.REPORTING_MANAGER,
+  FINAL_DECISION_MAKER: ACCESS_HELP.REPORTING_MANAGER,
 };
 
 export type TeamInput = { name: string; email: string; role: UserRole };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, requireStaff } from '@/lib/auth';
+import { isAdmin } from '@/lib/permissions';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,8 +15,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ auditLogs: db.getAuditLogs(requestedSchoolId) });
     }
 
-    // Every other role sees only their own school's log — a requested
-    // school_id belonging to someone else is silently ignored, not honoured.
+    // The log is how the school admin follows everyone's work, so it is theirs
+    // alone. They see only their own school's log — a requested school_id
+    // belonging to someone else is silently ignored, not honoured.
+    if (!isAdmin(ctx.role)) {
+      return NextResponse.json({ error: 'Only the school admin can see the team’s activity.' }, { status: 403 });
+    }
     if (!ctx.schoolId) {
       throw new Error('Staff account is not linked to a school.');
     }

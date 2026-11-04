@@ -22,10 +22,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    // Only the reviewer tiers record hiring decisions — RM, IH, and the final
-    // decision maker. School admin retains access for support/override cases.
+    // This older route sets a candidate's status directly, so only the school
+    // admin may use it. Reviewers decide through their review round instead
+    // (/api/candidates/[id]/decision), which checks the round and records it.
     const ctx = await requireSchoolAccess(body.school_id, {
-      anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN']
+      minRole: 'SCHOOL_ADMIN'
     });
     assertSchoolActive(ctx.schoolId);
 

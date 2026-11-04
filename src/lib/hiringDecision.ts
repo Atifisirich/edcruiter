@@ -4,11 +4,16 @@
  * server. The route that applies them records who decided (from the session,
  * never typed) and tells a declined candidate once.
  *
- *   Review -> Shortlist -> Subject lead -> Principal -> Management -> Offer sent
+ *   Review -> Shortlist -> the school's review rounds, in order -> Offer sent
  *               |  or hold, or "not moving forward" at any point
+ *
+ * The rounds are the school's own (reviewRounds.ts); the last one is the final
+ * yes or no. Who may take each action is in mayTake below.
  */
 
-import type { Candidate, InterviewDecision, InterviewRound } from './types';
+import { isAdmin, isHiringTeam } from './permissions';
+import { DEFAULT_ROUNDS, canDecideRound, currentRound as nextRound, isSelected } from './reviewRounds';
+import type { Candidate, InterviewDecision, InterviewRound, ReviewRound, RoundResult, User } from './types';
 
 export type DecisionAction =
   | 'shortlist'
@@ -20,16 +25,33 @@ export type DecisionAction =
   | 'offer_sent'
   | 'candidate_declined';
 
-export const ROUNDS: { round: InterviewRound; field: 'rm_clearance' | 'ih_clearance' | 'coo_clearance'; label: string }[] = [
-  { round: 'subject_lead', field: 'rm_clearance', label: 'Subject lead' },
-  { round: 'principal', field: 'ih_clearance', label: 'Principal' },
-  { round: 'management', field: 'coo_clearance', label: 'Management' },
-];
+/**
+ * Who may take an action. HR and the admin run the shortlist and the offer;
+ * only the admin may undo a decision; a round's yes or no belongs to the roles
+ * the admin assigned to that round (and to the admin).
+ */
+export function mayTake(
+  action: DecisionAction | 'allow_retry',
+  user: Pick<User, 'role' | 'role_id'>,
+  round?: ReviewRound
+): boolean {
+  switch (action) {
+    case 'reopen':
+      return isAdmin(user.role);
+    case 'round_pass':
+    case 'round_reject':
+      return !!round && canDecideRound(user, round);
+    default:
+      return isHiringTeam(user.role);
+  }
+}
 
 export interface DecisionInput {
   action: DecisionAction;
   round?: InterviewRound;
   note?: string;
+  /** The meeting the round was held in, when it was a scheduled interview. */
+  meetingLink?: string;
 }
 
 export type DecisionOutcome =
@@ -42,23 +64,25 @@ function isClosed(c: Pick<Candidate, 'status' | 'rejected_by_school_at' | 'rejec
   return c.status === 'rejected' || !!c.rejected_by_school_at || !!c.rejected_by_candidate_at;
 }
 
-/** Which round a shortlisted candidate is waiting on: the first one not yet cleared. Null when all three are cleared. */
-export function currentRound(c: Pick<Candidate, 'rm_clearance' | 'ih_clearance' | 'coo_clearance'>): InterviewRound | null {
-  for (const r of ROUNDS) {
-    if (c[r.field]?.status !== 'cleared') return r.round;
-  }
-  return null;
+/** Which round a shortlisted candidate is waiting on: the first one not yet cleared. Null when every round is cleared. */
+export function currentRound(
+  c: Pick<Candidate, 'round_results' | 'rm_clearance' | 'ih_clearance' | 'coo_clearance'>,
+  rounds: ReviewRound[] = DEFAULT_ROUNDS
+): InterviewRound | null {
+  return nextRound(c, rounds)?.id ?? null;
 }
 
 export function decide(
   c: Candidate,
   input: DecisionInput,
   actor: { id: string; name: string },
-  nowIso: string = new Date().toISOString()
+  nowIso: string = new Date().toISOString(),
+  rounds: ReviewRound[] = DEFAULT_ROUNDS
 ): DecisionOutcome {
   const note = (input.note ?? '').trim();
   const closed = isClosed(c);
   const shortlisted = c.shortlist_status === 'shortlisted' || c.status === 'passed';
+  const selected = isSelected(c, rounds);
 
   switch (input.action) {
     case 'shortlist': {
@@ -115,36 +139,40 @@ export function decide(
     case 'round_reject': {
       if (closed) return { ok: false, error: 'This candidate is not moving forward.' };
       if (!shortlisted) return { ok: false, error: 'Shortlist the candidate before recording an interview.' };
-      const index = ROUNDS.findIndex((r) => r.round === input.round);
+      const index = rounds.findIndex((r) => r.id === input.round);
       if (index < 0) return { ok: false, error: 'Choose an interview round.' };
-      const wanted = ROUNDS[index];
-      const expected = currentRound(c);
-      if (expected === null) return { ok: false, error: 'All three interviews are already cleared.' };
-      if (expected !== wanted.round) {
-        return { ok: false, error: `Record the ${ROUNDS.find((r) => r.round === expected)?.label} interview first.` };
+      const wanted = rounds[index];
+      const expected = nextRound(c, rounds);
+      if (expected === null) return { ok: false, error: 'Every review round is already cleared.' };
+      if (expected.id !== wanted.id) {
+        return { ok: false, error: `Record the ${expected.name} round first.` };
       }
       const pass = input.action === 'round_pass';
-      if (!pass && note.length < MIN_NOTE) return { ok: false, error: 'Please write why. Only your school sees it.' };
+      if (note.length < MIN_NOTE) {
+        return { ok: false, error: pass ? 'Please write your opinion of this teacher. Only your school sees it.' : 'Please write why. Only your school sees it.' };
+      }
+      const last = index === rounds.length - 1;
 
       const entry: InterviewDecision = {
-        round: wanted.round,
-        round_label: wanted.label,
+        round: wanted.id,
+        round_label: wanted.name,
         reviewer_id: actor.id,
         reviewer_name: actor.name,
         decision: pass ? 'accepted' : 'rejected',
-        reason: note || 'Cleared.',
+        reason: note,
         decided_at: nowIso,
       };
-      const clearance: Record<string, unknown> = {
+      const result: RoundResult = {
         status: pass ? 'cleared' : 'rejected',
-        notes: note || 'Cleared.',
+        notes: note,
+        reviewer_id: actor.id,
         reviewer_name: actor.name,
         completed_at: nowIso,
+        ...(input.meetingLink ? { gmeet_link: input.meetingLink } : {}),
       };
-      if (wanted.round === 'management') clearance.decision = pass ? 'offer_issued' : 'rejected';
 
       const updates: Record<string, unknown> = {
-        [wanted.field]: clearance,
+        round_results: { ...(c.round_results || {}), [wanted.id]: result },
         interview_decisions: [...(c.interview_decisions || []), entry],
       };
       if (!pass) {
@@ -154,24 +182,24 @@ export function decide(
           rejected_by_school_at: nowIso,
           rejected_by_school_reason: note,
         });
-      } else if (wanted.round === 'management') {
-        // Approved. The teacher counts as selected; "hired" waits for the offer letter.
+      } else if (last) {
+        // The final yes. The teacher counts as selected; "hired" waits for the offer letter.
         updates.selected_at = c.selected_at || nowIso;
       }
       return {
         ok: true,
         updates,
         message: !pass
-          ? `Stopped after the ${wanted.label.toLowerCase()} interview.`
-          : wanted.round === 'management'
-          ? 'Approved. The teacher is selected. Send the offer letter next.'
-          : `${wanted.label} interview cleared. Next: ${ROUNDS[index + 1].label.toLowerCase()}.`,
+          ? `Stopped at the ${wanted.name} round.`
+          : last
+          ? 'Final yes. The teacher is selected. Send the offer letter next.'
+          : `${wanted.name} round cleared. Next: ${rounds[index + 1].name}.`,
         declinesCandidate: !pass,
       };
     }
 
     case 'offer_sent': {
-      if (!c.selected_at) return { ok: false, error: 'Approve the teacher at the management interview before marking the offer sent.' };
+      if (!selected) return { ok: false, error: 'The teacher needs the final yes before the offer is marked sent.' };
       return {
         ok: true,
         updates: { offer_letter_sent_at: nowIso, status: 'hired' },

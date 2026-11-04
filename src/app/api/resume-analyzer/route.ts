@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { analyzeResumeWithAIAsync } from '@/lib/aiResumeAnalyzer';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { HIRING_TEAM, isAdmin } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,9 +14,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'candidate_id is required' }, { status: 400 });
     }
 
-    const ctx = await requireSchoolAccess(body.school_id);
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
     const school_id = ctx.schoolId;
+    // Sending new CV text or a new file replaces what is stored, which only the admin may do.
+    if ((resume_text || resume_url) && !isAdmin(ctx.role)) {
+      return NextResponse.json({ error: 'Only the school admin can change a candidate’s CV.' }, { status: 403 });
+    }
 
     const rl = checkRateLimit(req, 'resume-reanalyze', { max: 30, windowMs: 60 * 60_000 });
     if (!rl.allowed) {

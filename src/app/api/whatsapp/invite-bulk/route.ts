@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { assertSchoolActive, authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -16,7 +17,7 @@ const MAX_PER_CALL = 500;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'whatsapp-invite-bulk', { max: 10, windowMs: 60 * 60_000 });

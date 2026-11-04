@@ -3,11 +3,17 @@ import type { ShortlistBand } from './shortlistBands';
 import type { HrPolicyAnswers } from './hrPolicyTemplate';
 import type { ReportSettings } from './teachingProfile';
 
-export type UserRole = 
-  | 'SUPER_ADMIN' 
-  | 'SCHOOL_ADMIN' 
-  | 'REPORTING_MANAGER' 
-  | 'INSTITUTE_HEAD' 
+/**
+ * Access levels. REPORTING_MANAGER, INSTITUTE_HEAD and FINAL_DECISION_MAKER all
+ * carry reviewer access now (see permissions.ts); which candidates a reviewer
+ * decides on comes from the school's review rounds, not from the level.
+ */
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'SCHOOL_ADMIN'
+  | 'HR'
+  | 'REPORTING_MANAGER'
+  | 'INSTITUTE_HEAD'
   | 'FINAL_DECISION_MAKER';
 
 export type StageKey = 
@@ -155,8 +161,28 @@ export interface School {
   whatsapp_hiring?: WhatsAppHiringConfig;
   /** Which video observations appear in the teaching profile. See teachingProfile.ts. */
   report_settings?: ReportSettings;
-  /** The school's own role names. Absent means the four standard roles. See roles.ts. */
+  /** The school's own role names. Absent means the standard roles. See roles.ts. */
   roles?: RoleDef[];
+  /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
+  review_rounds?: ReviewRound[];
+}
+
+/** One review round a shortlisted teacher goes through. The last round is the final yes or no. */
+export interface ReviewRound {
+  id: string;
+  name: string;
+  /** Ids of the school's roles (RoleDef.id) whose holders may decide this round. */
+  role_ids: string[];
+}
+
+/** What a reviewer decided at one round. */
+export interface RoundResult {
+  status: 'cleared' | 'rejected';
+  notes: string;
+  reviewer_id?: string;
+  reviewer_name?: string;
+  completed_at: string;
+  gmeet_link?: string;
 }
 
 export interface WhatsAppHiringConfig {
@@ -416,11 +442,14 @@ export interface Candidate {
   /** Worked out when the list is served (how many of the five test stages are done); never stored. */
   stages_completed?: number;
   interview_decisions?: InterviewDecision[];
+  /** Each review round's outcome, by round id. Older candidates also carry rm/ih/coo_clearance; see reviewRounds.ts. */
+  round_results?: Record<string, RoundResult>;
   created_at: string;
   updated_at: string;
 }
 
-export type InterviewRound = 'subject_lead' | 'principal' | 'management';
+/** A review round id (ReviewRound.id). The standard three are 'subject_lead', 'principal' and 'management'. */
+export type InterviewRound = string;
 
 export interface InterviewDecision {
   round: InterviewRound;

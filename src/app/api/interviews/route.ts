@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { ScheduledInterview, InterviewRound } from '@/lib/types';
+import { ScheduledInterview } from '@/lib/types';
+import { HIRING_TEAM } from '@/lib/permissions';
+import { canDecideRound, roundResultOf, roundsOf } from '@/lib/reviewRounds';
 import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchoolAccess, requireStaff, assertSchoolActive } from '@/lib/auth';
 import { generateMeetingLink } from '@/lib/meetingLink';
 import { sendTemplateMessage } from '@/lib/whatsappClient';
@@ -8,17 +10,6 @@ import { sendEmail } from '@/lib/emailClient';
 import { escapeHtml } from '@/lib/escapeHtml';
 import { createCandidateMagicLinkToken } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rateLimit';
-
-const ROUND_LABEL: Record<InterviewRound, string> = {
-  subject_lead: 'Subject Lead',
-  principal: 'Principal',
-  management: 'Management',
-};
-
-const PREVIOUS_ROUND: Partial<Record<InterviewRound, InterviewRound>> = {
-  principal: 'subject_lead',
-  management: 'principal',
-};
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('en-IN', {
@@ -57,13 +48,13 @@ export async function GET(req: NextRequest) {
 /**
  * HR schedules a real interview slot: a candidate, a round, a specific staff
  * member, a time, and a link — the thing that was missing entirely before.
- * Only school admins allot interviews, matching how the school actually
- * wants this to work (HR decides and assigns, not any reviewer for themselves).
+ * HR and the school admin allot interviews (HR decides and assigns, not any
+ * reviewer for themselves), and only to someone who reviews that round.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'schedule-interview', { max: 60, windowMs: 60 * 60_000 });
@@ -78,9 +69,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (!(round in ROUND_LABEL)) {
+    const school = db.getSchoolById(ctx.schoolId);
+    const rounds = roundsOf(school);
+    const roundIndex = rounds.findIndex((r) => r.id === round);
+    if (roundIndex < 0) {
       return NextResponse.json({ error: 'Invalid round.' }, { status: 400 });
     }
+    const theRound = rounds[roundIndex];
     const scheduledDate = new Date(scheduled_at);
     if (Number.isNaN(scheduledDate.getTime())) {
       return NextResponse.json({ error: 'scheduled_at must be a valid date/time.' }, { status: 400 });
@@ -89,27 +84,31 @@ export async function POST(req: NextRequest) {
     const candidate = db.getCandidateById(ctx.schoolId, candidate_id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found at this school.' }, { status: 404 });
 
-    // Rounds run in order: subject lead, then principal, then management. A
-    // later round may only be scheduled once the one before it was accepted.
+    // Rounds run in the school's order. A later round may only be scheduled
+    // once the one before it was cleared.
     if (candidate.status === 'rejected') {
       return NextResponse.json({ error: 'This candidate has already been declined.' }, { status: 409 });
     }
-    const previous = PREVIOUS_ROUND[round as InterviewRound];
-    if (previous) {
-      const last = [...(candidate.interview_decisions || [])].reverse().find((d) => d.round === previous);
-      if (last?.decision !== 'accepted') {
-        return NextResponse.json(
-          { error: `The ${ROUND_LABEL[previous]} round must be accepted before scheduling the ${ROUND_LABEL[round as InterviewRound]} round.` },
-          { status: 409 }
-        );
-      }
+    if (candidate.shortlist_status !== 'shortlisted' && candidate.status !== 'passed') {
+      return NextResponse.json({ error: 'Shortlist this teacher before scheduling an interview.' }, { status: 409 });
+    }
+    const previous = roundIndex > 0 ? rounds[roundIndex - 1] : null;
+    if (previous && roundResultOf(candidate, previous.id)?.status !== 'cleared') {
+      return NextResponse.json(
+        { error: `The ${previous.name} round must be cleared before scheduling the ${theRound.name} round.` },
+        { status: 409 }
+      );
     }
 
     // The assigned person must be real staff at this school — not a free-text
-    // name, which is what let anyone "be" the subject lead before.
+    // name, which is what let anyone "be" the subject lead before — and must
+    // review this round, or they could not record its outcome.
     const assignedUser = db.getUsersBySchool(ctx.schoolId).find((u) => u.id === assigned_user_id);
     if (!assignedUser) {
       return NextResponse.json({ error: 'That staff member was not found at this school.' }, { status: 400 });
+    }
+    if (!canDecideRound(assignedUser, theRound)) {
+      return NextResponse.json({ error: `${assignedUser.name} does not review the ${theRound.name} round. Choose someone who does, or change the round in Settings.` }, { status: 400 });
     }
 
     const interview: ScheduledInterview = {
@@ -133,7 +132,7 @@ export async function POST(req: NextRequest) {
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'INTERVIEW_SCHEDULED',
-      resource: `Candidate: ${candidate.name} (${ROUND_LABEL[round as InterviewRound]})`,
+      resource: `Candidate: ${candidate.name} (${theRound.name})`,
       details: `Assigned to ${assignedUser.name} at ${formatWhen(interview.scheduled_at)}.`
     });
 
@@ -142,7 +141,6 @@ export async function POST(req: NextRequest) {
     // consented; the interview is still visible in their portal either way.
     let whatsapp_notified = false;
     if (candidate.phone) {
-      const school = db.getSchoolById(ctx.schoolId);
       if (school?.whatsapp_hiring && school.whatsapp_hiring.status !== 'not_connected') {
         // buttonParam is a magic-login token, not the bare candidate id —
         // see the comment in /api/whatsapp/invite for why: it logs the
@@ -155,7 +153,7 @@ export async function POST(req: NextRequest) {
           candidateId: candidate.id,
           toRaw: candidate.phone,
           template: 'round_scheduled',
-          bodyParams: [candidate.name, ROUND_LABEL[round as InterviewRound], assignedUser.name, formatWhen(interview.scheduled_at)],
+          bodyParams: [candidate.name, theRound.name, assignedUser.name, formatWhen(interview.scheduled_at)],
           buttonParam: createCandidateMagicLinkToken(candidate.id, candidate.school_id)
         }).catch(() => null);
         whatsapp_notified = !!result?.ok;
@@ -169,12 +167,12 @@ export async function POST(req: NextRequest) {
     // never blocks scheduling, it just means nobody gets emailed.
     const staffEmailResult = await sendEmail({
       to: assignedUser.email,
-      subject: `Interview scheduled: ${candidate.name} (${ROUND_LABEL[round as InterviewRound]})`,
-      text: `Hi ${assignedUser.name},\n\nYou've been assigned to interview ${candidate.name} for the ${ROUND_LABEL[round as InterviewRound]} round.\n\nWhen: ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)\nMeeting link: ${interview.meeting_link}\n${interview.notes ? `\nNote from HR: ${interview.notes}\n` : ''}\nRecord your decision after the interview from your reviewer dashboard.\n\n— Edcruiter`,
+      subject: `Interview scheduled: ${candidate.name} (${theRound.name})`,
+      text: `Hi ${assignedUser.name},\n\nYou've been assigned to interview ${candidate.name} for the ${theRound.name} round.\n\nWhen: ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)\nMeeting link: ${interview.meeting_link}\n${interview.notes ? `\nNote from HR: ${interview.notes}\n` : ''}\nRecord your decision after the interview from your reviewer dashboard.\n\n— Edcruiter`,
       // Names and notes are typed by people, so they are escaped before they go into HTML.
-      html: `<p>Hi ${escapeHtml(assignedUser.name)},</p><p>You've been assigned to interview <strong>${escapeHtml(candidate.name)}</strong> for the <strong>${ROUND_LABEL[round as InterviewRound]}</strong> round.</p><p><strong>When:</strong> ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)<br/><strong>Meeting link:</strong> <a href="${escapeHtml(interview.meeting_link)}">${escapeHtml(interview.meeting_link)}</a></p>${interview.notes ? `<p><strong>Note from HR:</strong> ${escapeHtml(interview.notes)}</p>` : ''}<p>Record your decision after the interview from your reviewer dashboard.</p><p>— Edcruiter</p>`,
+      html: `<p>Hi ${escapeHtml(assignedUser.name)},</p><p>You've been assigned to interview <strong>${escapeHtml(candidate.name)}</strong> for the <strong>${escapeHtml(theRound.name)}</strong> round.</p><p><strong>When:</strong> ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)<br/><strong>Meeting link:</strong> <a href="${escapeHtml(interview.meeting_link)}">${escapeHtml(interview.meeting_link)}</a></p>${interview.notes ? `<p><strong>Note from HR:</strong> ${escapeHtml(interview.notes)}</p>` : ''}<p>Record your decision after the interview from your reviewer dashboard.</p><p>— Edcruiter</p>`,
       kind: 'interview',
-      fromName: db.getSchoolById(ctx.schoolId)?.name,
+      fromName: school?.name,
       replyTo: ctx.user.email,
     }).catch(() => null);
 

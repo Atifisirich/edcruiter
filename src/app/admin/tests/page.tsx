@@ -5,6 +5,8 @@ import { PageHeader, Badge } from '@/components/admin/ui';
 import { Archive, BookOpen, CheckCircle2, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { AssessmentPack } from '@/lib/types';
+import { useAdmin } from '@/components/admin/adminContext';
+import { isAdmin } from '@/lib/permissions';
 
 const SEGMENTS = [
   'Pre-primary (Ages 3–6)',
@@ -17,6 +19,9 @@ const SUBJECTS = ['Biology', 'Physics', 'Mathematics', 'Chemistry', 'English', '
 const BOARDS = ['CBSE', 'Cambridge IGCSE', 'ICSE', 'IB', 'State Board'];
 
 export default function AssessmentLibraryPage() {
+  // HR writes new tests; putting one in use, archiving or deleting it is the admin's.
+  const { user } = useAdmin();
+  const admin = isAdmin(user?.role);
   const [packs, setPacks] = useState<AssessmentPack[]>([]);
   const [subject, setSubject] = useState('Biology');
   const [segment, setSegment] = useState('Primary (Grades 1–5)');
@@ -171,7 +176,7 @@ export default function AssessmentLibraryPage() {
                           <span className={p.status === 'active' ? 'text-emerald-700 font-bold' : ''}>{p.status}</span>
                         </span>
                       </button>
-                      <div className="flex flex-col gap-1">
+                      {admin && <div className="flex flex-col gap-1">
                         {p.status !== 'active' && (
                           <button
                             type="button"
@@ -200,7 +205,7 @@ export default function AssessmentLibraryPage() {
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
-                      </div>
+                      </div>}
                     </li>
                   ))}
                 </ul>
@@ -214,7 +219,7 @@ export default function AssessmentLibraryPage() {
                     <CheckCircle2 className="w-4 h-4 text-indigo-600" />
                     <h3 className="text-sm font-black">{preview.title}</h3>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  {admin ? <div className="flex flex-wrap gap-2">
                     {preview.status !== 'active' && (
                       <button
                         type="button"
@@ -233,7 +238,7 @@ export default function AssessmentLibraryPage() {
                         Archive
                       </button>
                     )}
-                  </div>
+                  </div> : preview.status !== 'active' && <p className="text-[11px] text-slate-500">The school admin puts a new test in use.</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(['mcqs', 'lesson', 'demo', 'scenario'] as const).map((t) => (

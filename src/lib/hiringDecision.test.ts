@@ -67,12 +67,12 @@ describe('the interview rounds', () => {
     expect(currentRound(shortlisted())).toBe('subject_lead');
     const r = decide(shortlisted(), { action: 'round_pass', round: 'principal' }, actor, NOW);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/subject lead interview first/i);
+    if (!r.ok) expect(r.error).toMatch(/subject lead round first/i);
   });
 
   it('record who cleared a round, from the session, and move to the next', () => {
     const r = ok(shortlisted(), { action: 'round_pass', round: 'subject_lead', note: 'Good rapport' });
-    expect(r.updates.rm_clearance).toMatchObject({ status: 'cleared', notes: 'Good rapport', reviewer_name: 'Asha Rao' });
+    expect(r.updates.round_results).toMatchObject({ subject_lead: { status: 'cleared', notes: 'Good rapport', reviewer_id: 'u1', reviewer_name: 'Asha Rao' } });
     expect(r.updates.interview_decisions).toEqual([expect.objectContaining({ round: 'subject_lead', decision: 'accepted', reviewer_id: 'u1', reviewer_name: 'Asha Rao' })]);
     const after = { ...shortlisted(), ...(r.updates as Partial<Candidate>) };
     expect(currentRound(after)).toBe('principal');
@@ -88,7 +88,7 @@ describe('the interview rounds', () => {
   it('end with the management interview selecting the teacher, and the offer letter marking them hired', () => {
     let c = shortlisted();
     for (const round of ['subject_lead', 'principal', 'management'] as const) {
-      const r = ok(c, { action: 'round_pass', round });
+      const r = ok(c, { action: 'round_pass', round, note: 'Strong lesson' });
       c = { ...c, ...(r.updates as Partial<Candidate>) };
     }
     expect(c.selected_at).toBe(NOW);

@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
-import { InterviewDecision, InterviewRound } from '@/lib/types';
+import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
-
-const ROUND_LABEL: Record<InterviewRound, string> = {
-  subject_lead: 'Subject Lead',
-  principal: 'Principal',
-  management: 'Management',
-};
+import { decide } from '@/lib/hiringDecision';
+import { isAdmin } from '@/lib/permissions';
+import { roundsOf } from '@/lib/reviewRounds';
 
 /**
- * Records the outcome of a scheduled interview. Reviewer identity comes
- * entirely from the authenticated session — never a request field — which
- * is the fix for the previous page's free-text "Your name" input: anyone
- * who opened it could record a decision as whoever they typed. School
- * admins may also record on a reviewer's behalf (HR sitting in, or
- * following up after the fact).
+ * Records the outcome of a scheduled interview: the reviewer's yes or no and
+ * their opinion. Reviewer identity comes entirely from the authenticated
+ * session — never a request field — which is the fix for the previous page's
+ * free-text "Your name" input: anyone who opened it could record a decision as
+ * whoever they typed. The school admin may also record on a reviewer's behalf.
+ * The round rules are the same as a decision from the report (hiringDecision.ts).
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -25,14 +21,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const interview = db.getScheduledInterviewById(id);
     if (!interview) return NextResponse.json({ error: 'Interview not found' }, { status: 404 });
 
-    const ctx = await requireSchoolAccess(interview.school_id, {
-      anyOf: ['REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER', 'SCHOOL_ADMIN']
-    });
+    const ctx = await requireSchoolAccess(interview.school_id);
 
-    // Only the assigned reviewer, or a school admin, may record this
+    // Only the assigned reviewer, or the school admin, may record this
     // particular interview's outcome — not any other reviewer at the school.
-    if (ctx.user.id !== interview.assigned_user_id && ctx.role !== 'SCHOOL_ADMIN') {
-      return NextResponse.json({ error: 'Only the assigned reviewer or a school admin can record this outcome.' }, { status: 403 });
+    if (ctx.user.id !== interview.assigned_user_id && !isAdmin(ctx.role)) {
+      return NextResponse.json({ error: 'Only the assigned reviewer or the school admin can record this outcome.' }, { status: 403 });
+    }
+    if (interview.status !== 'scheduled') {
+      return NextResponse.json({ error: 'This interview is no longer open.' }, { status: 409 });
     }
 
     const rl = checkRateLimit(req, 'interview-decision', { max: 60, windowMs: 60 * 60_000 });
@@ -45,73 +42,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (decision !== 'accepted' && decision !== 'rejected') {
       return NextResponse.json({ error: 'decision must be "accepted" or "rejected"' }, { status: 400 });
     }
-    if (!reason || !String(reason).trim()) {
-      return NextResponse.json({ error: 'A reason is required.' }, { status: 400 });
-    }
 
     const candidate = db.getCandidateById(ctx.schoolId, interview.candidate_id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
-    const round = interview.round;
-    const entry: InterviewDecision = {
-      round,
-      round_label: ROUND_LABEL[round],
-      reviewer_id: ctx.user.id,
-      reviewer_name: ctx.user.name,
-      decision,
-      reason: String(reason).trim(),
-      decided_at: new Date().toISOString()
-    };
-    const nextLog = [...(candidate.interview_decisions || []), entry];
-    const clearanceKey = round === 'subject_lead' ? 'rm_clearance' : round === 'principal' ? 'ih_clearance' : 'coo_clearance';
+    const rounds = roundsOf(db.getSchoolById(ctx.schoolId));
+    const round = rounds.find((r) => r.id === interview.round);
+    if (!round) return NextResponse.json({ error: 'This round is no longer one of your school’s review rounds.' }, { status: 409 });
 
-    const clearanceUpdate = round === 'management'
-      ? {
-          status: decision === 'accepted' ? 'cleared' as const : 'rejected' as const,
-          decision: decision === 'accepted' ? 'offer_issued' as const : 'rejected' as const,
-          notes: entry.reason,
-          gmeet_link: interview.meeting_link,
-          completed_at: entry.decided_at
-        }
-      : {
-          status: decision === 'accepted' ? 'cleared' as const : 'rejected' as const,
-          notes: entry.reason,
-          reviewer_name: entry.reviewer_name,
-          gmeet_link: interview.meeting_link,
-          completed_at: entry.decided_at
-        };
+    const outcome = decide(
+      candidate,
+      {
+        action: decision === 'accepted' ? 'round_pass' : 'round_reject',
+        round: round.id,
+        note: typeof reason === 'string' ? reason.slice(0, 1000) : '',
+        meetingLink: interview.meeting_link,
+      },
+      { id: ctx.user.id, name: ctx.user.name },
+      undefined,
+      rounds
+    );
+    if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: 400 });
 
-    const updated = db.updateCandidate(ctx.schoolId, candidate.id, {
-      interview_decisions: nextLog,
-      [clearanceKey]: clearanceUpdate,
-      shortlist_status: decision === 'rejected' ? 'rejected' : candidate.shortlist_status,
-      // A management acceptance approves the offer; the candidate is only
-      // 'hired' once the offer letter is actually dispatched (OfferLetterModal).
-      // Marking them hired here hid them from the reviewer page's
-      // "offer not yet sent" list the moment the COO accepted.
-      status: decision === 'rejected' ? 'rejected' : candidate.status
-    });
-
+    const updated = db.updateCandidate(ctx.schoolId, candidate.id, outcome.updates);
     db.updateScheduledInterview(interview.id, { status: 'completed' });
 
     // Tell a declined candidate the outcome (once, kindly, no internal reason).
-    const candidateNotified = decision === 'rejected' && body.notify_candidate !== false
+    const candidateNotified = outcome.declinesCandidate && body.notify_candidate !== false
       ? await notifyCandidateDeclined(ctx.schoolId, candidate.id)
       : undefined;
 
-    db.addAuditLog({
-      id: `audit_${Date.now()}`,
-      school_id: ctx.schoolId,
-      actor_id: ctx.user.id,
-      actor_name: ctx.user.name,
-      actor_role: ctx.role,
+    auditAsStaff(ctx, ctx.schoolId, {
       action: 'INTERVIEW_DECISION_RECORDED',
-      resource: `Candidate: ${candidate.name} (${ROUND_LABEL[round]})`,
-      details: `${decision.toUpperCase()}. ${entry.reason}`,
-      timestamp: new Date().toISOString()
+      resource: `Candidate: ${candidate.name} (${round.name})`,
+      details: `${decision === 'accepted' ? 'Yes' : 'No'}. ${String(reason).trim()}`,
     });
 
-    return NextResponse.json({ success: true, candidate: db.getCandidateById(ctx.schoolId, candidate.id) || updated, decision: entry, candidate_notified: candidateNotified });
+    return NextResponse.json({
+      success: true,
+      message: outcome.message,
+      candidate: db.getCandidateById(ctx.schoolId, candidate.id) || updated,
+      candidate_notified: candidateNotified,
+    });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to record decision' }, { status: 500 });
   }

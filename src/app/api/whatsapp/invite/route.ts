@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -19,7 +20,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
     assertSchoolActive(ctx.schoolId);
 
     const rl = checkRateLimit(req, 'whatsapp-invite', { max: 100, windowMs: 60 * 60_000 });
