@@ -1,12 +1,18 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Video, CheckCircle2, Clock, Sparkles, Calendar, ExternalLink, Loader2, ClipboardCheck, History } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import {
+  Video, CheckCircle2, XCircle, Clock, Sparkles, Calendar, ExternalLink, Loader2, ClipboardCheck,
+  History, RefreshCw, Search, LogOut, Globe, ChevronDown, AlertCircle, ThumbsUp, ThumbsDown,
+} from 'lucide-react';
 import { Candidate, ScheduledInterview } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { canDecideRound, currentRound } from '@/lib/reviewRounds';
 import CandidateProfileModal from '@/components/reviewer/CandidateProfileModal';
 import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
+import BrandMark from '@/components/shared/BrandMark';
+import { Badge, Card, CardHeader, EmptyState, PageHeader, StatCard, buttonClass, inputClass } from '@/components/admin/ui';
 
 /**
  * A reviewer's home. The rounds they review are set by the school admin in
@@ -14,39 +20,78 @@ import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
  * the interviews HR has scheduled with them, and what they have already
  * decided. The old /reviewer/rm, /ih and /coo addresses all land here.
  */
+
+function whenLabel(iso: string): string {
+  return new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+/** "Starts in 20 min", "Today", "Tomorrow" — what a reviewer wants to know at a glance. */
+function startsIn(iso: string): { text: string; tone: 'amber' | 'indigo' | 'slate' | 'rose' } {
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (mins < -60) return { text: 'Time has passed', tone: 'rose' };
+  if (mins <= 0) return { text: 'Happening now', tone: 'amber' };
+  if (mins < 60) return { text: `Starts in ${mins} min`, tone: 'amber' };
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return { text: 'Today', tone: 'indigo' };
+  if (d.toDateString() === new Date(Date.now() + 86_400_000).toDateString()) return { text: 'Tomorrow', tone: 'indigo' };
+  return { text: whenLabel(iso).split(',')[0], tone: 'slate' };
+}
+
 export default function ReviewerHomePage() {
   const access = useReviewAccess();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [reportId, setReportId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [email, setEmail] = useState('');
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
 
   // HR-scheduled interviews assigned to whoever is signed in right now.
   const [myInterviews, setMyInterviews] = useState<ScheduledInterview[]>([]);
   const [opinions, setOpinions] = useState<Record<string, string>>({});
   const [decidingId, setDecidingId] = useState<string | null>(null);
-  const [interviewError, setInterviewError] = useState('');
+  const [interviewError, setInterviewError] = useState<{ id: string; message: string } | null>(null);
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [candRes, intvRes] = await Promise.all([
         fetch(`/api/candidates?school_id=${schoolId}`),
         fetch(`/api/interviews?mine=1&school_id=${schoolId}`),
       ]);
-      const candData = await candRes.json();
+      const candData = await candRes.json().catch(() => ({}));
       const intvData = await intvRes.json().catch(() => ({}));
-      if (candData.candidates) setCandidates(candData.candidates);
+      if (!candRes.ok) throw new Error(candData.error || 'Could not load the teachers.');
+      setCandidates(candData.candidates || []);
       setMyInterviews((intvData.interviews || []).filter((i: ScheduledInterview) => i.status === 'scheduled'));
     } catch (err) {
-      console.error(err);
+      setLoadError(err instanceof Error ? err.message : 'Could not reach the server. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolId]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const refresh = () => { setLoading(true); setLoadError(''); load(); };
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads once on arrival; state is set after the fetch resolves
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((m) => { if (m?.email) setEmail(m.email); }).catch(() => {});
+  }, []);
+
+  // Close the account menu when clicking elsewhere.
+  useEffect(() => {
+    if (!accountOpen) return;
+    const close = (e: MouseEvent) => { if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [accountOpen]);
 
   const me = access?.me;
   const rounds = useMemo(() => access?.rounds ?? [], [access]);
@@ -60,13 +105,23 @@ export default function ReviewerHomePage() {
       .filter((x) => x.round && canDecideRound(me, x.round));
   }, [candidates, rounds, me]);
 
+  const filteredWaiting = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return waiting;
+    return waiting.filter(({ c }) => `${c.name} ${c.applied_subject} ${c.applied_segment}`.toLowerCase().includes(q));
+  }, [waiting, search]);
+
   const decidedByMe = useMemo(() => {
     if (!me) return [];
     return candidates
       .flatMap((c) => (c.interview_decisions || []).filter((d) => d.reviewer_id === me.id).map((d) => ({ c, d })))
-      .sort((a, b) => b.d.decided_at.localeCompare(a.d.decided_at))
-      .slice(0, 15);
+      .sort((a, b) => b.d.decided_at.localeCompare(a.d.decided_at));
   }, [candidates, me]);
+
+  const sortedInterviews = useMemo(
+    () => [...myInterviews].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
+    [myInterviews]
+  );
 
   const candidateFor = (id: string) => candidates.find((c) => c.id === id);
   const roundName = (id: string) => rounds.find((r) => r.id === id)?.name ?? id;
@@ -74,178 +129,273 @@ export default function ReviewerHomePage() {
   const recordInterview = async (interview: ScheduledInterview, decision: 'accepted' | 'rejected') => {
     const reason = (opinions[interview.id] || '').trim();
     if (!reason) {
-      setInterviewError('Write your opinion of this teacher before giving your yes or no.');
+      setInterviewError({ id: interview.id, message: 'Write your opinion of this teacher before giving your yes or no.' });
       return;
     }
     setDecidingId(interview.id);
-    setInterviewError('');
+    setInterviewError(null);
     try {
       const res = await fetch(`/api/interviews/${interview.id}/decision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, reason }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not record the decision.');
       setMyInterviews((prev) => prev.filter((i) => i.id !== interview.id));
       setOpinions((prev) => { const next = { ...prev }; delete next[interview.id]; return next; });
       if (data.candidate) setCandidates((prev) => prev.map((c) => (c.id === data.candidate.id ? data.candidate : c)));
     } catch (e) {
-      setInterviewError(e instanceof Error ? e.message : 'Could not record the decision.');
+      setInterviewError({ id: interview.id, message: e instanceof Error ? e.message : 'Could not record the decision.' });
     } finally {
       setDecidingId(null);
     }
   };
 
-  if (loading || !access) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 flex items-center justify-center text-zinc-400">
-        <Loader2 className="w-6 h-6 animate-spin" />
+  const initial = (me?.name || email || 'R').trim().charAt(0).toUpperCase();
+
+  const topBar = (
+    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandMark size="md" />
+          {me && <Badge tone="indigo" className="hidden sm:inline-flex">{me.role_name}</Badge>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={refresh} disabled={loading} className={buttonClass('ghost', 'sm')} aria-label="Refresh">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Refresh</span>
+          </button>
+          <div className="relative" ref={accountRef}>
+            <button
+              type="button"
+              aria-label="Account"
+              aria-expanded={accountOpen}
+              onClick={() => setAccountOpen((o) => !o)}
+              className="flex items-center gap-1 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 cursor-pointer"
+            >
+              <span className="w-8 h-8 rounded-full bg-slate-800 text-white text-sm font-semibold flex items-center justify-center">{initial}</span>
+              <ChevronDown className="w-4 h-4 text-slate-400 hidden sm:block" />
+            </button>
+            {accountOpen && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl p-1.5 z-50">
+                <div className="px-3 py-2.5 border-b border-slate-100">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{me?.name || 'Signed in'}</p>
+                  {email && <p className="text-xs text-slate-500 truncate">{email}</p>}
+                </div>
+                <Link href="/" className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
+                  <Globe className="w-4 h-4 text-slate-400" /> Visit the website
+                </Link>
+                <a href="/api/auth/logout" className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
+                  <LogOut className="w-4 h-4 text-slate-400" /> Log out
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+    </header>
+  );
+
+  const shell = (body: React.ReactNode) => (
+    <div className="min-h-screen bg-slate-50">
+      {topBar}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">{body}</main>
+    </div>
+  );
+
+  if (loading && !access && !candidates.length) {
+    return shell(<div className="h-48 flex items-center justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>);
+  }
+
+  if (loadError) {
+    return shell(
+      <Card>
+        <EmptyState
+          Icon={AlertCircle}
+          title="We could not load your reviews"
+          description={loadError}
+          action={<button type="button" onClick={refresh} className={buttonClass('primary')}><RefreshCw className="w-4 h-4" /> Try again</button>}
+        />
+      </Card>
     );
   }
 
-  const card = 'glass-card p-6 rounded-3xl border border-zinc-800 bg-[#121216] shadow-2xl space-y-3';
+  if (!access) {
+    // The sign-in details have not arrived (or the session ended).
+    return shell(
+      <Card>
+        <EmptyState
+          Icon={AlertCircle}
+          title="Checking who you are…"
+          description="If this stays here, your session may have ended. Log in again to continue."
+          action={<a href="/login?next=/reviewer/ih" className={buttonClass('primary')}>Log in again</a>}
+        />
+      </Card>
+    );
+  }
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      <div className={card}>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-3 py-1 rounded-full text-xs font-black bg-[#ea580c] text-white shadow-md">{me?.role_name}</span>
-          <h1 className="text-xl font-black">{me?.name}</h1>
-        </div>
-        <p className="text-xs text-zinc-400">
-          {myRounds.length
+  return shell(
+    <>
+      <PageHeader
+        title={`Welcome, ${(me?.name || '').split(' ')[0] || 'reviewer'}`}
+        description={
+          myRounds.length
             ? `You give the yes or no in: ${myRounds.map((r) => r.name).join(', ')}. Read each teacher’s report, write your opinion, then decide.`
-            : 'You are not assigned to a review round yet. The school admin chooses who reviews each round in Settings.'}
-        </p>
+            : 'You are not assigned to a review round yet. The school admin chooses who reviews each round in Settings.'
+        }
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Waiting for you" value={waiting.length} hint="Teachers needing your yes or no" Icon={ClipboardCheck} tone="amber" />
+        <StatCard label="Interviews" value={myInterviews.length} hint="Scheduled with you" Icon={Calendar} tone="indigo" />
+        <StatCard label="Decided" value={decidedByMe.length} hint="Your yes and no answers" Icon={CheckCircle2} tone="emerald" />
       </div>
 
       {/* Waiting for this reviewer */}
-      <div className={card}>
-        <h2 className="text-sm font-black text-white flex items-center gap-2">
-          <ClipboardCheck className="w-4 h-4 text-[#ea580c]" /> Waiting for your yes or no ({waiting.length})
-        </h2>
+      <Card>
+        <CardHeader
+          title={`Waiting for your yes or no (${waiting.length})`}
+          description="Open a report, read it, then give your decision."
+          action={waiting.length > 4 ? (
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name or subject"
+                aria-label="Search teachers waiting for you"
+                className={`${inputClass} pl-9`}
+              />
+            </div>
+          ) : undefined}
+        />
         {waiting.length === 0 ? (
-          <p className="text-xs text-zinc-400">No teachers are waiting for you right now.</p>
+          <EmptyState Icon={ClipboardCheck} title="You are all caught up" description="No teachers are waiting for you right now. New ones appear here as soon as they reach your round." />
+        ) : filteredWaiting.length === 0 ? (
+          <p className="text-sm text-slate-500 py-6 text-center">No one matches “{search}”.</p>
         ) : (
-          <ul className="space-y-2">
-            {waiting.map(({ c, round }) => (
-              <li key={c.id} className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold text-white">{c.name}</p>
-                  <p className="text-[11px] text-zinc-400">{c.applied_subject} · {c.applied_segment} · {round?.name} round</p>
+          <ul className="divide-y divide-slate-100">
+            {filteredWaiting.map(({ c, round }) => (
+              <li key={c.id} className="py-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{c.name}</p>
+                  <p className="text-xs text-slate-500">{[c.applied_subject, c.applied_segment].filter(Boolean).join(' · ')}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setReportId(c.id)}
-                  className="px-3 py-1.5 rounded-xl bg-[#ea580c] text-white text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> Open report and decide
-                </button>
+                <div className="flex items-center gap-3">
+                  <Badge tone="amber">{round?.name} round</Badge>
+                  <button type="button" onClick={() => setReportId(c.id)} className={buttonClass('primary', 'sm')}>
+                    <Sparkles className="w-4 h-4" /> Open report and decide
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
       {/* My scheduled interviews */}
-      <div className={card}>
-        <h2 className="text-sm font-black text-white flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-[#ea580c]" /> My scheduled interviews ({myInterviews.length})
-        </h2>
-        {myInterviews.length === 0 ? (
-          <p className="text-xs text-zinc-400">
-            Nothing scheduled for you right now. When HR books an interview with you, it shows here with the meeting link.
-          </p>
+      <Card>
+        <CardHeader
+          title={`My scheduled interviews (${myInterviews.length})`}
+          description="When HR books an interview with you, it shows here with the meeting link. After it, write your opinion and give your yes or no."
+        />
+        {sortedInterviews.length === 0 ? (
+          <EmptyState Icon={Calendar} title="Nothing scheduled" description="No interviews are booked with you right now." />
         ) : (
-          <div className="space-y-3">
-            {myInterviews.map((intv) => {
+          <div className="space-y-4">
+            {sortedInterviews.map((intv) => {
               const c = candidateFor(intv.candidate_id);
+              const soon = startsIn(intv.scheduled_at);
+              const busy = decidingId === intv.id;
+              const err = interviewError?.id === intv.id ? interviewError.message : '';
               return (
-                <div key={intv.id} className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold text-white">{c?.name || 'Candidate'} · {roundName(intv.round)}</p>
-                      <p className="text-[11px] text-zinc-400">{c?.applied_subject} · {c?.applied_segment}</p>
-                      <p className="text-[11px] text-zinc-400 inline-flex items-center gap-1.5 mt-0.5">
-                        <Clock className="w-3 h-3" />
-                        {new Date(intv.scheduled_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
-                        {' '}· {intv.duration_minutes} min
+                <div key={intv.id} className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-slate-900">{c?.name || 'Candidate'}</p>
+                        <Badge tone="slate">{roundName(intv.round)}</Badge>
+                        <Badge tone={soon.tone}>{soon.text}</Badge>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{[c?.applied_subject, c?.applied_segment].filter(Boolean).join(' · ')}</p>
+                      <p className="text-xs text-slate-600 inline-flex items-center gap-1.5 mt-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        {whenLabel(intv.scheduled_at)} · {intv.duration_minutes} min
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {c && (
-                        <button
-                          type="button"
-                          onClick={() => setReportId(c.id)}
-                          className="px-3 py-1.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 border border-orange-500/30 text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" /> Report
+                        <button type="button" onClick={() => setReportId(c.id)} className={buttonClass('secondary', 'sm')}>
+                          <Sparkles className="w-4 h-4" /> Report
                         </button>
                       )}
-                      <a href={intv.meeting_link} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-xl bg-[#ea580c] text-white text-[11px] font-bold inline-flex items-center gap-1.5">
-                        <Video className="w-3.5 h-3.5" /> Join meeting <ExternalLink className="w-3 h-3" />
+                      <a href={intv.meeting_link} target="_blank" rel="noreferrer" className={buttonClass('primary', 'sm')}>
+                        <Video className="w-4 h-4" /> Join meeting <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
                   </div>
-                  {intv.notes && <p className="text-[11px] text-zinc-400">Note from HR: {intv.notes}</p>}
+                  {intv.notes && <p className="text-xs text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2">Note from HR: {intv.notes}</p>}
                   <textarea
                     value={opinions[intv.id] || ''}
-                    onChange={(e) => setOpinions((prev) => ({ ...prev, [intv.id]: e.target.value }))}
-                    rows={2}
+                    onChange={(e) => {
+                      setOpinions((prev) => ({ ...prev, [intv.id]: e.target.value }));
+                      if (err) setInterviewError(null);
+                    }}
+                    rows={3}
+                    aria-label={`Your opinion of ${c?.name || 'this teacher'}`}
                     placeholder="After the interview: your opinion of this teacher (required)"
-                    className="w-full p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder:text-zinc-600"
+                    className={inputClass}
                   />
-                  <div className="flex gap-2">
+                  {err && <p role="alert" className="text-sm font-semibold text-rose-700">{err}</p>}
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      disabled={decidingId === intv.id}
+                      disabled={busy}
                       onClick={() => recordInterview(intv, 'accepted')}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer"
                     >
-                      {decidingId === intv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      Yes
+                      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />} Yes, move ahead
                     </button>
                     <button
                       type="button"
-                      disabled={decidingId === intv.id}
+                      disabled={busy}
                       onClick={() => recordInterview(intv, 'rejected')}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-200 disabled:opacity-50 cursor-pointer"
+                      className="inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 disabled:opacity-50 cursor-pointer"
                     >
-                      No
+                      <ThumbsDown className="w-4 h-4" /> No
                     </button>
                   </div>
                 </div>
               );
             })}
-            {interviewError && <p className="text-xs text-rose-400 font-semibold">{interviewError}</p>}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* What this reviewer has decided */}
-      <div className={card}>
-        <h2 className="text-sm font-black text-white flex items-center gap-2">
-          <History className="w-4 h-4 text-[#ea580c]" /> Your recent decisions
-        </h2>
+      <Card>
+        <CardHeader title="Your recent decisions" description="Your latest yes and no answers, with your own words." />
         {decidedByMe.length === 0 ? (
-          <p className="text-xs text-zinc-400">You have not decided on anyone yet.</p>
+          <EmptyState Icon={History} title="No decisions yet" description="Once you give a yes or no, it is kept here." />
         ) : (
-          <ul className="space-y-2">
-            {decidedByMe.map(({ c, d }) => (
-              <li key={`${c.id}-${d.decided_at}`} className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs">
+          <ul className="divide-y divide-slate-100">
+            {decidedByMe.slice(0, 15).map(({ c, d }) => (
+              <li key={`${c.id}-${d.decided_at}`} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-white">{c.name} · {d.round_label}</span>
-                  <span className={`font-bold ${d.decision === 'accepted' ? 'text-emerald-400' : 'text-rose-400'}`}>{d.decision === 'accepted' ? 'Yes' : 'No'}</span>
+                  <span className="text-sm font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">· {d.round_label}</span></span>
+                  {d.decision === 'accepted'
+                    ? <Badge tone="emerald"><CheckCircle2 className="w-3.5 h-3.5" /> Yes</Badge>
+                    : <Badge tone="rose"><XCircle className="w-3.5 h-3.5" /> No</Badge>}
                 </div>
-                <p className="text-zinc-400 mt-1">{d.reason}</p>
-                <p className="text-[10px] text-zinc-500 mt-1">{new Date(d.decided_at).toLocaleString('en-IN')}</p>
+                {d.reason && <p className="text-sm text-slate-600 mt-1">{d.reason}</p>}
+                <p className="text-xs text-slate-400 mt-1">{new Date(d.decided_at).toLocaleString('en-IN')}</p>
               </li>
             ))}
           </ul>
         )}
-      </div>
+        {decidedByMe.length > 15 && <p className="text-xs text-slate-400 mt-3">Showing your latest 15 of {decidedByMe.length}.</p>}
+      </Card>
 
       {reportId && (
         <CandidateProfileModal
@@ -257,6 +407,6 @@ export default function ReviewerHomePage() {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
