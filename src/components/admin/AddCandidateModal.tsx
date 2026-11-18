@@ -7,18 +7,22 @@ import { buttonClass, inputClass, selectClass } from './ui';
 import { useAdmin } from './adminContext';
 import GradePicker from './GradePicker';
 import { segmentFromGrades } from '@/lib/grades';
+import {
+  BACHELOR_DEGREES,
+  BOARDS,
+  MASTER_DEGREES,
+  OTHER_CHOICE,
+  TRAINING_KINDS,
+  educationFromForm,
+  subjectOptions,
+  type CourseStatus,
+  type DegreeForm,
+  type EducationForm,
+  type TrainingKind,
+} from '@/lib/teacherProfile';
 
-const SUBJECTS = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English', 'Computer Science'];
-
-const QUALIFICATIONS = [
-  'M.Sc + B.Ed (Post Graduate)',
-  'B.Sc + B.Ed (Graduate Teacher)',
-  'M.A + B.Ed (Literature / Social)',
-  'B.A + B.Ed',
-  'Ph.D / Doctorate in Subject',
-  'B.Tech + B.Ed (Computer Science)',
-  'M.Ed / CTET Paper 2 Qualified',
-];
+/** The value of every "Other" choice; the typed text is sent instead. */
+const OTHER = OTHER_CHOICE;
 
 const EXPERIENCE = ['Fresher (0 - 1 Year)', '1 – 2 Years', '3 – 5 Years', '5 – 8 Years', '8+ Years (Senior Faculty / HOD)'];
 
@@ -30,10 +34,23 @@ const BLANK = {
   email: '',
   phone: '',
   applied_subject: '',
-  qualification: '',
+  subject_other: '',
   experience_band: '',
   prior_org: '',
   target_branch_id: '',
+};
+
+const BLANK_DEGREE: DegreeForm = { choice: '', other: '', subject: '' };
+
+const BLANK_EDUCATION: EducationForm = {
+  bachelor: BLANK_DEGREE,
+  master: BLANK_DEGREE,
+  training: {},
+  noTraining: false,
+  m_ed: false,
+  phd: false,
+  ctet: false,
+  state_tet: false,
 };
 
 interface Created {
@@ -63,10 +80,83 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`min-h-10 px-3 rounded-xl border text-sm font-semibold cursor-pointer transition-colors ${
+        on ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 text-slate-700 hover:border-indigo-400'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A degree picked from the list (or typed under "Other"), and its subject. */
+function DegreeFields({
+  label,
+  options,
+  value,
+  onChange,
+  subjectPlaceholder,
+}: {
+  label: string;
+  options: readonly string[];
+  value: DegreeForm;
+  onChange: (d: DegreeForm) => void;
+  subjectPlaceholder: string;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-slate-700">{label}</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <select
+          aria-label={`${label}: degree`}
+          value={value.choice}
+          onChange={(e) => onChange({ ...value, choice: e.target.value })}
+          className={`${selectClass} w-full`}
+        >
+          <option value="">Not known yet</option>
+          {options.map((d) => <option key={d} value={d}>{d}</option>)}
+          <option value={OTHER_CHOICE}>Other…</option>
+        </select>
+        <input
+          type="text"
+          maxLength={80}
+          aria-label={`${label}: subject or specialisation`}
+          placeholder={subjectPlaceholder}
+          value={value.subject}
+          onChange={(e) => onChange({ ...value, subject: e.target.value })}
+          className={inputClass}
+        />
+        {value.choice === OTHER_CHOICE && (
+          <input
+            type="text"
+            required
+            maxLength={40}
+            aria-label={`${label}: name of the degree`}
+            placeholder="Name of the degree"
+            value={value.other}
+            onChange={(e) => onChange({ ...value, other: e.target.value })}
+            className={`${inputClass} sm:col-span-2`}
+          />
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
 export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { school, schoolId, refresh, toast } = useAdmin();
   const [form, setForm] = useState(BLANK);
   const [grades, setGrades] = useState<string[]>([]);
+  const [boards, setBoards] = useState<string[]>([]);
+  // null while "Other" is off; the typed board name while it is on.
+  const [boardOther, setBoardOther] = useState<string | null>(null);
+  const [edu, setEdu] = useState<EducationForm>(BLANK_EDUCATION);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [sending, setSending] = useState(false);
@@ -78,12 +168,31 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
 
   if (!isOpen) return null;
 
+  const subjectGroups = subjectOptions(school?.subjects);
+
   const set = (key: keyof typeof BLANK) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const close = () => {
+  const reset = () => {
     setForm(BLANK);
     setGrades([]);
+    setBoards([]);
+    setBoardOther(null);
+    setEdu(BLANK_EDUCATION);
+  };
+
+  const toggleBoard = (b: string) => setBoards((list) => (list.includes(b) ? list.filter((x) => x !== b) : [...list, b]));
+
+  const toggleTraining = (kind: TrainingKind) =>
+    setEdu((e) => {
+      const training = { ...e.training };
+      if (training[kind]) delete training[kind];
+      else training[kind] = 'completed';
+      return { ...e, training, noTraining: false };
+    });
+
+  const close = () => {
+    reset();
     setCreated(null);
     setAttested(false);
     onClose();
@@ -95,10 +204,16 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
       toast('Please give a name and an email.', 'error');
       return;
     }
+    const subject = form.applied_subject === OTHER ? form.subject_other.trim() : form.applied_subject;
+    if (!subject) {
+      toast('Choose a subject, or type it in under Other.', 'error');
+      return;
+    }
     if (grades.length === 0) {
       toast('Choose at least one grade.', 'error');
       return;
     }
+    const boardsTaught = [...boards, ...(boardOther?.trim() ? [boardOther.trim()] : [])];
     setSaving(true);
     try {
       const res = await fetch('/api/candidates', {
@@ -106,7 +221,15 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_id: schoolId,
-          ...form,
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          applied_subject: subject,
+          experience_band: form.experience_band,
+          prior_org: form.prior_org,
+          target_branch_id: form.target_branch_id,
+          boards_taught: boardsTaught,
+          education: educationFromForm(edu),
           applied_segment: segmentFromGrades(grades),
           applied_grades: grades,
           status: 'in_progress',
@@ -121,8 +244,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
       }
       if (data.candidate) {
         setCreated({ name: data.candidate.name, code: data.candidate.invite_code || data.candidate.id, id: data.candidate.id, invite: data.invite });
-        setForm(BLANK);
-        setGrades([]);
+        reset();
         await refresh();
       }
     } catch {
@@ -166,7 +288,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label="Add a candidate">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 z-10 bg-white rounded-t-2xl">
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-indigo-600" />
             {created ? 'Candidate added' : 'Add a candidate'}
@@ -247,9 +369,21 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
               <Field label="Subject" required>
                 <select required value={form.applied_subject} onChange={set('applied_subject')} className={`${selectClass} w-full`}>
                   <option value="" disabled>Select subject…</option>
-                  {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {subjectGroups.map((g) => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </optgroup>
+                  ))}
+                  <option value={OTHER}>Other (type it in)</option>
                 </select>
               </Field>
+              {form.applied_subject === OTHER && (
+                <div className="sm:col-span-2">
+                  <Field label="Which subject?" required>
+                    <input required type="text" maxLength={80} placeholder="e.g. Home Science" value={form.subject_other} onChange={set('subject_other')} className={inputClass} />
+                  </Field>
+                </div>
+              )}
               <div className="sm:col-span-2">
                 <GradePicker value={grades} onChange={setGrades} label="Grades they would teach" required />
               </div>
@@ -259,12 +393,6 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
                   {(school?.branches || []).map((b) => (
                     <option key={b.id} value={b.id}>{b.name}{b.location ? ` (${b.location})` : ''}</option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Qualification">
-                <select value={form.qualification} onChange={set('qualification')} className={`${selectClass} w-full`}>
-                  <option value="">Not known yet</option>
-                  {QUALIFICATIONS.map((q) => <option key={q} value={q}>{q}</option>)}
                 </select>
               </Field>
               <Field label="Experience">
@@ -278,7 +406,97 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
                   <input type="text" placeholder="e.g. Oakridge International" value={form.prior_org} onChange={set('prior_org')} className={inputClass} />
                 </Field>
               </div>
+              <fieldset className="sm:col-span-2 space-y-2">
+                <legend className="text-sm font-medium text-slate-700">Boards they have taught</legend>
+                <p className="text-xs text-slate-500">Pick every one that applies.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {BOARDS.map((b) => (
+                    <Chip key={b} on={boards.includes(b)} onClick={() => toggleBoard(b)}>{b}</Chip>
+                  ))}
+                  <Chip on={boardOther !== null} onClick={() => setBoardOther((v) => (v === null ? '' : null))}>Other</Chip>
+                </div>
+                {boardOther !== null && (
+                  <input
+                    type="text"
+                    maxLength={60}
+                    aria-label="Other board"
+                    placeholder="Name of the board"
+                    value={boardOther}
+                    onChange={(e) => setBoardOther(e.target.value)}
+                    className={inputClass}
+                  />
+                )}
+              </fieldset>
             </div>
+
+            <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Education</h3>
+              <DegreeFields
+                label="Bachelor's degree"
+                options={BACHELOR_DEGREES}
+                value={edu.bachelor}
+                onChange={(bachelor) => setEdu((e) => ({ ...e, bachelor }))}
+                subjectPlaceholder="Subject, e.g. Physics"
+              />
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-700">B.Ed or other teacher training</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {TRAINING_KINDS.map((k) => (
+                    <Chip key={k.id} on={!!edu.training[k.id]} onClick={() => toggleTraining(k.id)}>{k.label}</Chip>
+                  ))}
+                  <Chip on={edu.noTraining} onClick={() => setEdu((e) => ({ ...e, training: {}, noTraining: !e.noTraining }))}>None</Chip>
+                </div>
+                {TRAINING_KINDS.filter((k) => edu.training[k.id]).map((k) => (
+                  <div key={k.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                    <span className="text-sm font-medium text-slate-700">{k.label}</span>
+                    <select
+                      aria-label={`${k.label}: completed or in progress`}
+                      value={edu.training[k.id]}
+                      onChange={(e) => {
+                        const status = e.target.value as CourseStatus;
+                        setEdu((x) => ({ ...x, training: { ...x.training, [k.id]: status } }));
+                      }}
+                      className={selectClass}
+                    >
+                      <option value="completed">Completed</option>
+                      <option value="in_progress">In progress</option>
+                    </select>
+                  </div>
+                ))}
+              </fieldset>
+              <DegreeFields
+                label="Master's degree (if any)"
+                options={MASTER_DEGREES}
+                value={edu.master}
+                onChange={(master) => setEdu((e) => ({ ...e, master }))}
+                subjectPlaceholder="Subject, e.g. Mathematics"
+              />
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-700">Also has (if any)</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['m_ed', 'M.Ed'],
+                    ['phd', 'PhD'],
+                    ['ctet', 'CTET passed'],
+                    ['state_tet', 'State TET passed'],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer min-h-10">
+                      <input
+                        type="checkbox"
+                        checked={edu[key]}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setEdu((x) => ({ ...x, [key]: checked }));
+                        }}
+                        className="w-4 h-4 accent-indigo-600"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
             <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} className="mt-1 w-4 h-4 accent-indigo-600" />

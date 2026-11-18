@@ -2,6 +2,7 @@ import type { AnswerBehaviour } from './answerBehaviour';
 import type { ShortlistBand } from './shortlistBands';
 import type { HrPolicyAnswers } from './hrPolicyTemplate';
 import type { ReportSettings } from './teachingProfile';
+import type { CandidateEducation } from './teacherProfile';
 
 /**
  * Access levels. REPORTING_MANAGER, INSTITUTE_HEAD and FINAL_DECISION_MAKER all
@@ -173,6 +174,10 @@ export interface School {
   screening_call?: ScreeningCallSettings;
   /** What the school pays per started minute of an answered AI screening call, in rupees. Set by the platform owner; absent means the standard rate. */
   screening_call_price_per_min_inr?: number;
+  /** The most a school may spend on AI calls in a month, in rupees, set by the platform owner. Absent or 0: no owner limit. */
+  screening_call_owner_cap_inr?: number;
+  /** Bookkeeping for the call automation, so a summary or an alert goes out once. */
+  screening_call_state?: { digest_on?: string; cap_alert_month?: string };
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
 }
@@ -193,8 +198,12 @@ export interface PolicyVideo {
   uploaded_by: string;
 }
 
-/** What to do with the candidate after a screening call. */
-export type ScreeningAction = 'send_link' | 'hold' | 'flag';
+/**
+ * What to do with the candidate after a screening call. `suggest_decline`
+ * never messages anyone on its own: HR sees a "Send the decline" button and
+ * the polite decline goes out only when they press it.
+ */
+export type ScreeningAction = 'send_link' | 'hold' | 'flag' | 'suggest_decline';
 
 /** How the school wants call results turned into action (the test link going out on its own). See screeningFlow.ts. */
 export interface ScreeningRules {
@@ -203,21 +212,75 @@ export interface ScreeningRules {
   on_proceed: ScreeningAction;
   on_maybe: ScreeningAction;
   on_not_suitable: ScreeningAction;
+  /** When the candidate says on the call they are no longer interested: mark them withdrawn (no message), or treat it as Not suitable. */
+  on_not_interested: 'withdraw' | 'as_not_suitable';
+  /** Days a result may wait for HR before something happens (0: wait for ever). */
+  hold_days: number;
+  /** After `hold_days`: email HR a reminder, or (for "Wait for HR" results only) send the test link anyway. */
+  after_hold: 'remind' | 'send_link';
   /** Extra calls when the candidate does not pick up or the line is busy. */
   retries: number;
   retry_gap_hours: number;
   /** After the last retry: send the test link, or flag for HR. */
   after_no_answer: 'send_link' | 'flag';
+  /** When the call could not be placed or connected (for example a Do Not Disturb number). */
+  after_failed: 'send_link' | 'flag';
+  /** After a missed call, tell the candidate by email (and WhatsApp when a chat is open) that the school tried to reach them. */
+  missed_call_message: boolean;
+  /** When the candidate asks to be called at another time, ring them then. At most this many times per candidate (0: never). */
+  max_callbacks: number;
   /** Calls (including retries) only happen between these hours, India time. */
   window_start_hour: number;
   window_end_hour: number;
+  /** No automatic calls on Sundays. */
+  skip_sundays: boolean;
 }
 
+/** The kinds of post a school hires for, each of which may have its own call questions. */
+export type ScreeningGroup = 'pre_primary' | 'primary' | 'middle' | 'secondary' | 'senior_secondary' | 'non_teaching';
+
+/** How much a question's answer matters: rules the candidate out, sends them to HR, or is only asked. */
+export type QuestionImportance = 'must' | 'prefer' | 'ask';
+
+/** A list of call questions with, for each, how much it matters and what answer the school wants. */
+export interface ScreeningQuestionSet {
+  questions: string[];
+  /** What the school wants to hear, per question (same order). Empty for "just ask". */
+  requirements: string[];
+  importance: QuestionImportance[];
+}
+
+export type ScreeningLanguage = 'auto' | 'English' | 'Hindi' | 'Telugu';
+
 export interface ScreeningCallSettings {
+  /** The main questions, used for every post without its own set. */
   questions: string[];
   /** A must-have for each question (same order as `questions`), written in words, e.g. "Notice period of 60 days or less". Empty means none. */
   requirements?: string[];
+  /** How much each main question matters. Absent (older settings): a question with a requirement is a must-have. */
+  importance?: QuestionImportance[];
+  /** Posts with their own questions. A group not listed uses the main questions. */
+  sets?: Partial<Record<ScreeningGroup, ScreeningQuestionSet>>;
+  /** Posts (as written in the candidate's "subject") that count as non-teaching, such as "Front office" or "Accountant". */
+  non_teaching_roles?: string[];
   auto_call_on_apply: boolean;
+  /** Who is called automatically, and how soon. */
+  auto_call?: {
+    /** Minutes to wait after someone applies before ringing (0: straight away, inside calling hours). */
+    delay_min: number;
+    /** Tell the candidate a call is coming (email, and WhatsApp when a chat is open). */
+    heads_up: boolean;
+    /** Only call when the CV fit score (1–10) is at least this. 0: everyone. A CV not read yet does not stop the call. */
+    min_cv_score: number;
+    /** Only these kinds of post are called. Empty: every post. */
+    groups: ScreeningGroup[];
+  };
+  /** The language the AI speaks. "auto" follows the languages the candidate gave. */
+  language?: ScreeningLanguage;
+  /** The school's own spending limits (0: no limit). */
+  limits?: { monthly_cap_inr: number; daily_max_calls: number };
+  /** Who at the school is told what. */
+  notify?: { emails: string[]; good_fit_now: boolean; daily_digest: boolean };
   rules?: ScreeningRules;
 }
 
@@ -245,18 +308,25 @@ export interface ScreeningCheck {
   requirement: string;
   result: 'met' | 'not_met' | 'unclear';
   note?: string;
+  /** Absent (older calls): a must-have. */
+  importance?: 'must' | 'prefer';
 }
 
 /** What was done after a call, so HR can see it. */
 export interface ScreeningDecision {
-  action: 'link_sent' | 'would_send_link' | 'held' | 'flagged' | 'retry_scheduled' | 'none';
+  action:
+    | 'link_sent' | 'would_send_link' | 'held' | 'flagged' | 'retry_scheduled' | 'none'
+    | 'callback_scheduled' | 'decline_suggested' | 'declined' | 'withdrawn';
   at: string;
   detail: string;
   channels?: string[];
   retry_at?: string;
+  /** When HR was last reminded about a result waiting for them. */
+  reminded_at?: string;
 }
 
-export type ScreeningCallStatus = 'calling' | 'completed' | 'no_answer' | 'busy' | 'failed';
+/** scheduled: waiting for its time (calling hours, a delay, a call-back). skipped: never placed (for example the monthly limit was reached). */
+export type ScreeningCallStatus = 'scheduled' | 'calling' | 'completed' | 'no_answer' | 'busy' | 'failed' | 'skipped';
 
 /** One AI screening phone call to a candidate. */
 export interface ScreeningCall {
@@ -271,7 +341,21 @@ export interface ScreeningCall {
   /** The school's questions as they were when the call was placed. */
   questions: string[];
   requested_by: string;
-  trigger: 'manual' | 'auto' | 'retry';
+  trigger: 'manual' | 'auto' | 'retry' | 'callback';
+  /** When a scheduled call is due. */
+  scheduled_for?: string;
+  /** The kind of post whose questions were asked. Absent: the main questions. */
+  group?: ScreeningGroup;
+  /** How much each question mattered, as it was when the call was placed. */
+  importance?: QuestionImportance[];
+  /** The language the AI was asked to speak. */
+  language?: string;
+  /** How many times this candidate has already been called back at a time they asked for. */
+  callback_count?: number;
+  /** What the candidate said about carrying on with the application. */
+  interest?: 'interested' | 'not_interested' | 'unclear';
+  /** The candidate asked to be called at another time instead of finishing the call. */
+  callback?: { when_text: string; at: string };
   /** Which try this is for the candidate: 1 for the first call, 2 for the first retry, and so on. */
   attempt?: number;
   /** A must-have for each question, as it was when the call was placed. */
@@ -523,6 +607,10 @@ export interface Candidate {
   /** The exact grades they would teach (ids from grades.ts, such as "1", "5", "lkg"). */
   applied_grades?: string[];
   applied_subject: string; // 16 subjects
+  /** Boards they have taught, each its own entry ("CBSE", "IB DP", …). See teacherProfile.ts. */
+  boards_taught?: string[];
+  /** Degrees and teacher training, kept apart. `qualification` holds a one-line summary of these. */
+  education?: CandidateEducation;
   target_branch_id: string;
   video_intro_url?: string;
   reading_passage_text?: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  billedMinutes, callChargeInr, callCostInr, callVariables, parseScreeningSettings, pricePerMinuteOf, screeningSettingsOf, statusFromSarvam,
+  billedMinutes, callChargeInr, callCostInr, callVariables, parseScreeningSettings, pricePerMinuteOf, questionSetFor, screeningSettingsOf, statusFromSarvam,
   STANDARD_PRICE_PER_MINUTE_INR, STARTER_SCREENING_QUESTIONS, toCallNumber, webhookToken,
 } from './screeningCall';
 
@@ -58,6 +58,44 @@ describe('AI screening call rules', () => {
 
   it('sends the agent the school, the candidate\'s first name, the role and the numbered questions', () => {
     const v = callVariables({ name: 'Mansi Bhosle', applied_subject: 'English', applied_segment: 'Primary (Grades 1–5)' }, { name: 'Sloka' }, ['Q one?', 'Q two?']);
-    expect(v).toEqual({ candidate_name: 'Mansi', school_name: 'Sloka', role: 'English teacher, Primary', question_count: '2', questions: '1. Q one?\n2. Q two?' });
+    expect(v).toEqual({ language: 'English', candidate_name: 'Mansi', school_name: 'Sloka', role: 'English teacher, Primary', question_count: '2', questions: '1. Q one?\n2. Q two?' });
+    expect(callVariables({ name: 'A B', applied_subject: 'Hindi', applied_segment: '' }, { name: 'S' }, ['Q?'], 'Telugu').language).toBe('Telugu');
+  });
+
+  it('keeps each kind of post\'s own questions, and refuses a must-have with nothing written to look for', () => {
+    const base = { questions: ['Are you still interested?'], importance: ['ask'] };
+    const out = parseScreeningSettings({
+      ...base,
+      sets: { pre_primary: { questions: ['Do you have NTT training?', ' '], requirements: ['Has NTT', ''], importance: ['prefer', 'must'] }, bogus: { questions: ['Nope?'] } },
+      non_teaching_roles: [' Front office ', ''],
+      language: 'Hindi',
+      limits: { monthly_cap_inr: 2000.4, daily_max_calls: -3 },
+      notify: { emails: ['HR@School.in', 'not-an-email'], good_fit_now: true },
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.settings.sets).toEqual({ pre_primary: { questions: ['Do you have NTT training?'], requirements: ['Has NTT'], importance: ['prefer'] } });
+    expect(out.settings.non_teaching_roles).toEqual(['Front office']);
+    expect(out.settings.language).toBe('Hindi');
+    expect(out.settings.limits).toEqual({ monthly_cap_inr: 2000, daily_max_calls: 0 });
+    expect(out.settings.notify).toEqual({ emails: ['hr@school.in'], good_fit_now: true, daily_digest: false });
+    // A question marked as mattering needs the answer the school wants.
+    expect(parseScreeningSettings({ questions: ['Do you have a B.Ed degree?'], requirements: [''], importance: ['must'] })).toMatchObject({ ok: false, error: expect.stringContaining('write what answer') });
+    const bad = parseScreeningSettings({ ...base, sets: { secondary: { questions: ['Do you have a B.Ed degree?'], requirements: ['{x}'] } } });
+    expect(bad).toMatchObject({ ok: false, error: expect.stringContaining('Secondary') });
+  });
+
+  it('reads older settings: a written must-have stays a must-have', () => {
+    const s = screeningSettingsOf({ screening_call: { questions: ['Notice period?', 'Salary?'], requirements: ['60 days or less', ''], auto_call_on_apply: true } });
+    expect(s.importance).toEqual(['must', 'ask']);
+    expect(s.auto_call).toEqual({ delay_min: 0, heads_up: false, min_cv_score: 0, groups: [] });
+    expect(s.language).toBe('English');
+  });
+
+  it('asks each candidate the questions for their kind of post', () => {
+    const s = screeningSettingsOf({ screening_call: { questions: ['Main question?'], auto_call_on_apply: false, non_teaching_roles: ['Accountant'], sets: { senior_secondary: { questions: ['Senior question?'], requirements: [''], importance: ['ask'] }, non_teaching: { questions: ['Office question?'], requirements: [''], importance: ['ask'] } } } });
+    expect(questionSetFor(s, { applied_subject: 'Physics', applied_segment: 'Senior Secondary (Grades 11–12, 16–18 yrs)' })).toMatchObject({ group: 'senior_secondary', own: true, questions: ['Senior question?'] });
+    expect(questionSetFor(s, { applied_subject: 'accountant', applied_segment: '' })).toMatchObject({ group: 'non_teaching', questions: ['Office question?'] });
+    expect(questionSetFor(s, { applied_subject: 'English', applied_segment: '', applied_grades: ['2', '3'] })).toMatchObject({ group: 'primary', own: false, questions: ['Main question?'] });
   });
 });

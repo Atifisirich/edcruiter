@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { screeningSettingsOf } from '@/lib/screeningCall';
-import { startScreeningCall } from '@/lib/screeningCallService';
+import { autoCallNewApplicant } from '@/lib/screeningCallService';
 import { warmPack } from '@/lib/ensurePack';
 import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
 import { Candidate } from '@/lib/types';
 import { makeInviteCode } from '@/lib/inviteCode';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
+import { cleanBoards, cleanEducation, cleanSubject, cleanText, summariseEducation } from '@/lib/teacherProfile';
 import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, resolveSchoolId, assertSchoolActive } from '@/lib/auth';
 import { HIRING_TEAM, isHiringTeam } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
@@ -171,7 +172,7 @@ export async function POST(req: NextRequest) {
       email,
       phone,
       dob,
-      qualification,
+      qualification: requestedQualification,
       experience_band,
       prior_org,
       current_salary,
@@ -182,7 +183,9 @@ export async function POST(req: NextRequest) {
       notice_period,
       applied_segment: requestedSegment,
       applied_grades: requestedGrades,
-      applied_subject,
+      applied_subject: requestedSubject,
+      boards_taught: requestedBoards,
+      education: requestedEducation,
       target_branch_id,
       video_intro_url,
       reading_passage_text,
@@ -195,6 +198,15 @@ export async function POST(req: NextRequest) {
     // When exact grades are given, they decide the segment text, so the two can never disagree.
     const applied_grades = cleanGrades(requestedGrades);
     const applied_segment = applied_grades.length ? segmentFromGrades(applied_grades) : requestedSegment;
+
+    // Subject (any subject, including one typed under "Other"), boards and
+    // degrees are checked here, so a hand-made request cannot store junk.
+    const applied_subject = cleanSubject(requestedSubject);
+    const boards_taught = cleanBoards(requestedBoards);
+    const education = cleanEducation(requestedEducation);
+    // The older one-line qualification stays filled, so older screens and the
+    // AI scoring keep working: from the separate degrees when they were given.
+    const qualification = education ? summariseEducation(education) : cleanText(requestedQualification, 200);
 
     if (!name || !email || !applied_subject || !applied_segment) {
       return NextResponse.json({ error: 'Name, email, subject and segment are required' }, { status: 400 });
@@ -225,7 +237,7 @@ export async function POST(req: NextRequest) {
       // ('B.Ed.', 'Fresher', '0', 'Immediate', …) when the caller didn't
       // provide it — the UI shows "Not provided" for an empty string.
       dob: dob || '',
-      qualification: qualification || '',
+      qualification,
       experience_band: experience_band || '',
       prior_org: prior_org || '',
       current_salary: current_salary || '',
@@ -237,6 +249,8 @@ export async function POST(req: NextRequest) {
       applied_segment,
       ...(applied_grades.length ? { applied_grades } : {}),
       applied_subject,
+      ...(boards_taught.length ? { boards_taught } : {}),
+      ...(education ? { education } : {}),
       target_branch_id: target_branch_id || staffCtx?.user.branch_id || undefined,
       video_intro_url: video_intro_url || '',
       reading_passage_text,
@@ -250,11 +264,11 @@ export async function POST(req: NextRequest) {
 
     db.createCandidate(newCandidate);
     after(() => warmPack(newCandidate.school_id, newCandidate.applied_subject, newCandidate.applied_segment));
-    // The school chose to have every new applicant called by the AI screener.
+    // The school chose to have new applicants called by the AI screener: who, and when, is the school's choice.
     const callSchool = db.getSchoolById(newCandidate.school_id);
     if (screeningSettingsOf(callSchool).auto_call_on_apply) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
-      after(() => startScreeningCall(newCandidate.school_id, newCandidate, { requestedBy: 'Automatic (new applicant)', trigger: 'auto', appUrl }).then(() => undefined));
+      after(() => autoCallNewApplicant(newCandidate.school_id, newCandidate, appUrl));
     }
 
     // Consent is recorded either way, so a "no" is durable and auditable —

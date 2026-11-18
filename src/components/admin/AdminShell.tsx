@@ -52,7 +52,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: 'School',
     items: [
-      { href: '/admin/activity', label: 'Team activity', Icon: Activity, for: ['admin'] },
+      { href: '/admin/activity', label: 'Activity', Icon: Activity, for: ['admin'] },
       { href: '/admin/team', label: 'Team', Icon: UsersRound, for: ['admin'] },
       { href: '/admin/settings', label: 'Settings', Icon: Settings, for: ['admin'] },
     ],

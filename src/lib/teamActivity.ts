@@ -96,3 +96,38 @@ export function summariseWork(logs: AuditLogEntry[], sinceIso: string | null): P
   }
   return [...byActor.values()].sort((a, b) => b.total - a.total || (b.lastActive ?? '').localeCompare(a.lastActive ?? ''));
 }
+
+/** What teachers (candidates) do themselves, as opposed to what staff do. */
+export type CandidateKind = 'registered' | 'tests' | 'optout';
+
+export const CANDIDATE_LABEL: Record<CandidateKind, string> = {
+  registered: 'Signed up',
+  tests: 'Tests done',
+  optout: 'Stopped WhatsApp',
+};
+
+const CANDIDATE_KIND_OF: Record<string, CandidateKind> = {
+  CANDIDATE_REGISTERED: 'registered',
+  STAGE_COMPLETED: 'tests',
+  STAGE_SCORED: 'tests',
+  WHATSAPP_OPT_OUT: 'optout',
+};
+
+export function isCandidateAction(action: string): boolean {
+  return action in CANDIDATE_KIND_OF;
+}
+
+export function candidateKind(action: string): CandidateKind | null {
+  return CANDIDATE_KIND_OF[action] ?? null;
+}
+
+/** A plain sentence fragment for what the candidate did, e.g. "finished a test". */
+export function candidateActionLabel(action: string): string {
+  const named: Record<string, string> = {
+    CANDIDATE_REGISTERED: 'Signed up and shared their details',
+    STAGE_COMPLETED: 'Finished a test',
+    STAGE_SCORED: 'Test was scored by AI',
+    WHATSAPP_OPT_OUT: 'Asked us to stop WhatsApp messages',
+  };
+  return named[action] ?? actionLabel(action);
+}

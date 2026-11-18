@@ -19,8 +19,11 @@
 import { GoogleGenAI } from '@google/genai';
 import { createHmac } from 'crypto';
 import { logAiUsage } from './aiUsage';
-import type { Candidate, School, ScreeningCall, ScreeningCallSettings, ScreeningCheck } from './types';
-import { cleanRequirements, normalizeRules } from './screeningFlow';
+import type {
+  Candidate, QuestionImportance, School, ScreeningCall, ScreeningCallSettings, ScreeningCheck, ScreeningGroup,
+  ScreeningLanguage, ScreeningQuestionSet,
+} from './types';
+import { cleanImportance, cleanRequirements, GROUP_KEYS, groupOf, normalizeRules } from './screeningFlow';
 
 export const STARTER_SCREENING_QUESTIONS = [
   'Are you still interested in this teaching position?',
@@ -37,14 +40,67 @@ export const STANDARD_PRICE_PER_MINUTE_INR = 9;
 /** Sarvam pay-as-you-go agent rate plus its phone line (₹0.20 per 30 seconds), per started minute. */
 export const COST_PER_MINUTE_INR = 3.5 + 0.4;
 
-export function screeningSettingsOf(school: Pick<School, 'screening_call'> | null | undefined): Required<ScreeningCallSettings> {
-  const questions = school?.screening_call?.questions?.length ? school.screening_call.questions : STARTER_SCREENING_QUESTIONS;
+export type FullScreeningSettings = Required<ScreeningCallSettings>;
+
+const LANGUAGES: ScreeningLanguage[] = ['auto', 'English', 'Hindi', 'Telugu'];
+export const DELAY_CHOICES = [0, 2, 5, 10, 30, 60];
+
+function cleanEmails(input: unknown): string[] {
+  const list = Array.isArray(input) ? input : [];
+  return [...new Set(list.map((e) => String(e ?? '').trim().toLowerCase()).filter((e) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(e)))].slice(0, 10);
+}
+
+function num(v: unknown, min: number, max: number): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+}
+
+/** Every setting, with anything missing filled in and anything out of range put right. Never fails. */
+export function screeningSettingsOf(school: Pick<School, 'screening_call'> | null | undefined): FullScreeningSettings {
+  const s = school?.screening_call;
+  const questions = s?.questions?.length ? s.questions : STARTER_SCREENING_QUESTIONS;
+  const requirements = cleanRequirements(questions, s?.requirements);
+  const sets: Partial<Record<ScreeningGroup, ScreeningQuestionSet>> = {};
+  for (const g of GROUP_KEYS) {
+    const own = s?.sets?.[g];
+    if (!own?.questions?.length) continue;
+    const reqs = cleanRequirements(own.questions, own.requirements);
+    sets[g] = { questions: own.questions, requirements: reqs, importance: cleanImportance(reqs, own.importance) };
+  }
+  const ac = s?.auto_call;
   return {
     questions,
-    requirements: cleanRequirements(questions, school?.screening_call?.requirements),
-    auto_call_on_apply: school?.screening_call?.auto_call_on_apply === true,
-    rules: normalizeRules(school?.screening_call?.rules),
+    requirements,
+    importance: cleanImportance(requirements, s?.importance),
+    sets,
+    non_teaching_roles: (s?.non_teaching_roles ?? []).map((r) => String(r).trim()).filter(Boolean).slice(0, 30),
+    auto_call_on_apply: s?.auto_call_on_apply === true,
+    auto_call: {
+      delay_min: DELAY_CHOICES.includes(Number(ac?.delay_min)) ? Number(ac?.delay_min) : 0,
+      heads_up: ac?.heads_up === true,
+      min_cv_score: num(ac?.min_cv_score ?? 0, 0, 10),
+      groups: (ac?.groups ?? []).filter((g) => GROUP_KEYS.includes(g)),
+    },
+    language: LANGUAGES.includes(s?.language as ScreeningLanguage) ? s!.language as ScreeningLanguage : 'English',
+    limits: { monthly_cap_inr: num(s?.limits?.monthly_cap_inr ?? 0, 0, 10_000_000), daily_max_calls: num(s?.limits?.daily_max_calls ?? 0, 0, 10_000) },
+    notify: {
+      emails: cleanEmails(s?.notify?.emails),
+      good_fit_now: s?.notify?.good_fit_now === true,
+      daily_digest: s?.notify?.daily_digest === true,
+    },
+    rules: normalizeRules(s?.rules),
   };
+}
+
+/** The questions a candidate is asked: their kind of post's own set, or the main questions. */
+export function questionSetFor(
+  settings: FullScreeningSettings,
+  candidate: Pick<Candidate, 'applied_subject' | 'applied_segment' | 'applied_grades'>
+): ScreeningQuestionSet & { group: ScreeningGroup | null; own: boolean } {
+  const group = groupOf(candidate, settings.non_teaching_roles);
+  const own = group ? settings.sets[group] : undefined;
+  if (own) return { ...own, group, own: true };
+  return { questions: settings.questions, requirements: settings.requirements, importance: settings.importance, group, own: false };
 }
 
 /** The school's rate per started minute. */
@@ -63,24 +119,65 @@ export function callChargeInr(school: Pick<School, 'screening_call_price_per_min
   return billedMinutes(durationSec) * pricePerMinuteOf(school);
 }
 
-/** Checks the school's edited settings before they are saved. */
-export function parseScreeningSettings(input: unknown): { ok: true; settings: Required<ScreeningCallSettings> } | { ok: false; error: string } {
-  const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
-  const list = Array.isArray(raw.questions) ? raw.questions : [];
-  const rawReqs = Array.isArray(raw.requirements) ? raw.requirements : [];
-  // A question left blank is dropped together with its must-have.
+/** Checks one list of questions as the school edited it. A question left blank is dropped with its requirement. */
+function parseSet(raw: unknown, label: string): { ok: true; set: ScreeningQuestionSet } | { ok: false; error: string } {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const list = Array.isArray(r.questions) ? r.questions : [];
+  const rawReqs = Array.isArray(r.requirements) ? r.requirements : [];
+  const rawImp = Array.isArray(r.importance) ? r.importance : [];
   const kept = list
-    .map((q, i) => ({ q: typeof q === 'string' ? q.replace(/\s+/g, ' ').trim() : '', r: typeof rawReqs[i] === 'string' ? rawReqs[i] : '' }))
+    .map((q, i) => ({ q: typeof q === 'string' ? q.replace(/\s+/g, ' ').trim() : '', r: typeof rawReqs[i] === 'string' ? rawReqs[i] : '', imp: rawImp[i] }))
     .filter((x) => x.q);
   const questions = kept.map((x) => x.q);
   const requirements = cleanRequirements(questions, kept.map((x) => x.r));
-  if (questions.length === 0) return { ok: false, error: 'Add at least one question.' };
-  if (questions.length > MAX_SCREENING_QUESTIONS) return { ok: false, error: `Up to ${MAX_SCREENING_QUESTIONS} questions; a screening call should stay short.` };
-  if (questions.some((q) => q.length < 8 || q.length > 200)) return { ok: false, error: 'Each question needs 8 to 200 characters.' };
-  if (questions.some((q) => /[<>{}]/.test(q))) return { ok: false, error: 'Questions cannot contain < > { or }.' };
-  if (requirements.some((r) => /[<>{}]/.test(r))) return { ok: false, error: 'Must-haves cannot contain < > { or }.' };
-  return { ok: true, settings: { questions, requirements, auto_call_on_apply: raw.auto_call_on_apply === true, rules: normalizeRules(raw.rules) } };
+  // Older clients send no importance: a written requirement is then a must-have.
+  const importance: QuestionImportance[] = cleanImportance(requirements, Array.isArray(r.importance) ? kept.map((x) => x.imp) : undefined);
+  const where = label ? ` (${label})` : '';
+  if (questions.length === 0) return { ok: false, error: `Add at least one question${where}.` };
+  if (questions.length > MAX_SCREENING_QUESTIONS) return { ok: false, error: `Up to ${MAX_SCREENING_QUESTIONS} questions${where}; a screening call should stay short.` };
+  if (questions.some((q) => q.length < 8 || q.length > 200)) return { ok: false, error: `Each question needs 8 to 200 characters${where}.` };
+  if (questions.some((q) => /[<>{}]/.test(q))) return { ok: false, error: `Questions cannot contain < > { or }${where}.` };
+  if (requirements.some((x) => /[<>{}]/.test(x))) return { ok: false, error: `What you want to hear cannot contain < > { or }${where}.` };
+  const missing = kept.findIndex((x, i) => (x.imp === 'must' || x.imp === 'prefer') && !requirements[i]);
+  if (missing >= 0) return { ok: false, error: `Question ${missing + 1}${where} is a must-have or preference: write what answer you want to hear.` };
+  return { ok: true, set: { questions, requirements, importance } };
 }
+
+/** Checks the school's edited settings before they are saved. */
+export function parseScreeningSettings(input: unknown): { ok: true; settings: FullScreeningSettings } | { ok: false; error: string } {
+  const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const main = parseSet(raw, '');
+  if (!main.ok) return main;
+  const sets: Partial<Record<ScreeningGroup, ScreeningQuestionSet>> = {};
+  const rawSets = (raw.sets && typeof raw.sets === 'object' ? raw.sets : {}) as Record<string, unknown>;
+  for (const g of GROUP_KEYS) {
+    if (!rawSets[g]) continue;
+    const parsed = parseSet(rawSets[g], GROUPS_LABEL[g]);
+    if (!parsed.ok) return parsed;
+    sets[g] = parsed.set;
+  }
+  const roles = Array.isArray(raw.non_teaching_roles) ? raw.non_teaching_roles : [];
+  if (roles.some((r) => /[<>{}]/.test(String(r)))) return { ok: false, error: 'Role names cannot contain < > { or }.' };
+  // Everything else is put right rather than refused.
+  const settings = screeningSettingsOf({
+    screening_call: {
+      ...main.set,
+      sets,
+      non_teaching_roles: roles.map((r) => String(r).replace(/\s+/g, ' ').trim().slice(0, 60)),
+      auto_call_on_apply: raw.auto_call_on_apply === true,
+      auto_call: raw.auto_call as ScreeningCallSettings['auto_call'],
+      language: raw.language as ScreeningLanguage,
+      limits: raw.limits as ScreeningCallSettings['limits'],
+      notify: raw.notify as ScreeningCallSettings['notify'],
+      rules: raw.rules as ScreeningCallSettings['rules'],
+    },
+  });
+  return { ok: true, settings };
+}
+
+const GROUPS_LABEL: Record<ScreeningGroup, string> = {
+  pre_primary: 'Pre-primary', primary: 'Primary', middle: 'Middle school', secondary: 'Secondary', senior_secondary: 'Senior secondary', non_teaching: 'Non-teaching',
+};
 
 /** A phone number as Sarvam wants it: +91 and ten digits for an Indian mobile. Null when it is not a usable number. */
 export function toCallNumber(phone: string | undefined): string | null {
@@ -125,8 +222,10 @@ export function webhookToken(callId: string): string {
 }
 
 /** The variables the Sarvam agent's instructions read. */
-export function callVariables(candidate: Pick<Candidate, 'name' | 'applied_subject' | 'applied_segment'>, school: Pick<School, 'name'>, questions: string[]) {
+export function callVariables(candidate: Pick<Candidate, 'name' | 'applied_subject' | 'applied_segment'>, school: Pick<School, 'name'>, questions: string[], language = 'English') {
   return {
+    // The Sarvam agent's instructions read this to choose the language it speaks.
+    language,
     candidate_name: candidate.name.split(' ')[0] || candidate.name,
     school_name: school.name,
     role: [candidate.applied_subject, 'teacher'].filter(Boolean).join(' ') + (candidate.applied_segment ? `, ${candidate.applied_segment.split('(')[0].trim()}` : ''),
@@ -190,33 +289,54 @@ export interface CallAnalysis {
   summary: string;
   recommendation: 'proceed' | 'maybe' | 'not_suitable';
   checks: ScreeningCheck[];
+  interest: 'interested' | 'not_interested' | 'unclear';
+  /** Set when the candidate asked to be called at another time instead of finishing the call. */
+  callback?: { when_text: string; at: string };
 }
 
 function transcriptText(transcript: { role: string; text: string }[]): string {
   return transcript.map((t) => `${t.role === 'agent' ? 'AI caller' : 'Candidate'}: ${t.text}`).join('\n');
 }
 
+/** "Wednesday 18 November 2026, 2:05 pm" in India time, so the AI can turn "tomorrow at 4" into a real time. */
+function istNowText(now: Date): string {
+  return now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 /** Turns the transcript into an answer per question, a summary and a recommendation. Plain fallback without Gemini. */
-export async function analyseCall(questions: string[], transcript: { role: 'agent' | 'user'; text: string }[], requirements: string[] = []): Promise<CallAnalysis> {
-  const musts = questions.map((q, i) => ({ question: q, requirement: requirements[i] || '' })).filter((m) => m.requirement);
+export async function analyseCall(
+  questions: string[],
+  transcript: { role: 'agent' | 'user'; text: string }[],
+  requirements: string[] = [],
+  importance: QuestionImportance[] = [],
+  now: Date = new Date()
+): Promise<CallAnalysis> {
+  const musts = questions
+    .map((q, i) => ({ question: q, requirement: requirements[i] || '', importance: (importance[i] === 'prefer' ? 'prefer' : importance[i] === 'ask' ? 'ask' : 'must') as QuestionImportance }))
+    .filter((m) => m.requirement && m.importance !== 'ask')
+    .map((m) => ({ question: m.question, requirement: m.requirement, importance: m.importance as 'must' | 'prefer' }));
   const fallback: CallAnalysis = {
     answers: questions.map((q) => ({ question: q, answer: 'See the transcript.' })),
     summary: transcript.length ? 'The call was completed. Read the transcript for the answers.' : 'No conversation was recorded.',
     recommendation: 'maybe',
     // Without a reading of the call, no must-have can be said to be met.
     checks: musts.map((m) => ({ ...m, result: 'unclear' as const, note: 'Could not be read from the call.' })),
+    interest: 'unclear',
   };
   const apiKey = process.env.GEMINI_API_KEY || '';
   if (!apiKey || transcript.length === 0) return fallback;
-  const prompt = `This is the transcript of a short screening phone call between an AI caller and a teacher who applied to a school in India.
+  const prompt = `This is the transcript of a short screening phone call between an AI caller and a person who applied for a job at a school in India. The call may be in English, Hindi or Telugu; always reply in English.
+It is now ${istNowText(now)} (India time).
 Read it and reply with ONLY JSON:
-{"answers": [{"question": "...", "answer": "..."}], "summary": "...", "recommendation": "proceed" | "maybe" | "not_suitable", "checks": [{"requirement": "...", "result": "met" | "not_met" | "unclear", "note": "..."}]}
+{"answers": [{"question": "...", "answer": "..."}], "summary": "...", "recommendation": "proceed" | "maybe" | "not_suitable", "checks": [{"requirement": "...", "result": "met" | "not_met" | "unclear", "note": "..."}], "interest": "interested" | "not_interested" | "unclear", "callback": null | {"when_text": "...", "at": "YYYY-MM-DDTHH:mm:00+05:30"}}
 - One entry in "answers" for each of these questions, in this order, with the question copied exactly. The answer is what the candidate said, in one short plain sentence. If they did not answer it, write "Not answered".
 ${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 - "summary": two or three plain sentences a school principal can read in ten seconds.
-${musts.length ? `- "checks": one entry for each must-have below, in this order, with the requirement copied exactly. "met" if what the candidate said satisfies it, "not_met" if what they said clearly does not, "unclear" if they did not say enough. "note" is a few words on why.
+${musts.length ? `- "checks": one entry for each item below, in this order, with the requirement copied exactly. "met" if what the candidate said satisfies it, "not_met" if what they said clearly does not, "unclear" if they did not say enough. "note" is a few words on why.
 ${musts.map((m, i) => `${i + 1}. For the question "${m.question}": ${m.requirement}`).join('\n')}` : '- "checks": an empty array.'}
-- "recommendation": "proceed" if they are interested and nothing rules them out; "not_suitable" if they are not interested or something clearly rules them out (for example no B.Ed where required, or cannot join); otherwise "maybe".
+- "interest": "not_interested" only if the candidate clearly said they no longer want this job; "interested" if they said they do or carried on willingly; otherwise "unclear".
+- "callback": only if the candidate asked to be called at another time INSTEAD of finishing the call now (for example "I am in class, call me after 4"). "when_text" is what they said, in English. "at" is that time as a full date and time in India time; if they gave no time, two hours from now. Otherwise null.
+- "recommendation": "proceed" if they are interested and nothing rules them out; "not_suitable" if they are not interested or something clearly rules them out (for example no B.Ed where required, or cannot join); otherwise "maybe". Only the requirements above may rule someone out; do not invent others.
 
 Transcript:
 ${transcriptText(transcript)}`;
@@ -231,9 +351,14 @@ ${transcriptText(transcript)}`;
     const checks: ScreeningCheck[] = musts.map((m, i) => {
       const c = rawChecks[i] as Partial<ScreeningCheck> | undefined;
       const result = c?.result === 'met' || c?.result === 'not_met' ? c.result : 'unclear';
-      return { question: m.question, requirement: m.requirement, result, ...(c?.note ? { note: String(c.note).slice(0, 160) } : {}) };
+      return { question: m.question, requirement: m.requirement, importance: m.importance, result, ...(c?.note ? { note: String(c.note).slice(0, 160) } : {}) };
     });
-    return { answers, summary: String(parsed.summary || fallback.summary).slice(0, 800), recommendation, checks };
+    const interest = parsed.interest === 'interested' || parsed.interest === 'not_interested' ? parsed.interest : 'unclear';
+    const cb = parsed.callback as { when_text?: unknown; at?: unknown } | null | undefined;
+    const callback = cb && typeof cb === 'object' && interest !== 'not_interested'
+      ? { when_text: String(cb.when_text || 'later').slice(0, 120), at: typeof cb.at === 'string' && Number.isFinite(Date.parse(cb.at)) ? new Date(cb.at).toISOString() : '' }
+      : undefined;
+    return { answers, summary: String(parsed.summary || fallback.summary).slice(0, 800), recommendation, checks, interest, ...(callback ? { callback } : {}) };
   } catch (err) {
     console.warn('Screening call analysis failed:', err instanceof Error ? err.message : err);
     return fallback;

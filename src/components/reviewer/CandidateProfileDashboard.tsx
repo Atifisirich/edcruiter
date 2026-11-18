@@ -9,6 +9,7 @@ import { Candidate, EvaluationRecord, ProctoringEvent, StageAttempt, StageResult
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import PolicyAnswersPanel from '@/components/reviewer/PolicyAnswersPanel';
 import { ageFromDob } from '@/lib/age';
+import { describeEducation } from '@/lib/teacherProfile';
 import { candidateState } from '@/lib/candidateProgress';
 import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
 import HiringDecision from './HiringDecision';
@@ -231,6 +232,8 @@ export default function CandidateProfileDashboard({
                   ['Phone', candidate.phone || '—'],
                   ['Date of birth', candidate.dob ? `${candidate.dob}${ageFromDob(candidate.dob) !== null ? ` (age ${ageFromDob(candidate.dob)})` : ''}` : '—'],
                   ['Qualification (form)', candidate.qualification || '—'],
+                  ...describeEducation(candidate.education).map((r) => [r.label, r.value]),
+                  ...(candidate.boards_taught?.length ? [['Boards taught', candidate.boards_taught.join(', ')]] : []),
                   ['Experience claimed', candidate.experience_band || '—'],
                   ['Prior organisation', candidate.prior_org || '—'],
                   ['Location', candidate.current_location || '—'],
