@@ -8,7 +8,8 @@ import {
   Maximize2, Minimize2, Eye, Shield, Upload, FileCheck, Brain, ArrowRight,
   Camera, Monitor, ShieldCheck, Users, LogIn, ChevronRight, Loader2, Copy, KeyRound
 } from 'lucide-react';
-import { Candidate, StageConfig, StageKey, StageResult, QuestionnaireItem, AssessmentPack, HRPolicyDocument, ScheduledInterview } from '@/lib/types';
+import { Candidate, StageConfig, StageKey, StageResult, QuestionnaireItem, AssessmentPack, HRPolicyDocument, ScheduledInterview, PolicyQuestion } from '@/lib/types';
+import PolicyVideoStep, { type PolicyAnswerDraft } from '@/components/candidate/PolicyVideoStep';
 import { SLOKA_DEFAULT_STAGES, DEFAULT_QUESTIONNAIRES } from '@/lib/defaultData';
 import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
 import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
@@ -170,6 +171,10 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
   const [hrNoticeConfirmed, setHrNoticeConfirmed] = useState<boolean>(false);
   const [hrSafeguardingConfirmed, setHrSafeguardingConfirmed] = useState<boolean>(false);
   const [hrCustomStatement, setHrCustomStatement] = useState<string>('');
+  // Stage 5: the school's policy video and the questions after it (none when the school has not set them up).
+  const [policyInfo, setPolicyInfo] = useState<{ video: { id: string; title: string } | null; questions: PolicyQuestion[]; asks: boolean }>({ video: null, questions: [], asks: false });
+  const [policyWatched, setPolicyWatched] = useState(false);
+  const [policyAnswers, setPolicyAnswers] = useState<Record<string, PolicyAnswerDraft>>({});
 
   const [submitting, setSubmitting] = useState(false);
   const [allCompleted, setAllCompleted] = useState<boolean>(false);
@@ -352,12 +357,15 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
       if (cData.candidate) {
         const realSchoolId = cData.candidate.school_id;
-        const [qRes, polRes] = await Promise.all([
+        const [qRes, polRes, pvRes] = await Promise.all([
           fetch(`/api/questionnaires?school_id=${realSchoolId}`),
-          fetch(`/api/hr-policies?school_id=${realSchoolId}`)
+          fetch(`/api/hr-policies?school_id=${realSchoolId}`),
+          fetch(`/api/policy-video?school_id=${realSchoolId}`)
         ]);
         const qData = await qRes.json();
         const polData = await polRes.json();
+        const pvData = await pvRes.json().catch(() => ({}));
+        if (pvRes.ok) setPolicyInfo({ video: pvData.video || null, questions: pvData.questions || [], asks: !!pvData.asks_questions });
         if (qData.questionnaires) setCustomQuestions(qData.questionnaires);
         setSchoolPolicies(polData.policies || []);
         setSchoolName(cData.schoolName || '');
@@ -581,10 +589,20 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           written_submission: situationalNotes || 'Classroom scenario video submitted.'
         };
       } else if (stageKey === 'hr_policy_briefing') {
+        if (policyInfo.asks) {
+          if (policyInfo.video && !policyWatched) {
+            return fail('Please watch the school’s policy video to the end first.');
+          }
+          const left = policyInfo.questions.filter((q) => typeof policyAnswers[q.id]?.agreed !== 'boolean').length;
+          if (left > 0) {
+            return fail(`Please answer every policy question. ${left} still ${left === 1 ? 'needs' : 'need'} an answer.`);
+          }
+        }
         if (!hrNoticeConfirmed || !hrSafeguardingConfirmed) {
           return fail('Please confirm all HR policy conditions to complete the assessment.');
         }
         submissionData = {
+          ...(policyInfo.asks ? { policy_answers: policyAnswers, policy_video_watched: policyWatched } : {}),
           written_submission: `HR Policy Confirmation:
 - School policies accepted (${schoolPolicies.length ? schoolPolicies.map((p) => p.title).join(', ') : 'none published yet'}): ${hrNoticeConfirmed ? 'YES' : 'NO'}
 - Child Safeguarding Code of Conduct Signed: ${hrSafeguardingConfirmed ? 'YES' : 'NO'}
@@ -1356,6 +1374,17 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               {/* STAGE 5: HR Policies & Safeguarding */}
               {activeStageKey === 'hr_policy_briefing' && (
                 <div className="glass-card p-6 sm:p-8 rounded-3xl border border-slate-200 bg-white space-y-5 shadow-xl">
+                  {policyInfo.asks && candidate && (
+                    <PolicyVideoStep
+                      schoolId={candidate.school_id}
+                      video={policyInfo.video}
+                      questions={policyInfo.questions}
+                      watched={policyWatched}
+                      onWatched={() => setPolicyWatched(true)}
+                      answers={policyAnswers}
+                      onAnswer={(id, a) => setPolicyAnswers((prev) => ({ ...prev, [id]: a }))}
+                    />
+                  )}
                   {schoolPolicies.length > 0 && (
                     <div className="space-y-3">
                       {schoolPolicies.map((p) => (

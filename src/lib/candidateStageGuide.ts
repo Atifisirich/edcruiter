@@ -74,12 +74,12 @@ export const STAGE_GUIDE: Record<string, StageGuide> = {
   hr_policy_briefing: {
     short: 'School policies',
     title: 'School policies and child safety',
-    time: '2 min',
-    summary: 'Read the school’s policies and confirm you agree. This stage is not scored.',
+    time: '5–10 min',
+    summary: 'Watch the school’s policy video if it has one, say whether you agree with each policy, and confirm. This stage is not scored.',
     steps: [
-      'Read the policies below.',
-      'Tick both boxes to confirm.',
-      'Submit to finish your application.',
+      'If the school has a policy video, watch it to the end. The questions open when it finishes.',
+      'Answer each question honestly: agree, or don’t agree with a short reason.',
+      'Read the written policies, tick both boxes, and submit to finish your application.',
     ],
     camera: true,
   },

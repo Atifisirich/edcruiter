@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/admin/ui';
 import { Loader2, Plus, CheckCircle2, Pencil, Trash2, X, ShieldCheck, Info } from 'lucide-react';
 import { HRPolicyDocument } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
+import PolicyVideoCard from '@/components/admin/PolicyVideoCard';
 import {
   HR_POLICY_FIELD_DEFS,
   HrPolicyAnswers,
@@ -16,6 +17,8 @@ const SECTIONS = Array.from(new Set(HR_POLICY_FIELD_DEFS.map((f) => f.section)))
 const STRUCTURED_POLICY_TITLE = 'Faculty HR policy (structured)';
 
 export default function SchoolPoliciesPage() {
+  // Written by SchoolIdGate (or support mode) before this page renders.
+  const [videoSchoolId] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID);
   const [policies, setPolicies] = useState<HRPolicyDocument[]>([]);
   const [answers, setAnswers] = useState<HrPolicyAnswers>({});
   const [extraTitle, setExtraTitle] = useState('');
@@ -178,6 +181,8 @@ export default function SchoolPoliciesPage() {
           title="School policies"
           description="Answer a few questions about leave, notice period and child safety. We turn them into the policy teachers read and accept in stage 5."
         />
+
+        <PolicyVideoCard schoolId={videoSchoolId} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">

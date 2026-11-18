@@ -165,8 +165,43 @@ export interface School {
   roles?: RoleDef[];
   /** How many people of each kind the school may have, set by the platform owner. Absent means the standard seats. See seats.ts. */
   seat_limits?: Partial<Record<UserRole, number>>;
+  /** A video explaining the school's policies, shown to candidates in stage 5 before the policy questions. See policyVideo.ts. */
+  policy_video?: PolicyVideo;
+  /** The "Do you agree…?" questions asked after the policy video. Absent means the starter set. See policyVideo.ts. */
+  policy_questions?: PolicyQuestion[];
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
+}
+
+/**
+ * The school's policy video. Stored as numbered pieces (data/uploads/pv_<id>_<n>.part),
+ * because the live server takes uploads of about 30 MB at most; it is played
+ * back from the pieces too, so any length of video works.
+ */
+export interface PolicyVideo {
+  id: string;
+  title: string;
+  mime: string;
+  size: number;
+  chunk_size: number;
+  chunks: number;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
+/** One "Do you agree…?" question after the policy video. */
+export interface PolicyQuestion {
+  id: string;
+  text: string;
+}
+
+/** A candidate's answer to one policy question, with the question as they saw it. */
+export interface PolicyAnswer {
+  question_id: string;
+  question: string;
+  agreed: boolean;
+  /** Why not, when they did not agree. */
+  reason?: string;
 }
 
 /** One review round a shortlisted teacher goes through. The last round is the final yes or no. */
@@ -582,6 +617,10 @@ export interface StageResult {
   attempt_number?: number;
   /** How the written answers were produced (typing pattern, answer pace). For the reviewer; never changes a score. */
   behaviour?: AnswerBehaviour;
+  /** Stage 5: the answers to the school's policy questions. */
+  policy_answers?: PolicyAnswer[];
+  /** Stage 5: the policy video the candidate was shown, and whether it played to the end. */
+  policy_video?: { id: string; title: string; watched_to_end: boolean };
   completed_at: string;
 }
 

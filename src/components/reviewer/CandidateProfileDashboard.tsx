@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Candidate, EvaluationRecord, ProctoringEvent, StageAttempt, StageResult } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
+import PolicyAnswersPanel from '@/components/reviewer/PolicyAnswersPanel';
 import { ageFromDob } from '@/lib/age';
 import { candidateState } from '@/lib/candidateProgress';
 import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
@@ -352,6 +353,10 @@ export default function CandidateProfileDashboard({
                             <Download className="w-3.5 h-3.5" /> Open uploaded CV
                           </a>
                         )}
+
+                        {result.policy_answers?.length ? (
+                          <PolicyAnswersPanel answers={result.policy_answers} video={result.policy_video} />
+                        ) : null}
 
                         {result.written_submission && (
                           <div>

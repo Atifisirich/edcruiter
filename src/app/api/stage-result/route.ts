@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { db } from '@/lib/db';
 import { evaluateStageWithAIAsync } from '@/lib/aiScoringEngine';
-import { StageResult, StageKey } from '@/lib/types';
+import { StageResult, StageKey, PolicyAnswer } from '@/lib/types';
+import { asksPolicyQuestions, parsePolicyAnswers, policyAnswersText, policyQuestionsOf } from '@/lib/policyVideo';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { isScoredStage } from '@/lib/scoredStages';
 import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
@@ -135,6 +136,24 @@ export async function POST(req: NextRequest) {
       behaviour = buildBehaviour(body.behaviour?.typing, body.behaviour?.mcq, lessonText);
     }
 
+    // Stage 5: the school's policy video and questions. The questions and their
+    // wording come from the school as they are now, never from the browser.
+    let policyAnswers: PolicyAnswer[] | undefined;
+    let policyVideo: StageResult['policy_video'];
+    if (stage_key === 'hr_policy_briefing') {
+      const school = db.getSchoolById(school_id);
+      if (asksPolicyQuestions(school)) {
+        if (school?.policy_video && body.policy_video_watched !== true) {
+          return NextResponse.json({ error: 'Please watch the school’s policy video to the end first.' }, { status: 400 });
+        }
+        const parsed = parsePolicyAnswers(policyQuestionsOf(school), body.policy_answers);
+        if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+        policyAnswers = parsed.answers;
+        if (school?.policy_video) policyVideo = { id: school.policy_video.id, title: school.policy_video.title, watched_to_end: true };
+        written_submission = [policyAnswersText(policyAnswers, policyVideo), written_submission].filter(Boolean).join('\n\n');
+      }
+    }
+
     const stageConfig = SLOKA_DEFAULT_STAGES.find(s => s.key === stage_key);
     const stageName = stageConfig?.name || stage_key;
     const scored = isScoredStage(stage_key);
@@ -152,6 +171,8 @@ export async function POST(req: NextRequest) {
       task_prompt: attempt?.prompt,
       attempt_number: attempt?.number,
       behaviour,
+      policy_answers: policyAnswers,
+      policy_video: policyVideo,
       completed_at: new Date().toISOString()
     };
 

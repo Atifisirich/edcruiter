@@ -63,7 +63,7 @@ describe('a candidate\'s test', () => {
   });
 
   it('uses the school\'s own test for a subject the bank does not cover yet', () => {
-    const t = testFor(bio({ applied_subject: 'Chemistry' }), pack);
+    const t = testFor(bio({ applied_subject: 'Psychology' }), pack);
     expect(t.source).toBe('school_test');
     expect(t.questions.map((q) => q.id)).toEqual(['m1']);
     expect(updateCandidate).not.toHaveBeenCalled();

@@ -130,8 +130,8 @@ describe('drawing a test', () => {
 
   it('falls back when the bank is too small or the subject has none', () => {
     expect(drawTest({ subject: 'sanskrit', grades: ['9'], candidateId: 'c', state: emptyBankState() })).toEqual({ ok: false, reason: 'no_bank', poolSize: 0 });
-    // A subject the bank is set up for but has not been filled yet falls back the same way.
-    expect(drawTest({ subject: 'chemistry', grades: ['9'], candidateId: 'c', state: emptyBankState() })).toMatchObject({ ok: false, reason: 'pool_too_small' });
+    // A subject the bank has, for grades it does not cover (chemistry is written for 9 to 12), falls back the same way.
+    expect(drawTest({ subject: 'chemistry', grades: ['3'], candidateId: 'c', state: emptyBankState() })).toMatchObject({ ok: false, reason: 'pool_too_small' });
     const small = drawTest({ subject: 'biology', grades: ['9'], candidateId: 'c', state: emptyBankState() });
     expect(small.ok).toBe(true); // the pilot has 30 grade 9-10 questions, enough for 25
     const wrongGrade = drawTest({ subject: 'biology', grades: ['3'], candidateId: 'c', state: emptyBankState() });
