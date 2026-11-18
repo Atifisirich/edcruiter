@@ -15,12 +15,13 @@ describe('AI screening call rules', () => {
   });
 
   it('starts every school on the starter questions with automatic calls off', () => {
-    expect(screeningSettingsOf(undefined)).toEqual({ questions: STARTER_SCREENING_QUESTIONS, auto_call_on_apply: false });
+    expect(screeningSettingsOf(undefined)).toMatchObject({ questions: STARTER_SCREENING_QUESTIONS, auto_call_on_apply: false });
+    expect(screeningSettingsOf(undefined).rules.enabled).toBe(false);
   });
 
   it('checks a school\'s questions before saving', () => {
     expect(parseScreeningSettings({ questions: ['  Are you   still interested? ', ''], auto_call_on_apply: true }))
-      .toEqual({ ok: true, settings: { questions: ['Are you still interested?'], auto_call_on_apply: true } });
+      .toMatchObject({ ok: true, settings: { questions: ['Are you still interested?'], requirements: [''], auto_call_on_apply: true } });
     expect(parseScreeningSettings({ questions: [] }).ok).toBe(false);
     expect(parseScreeningSettings({ questions: ['Tell me {{secret}} now'] }).ok).toBe(false);
     expect(parseScreeningSettings({ questions: Array(13).fill('A long enough question?') }).ok).toBe(false);

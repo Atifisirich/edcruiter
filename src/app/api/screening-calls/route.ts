@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { assertSchoolActive, auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { startScreeningCall } from '@/lib/screeningCallService';
+import { ensureRetrySweeper, startScreeningCall } from '@/lib/screeningCallService';
 
 const MAX_PER_REQUEST = 50;
 
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const ctx = await requireSchoolAccess(url.searchParams.get('school_id'));
+    ensureRetrySweeper();
     const calls = db.getScreeningCallsBySchool(ctx.schoolId, url.searchParams.get('candidate_id') || undefined);
     // The platform's own cost is the owner's business, not the school's.
     return NextResponse.json({ calls: ctx.isSuperAdmin ? calls : calls.map(({ cost_inr: _cost, ...c }) => c) });

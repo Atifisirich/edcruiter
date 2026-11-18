@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, Loader2, PhoneCall, PhoneOff } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock, Flag, Loader2, Mail, PauseCircle, PhoneCall, PhoneOff, XCircle } from 'lucide-react';
 import type { ScreeningCall } from '@/lib/types';
 import { buttonClass } from './ui';
 import { useAdmin } from './adminContext';
@@ -28,9 +28,24 @@ function minutes(sec?: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function CallCard({ call }: { call: ScreeningCall }) {
+const DECISION: Record<NonNullable<ScreeningCall['decision']>['action'], { cls: string; Icon: typeof Mail; title: string }> = {
+  link_sent: { cls: 'bg-emerald-50 border-emerald-200 text-emerald-900', Icon: Mail, title: 'Test link sent' },
+  would_send_link: { cls: 'bg-slate-50 border-slate-200 text-slate-800', Icon: Mail, title: 'Test link (demo)' },
+  held: { cls: 'bg-amber-50 border-amber-200 text-amber-900', Icon: PauseCircle, title: 'Waiting for HR' },
+  flagged: { cls: 'bg-rose-50 border-rose-200 text-rose-900', Icon: Flag, title: 'Flagged for HR' },
+  retry_scheduled: { cls: 'bg-indigo-50 border-indigo-200 text-indigo-900', Icon: Clock, title: 'Will try again' },
+  none: { cls: 'bg-slate-50 border-slate-200 text-slate-700', Icon: CheckCircle2, title: 'No action' },
+};
+
+const CHECK_ICON = { met: CheckCircle2, not_met: XCircle, unclear: Clock } as const;
+const CHECK_CLS = { met: 'text-emerald-700', not_met: 'text-rose-700', unclear: 'text-amber-700' } as const;
+
+function CallCard({ call, canRelease, onRelease }: { call: ScreeningCall; canRelease: boolean; onRelease: (id: string) => Promise<void> }) {
   const [open, setOpen] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const st = STATUS[call.status];
+  const d = call.decision ? DECISION[call.decision.action] : null;
+  const canSend = canRelease && call.mode === 'live' && (call.decision?.action === 'held' || call.decision?.action === 'flagged');
   return (
     <li className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -53,7 +68,41 @@ function CallCard({ call }: { call: ScreeningCall }) {
       </div>
 
       {call.failure_reason && <p className="text-xs text-rose-700">{call.failure_reason}</p>}
+
+      {call.decision && d && (
+        <div className={`p-3 rounded-xl border text-sm flex flex-wrap items-center gap-x-3 gap-y-2 ${d.cls}`}>
+          <d.Icon className="w-4 h-4 shrink-0" />
+          <p className="flex-1 min-w-0">
+            <strong>{d.title}.</strong> {call.decision.detail}
+            {call.decision.retry_at && ` Next try: ${new Date(call.decision.retry_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.`}
+          </p>
+          {canSend && (
+            <button
+              type="button"
+              disabled={releasing}
+              onClick={async () => { setReleasing(true); try { await onRelease(call.id); } finally { setReleasing(false); } }}
+              className={buttonClass('primary', 'sm')}
+            >
+              {releasing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send the test link
+            </button>
+          )}
+        </div>
+      )}
       {call.summary && <p className="text-sm text-slate-800 leading-relaxed">{call.summary}</p>}
+
+      {call.checks?.length ? (
+        <ul className="space-y-1">
+          {call.checks.map((c) => {
+            const Icon = CHECK_ICON[c.result];
+            return (
+              <li key={c.requirement} className={`text-xs flex items-start gap-1.5 ${CHECK_CLS[c.result]}`}>
+                <Icon className="w-3.5 h-3.5 shrink-0 mt-px" />
+                <span><strong>{c.result === 'met' ? 'Must-have met' : c.result === 'not_met' ? 'Must-have not met' : 'Could not confirm'}:</strong> {c.requirement}{c.note ? ` (${c.note})` : ''}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
       {call.answers?.length ? (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -93,12 +142,19 @@ export default function ScreeningCallPanel({ candidateId, candidateName }: { can
   const [calls, setCalls] = useState<ScreeningCall[] | null>(null);
   const [mode, setMode] = useState<'live' | 'demo'>('demo');
   const [starting, setStarting] = useState(false);
+  const [busy, setBusy] = useState(false);
   const canCall = isHiringTeam(user?.role);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/screening-calls?school_id=${encodeURIComponent(schoolId)}&candidate_id=${encodeURIComponent(candidateId)}`);
     const d = await r.json().catch(() => ({}));
-    if (r.ok) setCalls(d.calls || []);
+    if (r.ok) {
+      const list: ScreeningCall[] = d.calls || [];
+      setCalls(list);
+      // Still going on: ringing, or just finished and the school's rules have not acted yet.
+      const now = Date.now();
+      setBusy(list.some((c) => c.status === 'calling' || (!c.decision && c.status !== 'failed' && now - Date.parse(c.started_at) < 120_000)));
+    }
   }, [schoolId, candidateId]);
 
   useEffect(() => {
@@ -109,12 +165,24 @@ export default function ScreeningCallPanel({ candidateId, candidateName }: { can
   }, [load, schoolId]);
 
   // While a call is going on, check every few seconds for the result.
-  const ringing = calls?.some((c) => c.status === 'calling');
+  const ringing = busy;
   useEffect(() => {
     if (!ringing) return;
     const t = window.setInterval(() => void load(), 4000);
     return () => window.clearInterval(t);
   }, [ringing, load]);
+
+  const release = async (callId: string) => {
+    const r = await fetch('/api/screening-calls/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ school_id: schoolId, call_id: callId }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) toast(d.error || 'Could not send the test link.', 'error');
+    else toast(d.call?.decision?.detail || 'Done.', d.call?.decision?.action === 'link_sent' ? 'success' : 'info');
+    await load();
+  };
 
   const call = async () => {
     setStarting(true);
@@ -161,7 +229,7 @@ export default function ScreeningCallPanel({ candidateId, candidateName }: { can
         <p className="text-sm text-slate-500 flex items-center gap-2"><PhoneOff className="w-4 h-4" /> No screening calls yet.</p>
       ) : (
         <ul className="space-y-3">
-          {calls.map((c) => <CallCard key={c.id} call={c} />)}
+          {calls.map((c) => <CallCard key={c.id} call={c} canRelease={canCall} onRelease={release} />)}
         </ul>
       )}
     </section>

@@ -193,9 +193,48 @@ export interface PolicyVideo {
   uploaded_by: string;
 }
 
+/** What to do with the candidate after a screening call. */
+export type ScreeningAction = 'send_link' | 'hold' | 'flag';
+
+/** How the school wants call results turned into action (the test link going out on its own). See screeningFlow.ts. */
+export interface ScreeningRules {
+  /** Off: results are only shown; nobody is messaged automatically. */
+  enabled: boolean;
+  on_proceed: ScreeningAction;
+  on_maybe: ScreeningAction;
+  on_not_suitable: ScreeningAction;
+  /** Extra calls when the candidate does not pick up or the line is busy. */
+  retries: number;
+  retry_gap_hours: number;
+  /** After the last retry: send the test link, or flag for HR. */
+  after_no_answer: 'send_link' | 'flag';
+  /** Calls (including retries) only happen between these hours, India time. */
+  window_start_hour: number;
+  window_end_hour: number;
+}
+
 export interface ScreeningCallSettings {
   questions: string[];
+  /** A must-have for each question (same order as `questions`), written in words, e.g. "Notice period of 60 days or less". Empty means none. */
+  requirements?: string[];
   auto_call_on_apply: boolean;
+  rules?: ScreeningRules;
+}
+
+export interface ScreeningCheck {
+  question: string;
+  requirement: string;
+  result: 'met' | 'not_met' | 'unclear';
+  note?: string;
+}
+
+/** What was done after a call, so HR can see it. */
+export interface ScreeningDecision {
+  action: 'link_sent' | 'would_send_link' | 'held' | 'flagged' | 'retry_scheduled' | 'none';
+  at: string;
+  detail: string;
+  channels?: string[];
+  retry_at?: string;
 }
 
 export type ScreeningCallStatus = 'calling' | 'completed' | 'no_answer' | 'busy' | 'failed';
@@ -213,7 +252,13 @@ export interface ScreeningCall {
   /** The school's questions as they were when the call was placed. */
   questions: string[];
   requested_by: string;
-  trigger: 'manual' | 'auto';
+  trigger: 'manual' | 'auto' | 'retry';
+  /** Which try this is for the candidate: 1 for the first call, 2 for the first retry, and so on. */
+  attempt?: number;
+  /** A must-have for each question, as it was when the call was placed. */
+  requirements?: string[];
+  checks?: ScreeningCheck[];
+  decision?: ScreeningDecision;
   started_at: string;
   ended_at?: string;
   duration_sec?: number;

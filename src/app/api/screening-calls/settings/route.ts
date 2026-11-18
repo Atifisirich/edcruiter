@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { pricePerMinuteOf, parseScreeningSettings, sarvamEnv, screeningSettingsOf } from '@/lib/screeningCall';
-import { callUsageThisMonth } from '@/lib/screeningCallService';
+import { callUsageThisMonth, ensureRetrySweeper } from '@/lib/screeningCallService';
 
 /**
  * A school's AI screening call settings: its questions, whether new applicants
@@ -12,6 +12,7 @@ import { callUsageThisMonth } from '@/lib/screeningCallService';
 export async function GET(req: NextRequest) {
   try {
     const ctx = await requireSchoolAccess(new URL(req.url).searchParams.get('school_id'));
+    ensureRetrySweeper();
     const school = db.getSchoolById(ctx.schoolId);
     const usage = callUsageThisMonth(ctx.schoolId);
     return NextResponse.json({
@@ -36,7 +37,7 @@ export async function PUT(req: NextRequest) {
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'SCREENING_CALL_SETTINGS_UPDATED',
       resource: `School: ${updated.name}`,
-      details: `${parsed.settings.questions.length} screening questions; automatic calls for new applicants ${parsed.settings.auto_call_on_apply ? 'on' : 'off'}.`,
+      details: `${parsed.settings.questions.length} screening questions; automatic calls for new applicants ${parsed.settings.auto_call_on_apply ? 'on' : 'off'}; acting on results ${parsed.settings.rules.enabled ? 'on' : 'off'}.`,
     });
     return NextResponse.json({ settings: parsed.settings });
   } catch (error) {

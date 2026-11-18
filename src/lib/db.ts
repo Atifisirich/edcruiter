@@ -688,6 +688,10 @@ class DB {
     return call;
   }
 
+  getAllScreeningCalls(): ScreeningCall[] {
+    return this.data.screeningCalls ?? [];
+  }
+
   getScreeningCall(id: string): ScreeningCall | undefined {
     return (this.data.screeningCalls ?? []).find((c) => c.id === id);
   }

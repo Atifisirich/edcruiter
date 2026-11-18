@@ -19,7 +19,8 @@
 import { GoogleGenAI } from '@google/genai';
 import { createHmac } from 'crypto';
 import { logAiUsage } from './aiUsage';
-import type { Candidate, School, ScreeningCall, ScreeningCallSettings } from './types';
+import type { Candidate, School, ScreeningCall, ScreeningCallSettings, ScreeningCheck } from './types';
+import { cleanRequirements, normalizeRules } from './screeningFlow';
 
 export const STARTER_SCREENING_QUESTIONS = [
   'Are you still interested in this teaching position?',
@@ -36,10 +37,13 @@ export const STANDARD_PRICE_PER_MINUTE_INR = 9;
 /** Sarvam pay-as-you-go agent rate plus its phone line (₹0.20 per 30 seconds), per started minute. */
 export const COST_PER_MINUTE_INR = 3.5 + 0.4;
 
-export function screeningSettingsOf(school: Pick<School, 'screening_call'> | null | undefined): ScreeningCallSettings {
+export function screeningSettingsOf(school: Pick<School, 'screening_call'> | null | undefined): Required<ScreeningCallSettings> {
+  const questions = school?.screening_call?.questions?.length ? school.screening_call.questions : STARTER_SCREENING_QUESTIONS;
   return {
-    questions: school?.screening_call?.questions?.length ? school.screening_call.questions : STARTER_SCREENING_QUESTIONS,
+    questions,
+    requirements: cleanRequirements(questions, school?.screening_call?.requirements),
     auto_call_on_apply: school?.screening_call?.auto_call_on_apply === true,
+    rules: normalizeRules(school?.screening_call?.rules),
   };
 }
 
@@ -60,15 +64,22 @@ export function callChargeInr(school: Pick<School, 'screening_call_price_per_min
 }
 
 /** Checks the school's edited settings before they are saved. */
-export function parseScreeningSettings(input: unknown): { ok: true; settings: ScreeningCallSettings } | { ok: false; error: string } {
+export function parseScreeningSettings(input: unknown): { ok: true; settings: Required<ScreeningCallSettings> } | { ok: false; error: string } {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const list = Array.isArray(raw.questions) ? raw.questions : [];
-  const questions = list.map((q) => (typeof q === 'string' ? q.replace(/\s+/g, ' ').trim() : '')).filter(Boolean);
+  const rawReqs = Array.isArray(raw.requirements) ? raw.requirements : [];
+  // A question left blank is dropped together with its must-have.
+  const kept = list
+    .map((q, i) => ({ q: typeof q === 'string' ? q.replace(/\s+/g, ' ').trim() : '', r: typeof rawReqs[i] === 'string' ? rawReqs[i] : '' }))
+    .filter((x) => x.q);
+  const questions = kept.map((x) => x.q);
+  const requirements = cleanRequirements(questions, kept.map((x) => x.r));
   if (questions.length === 0) return { ok: false, error: 'Add at least one question.' };
   if (questions.length > MAX_SCREENING_QUESTIONS) return { ok: false, error: `Up to ${MAX_SCREENING_QUESTIONS} questions; a screening call should stay short.` };
   if (questions.some((q) => q.length < 8 || q.length > 200)) return { ok: false, error: 'Each question needs 8 to 200 characters.' };
   if (questions.some((q) => /[<>{}]/.test(q))) return { ok: false, error: 'Questions cannot contain < > { or }.' };
-  return { ok: true, settings: { questions, auto_call_on_apply: raw.auto_call_on_apply === true } };
+  if (requirements.some((r) => /[<>{}]/.test(r))) return { ok: false, error: 'Must-haves cannot contain < > { or }.' };
+  return { ok: true, settings: { questions, requirements, auto_call_on_apply: raw.auto_call_on_apply === true, rules: normalizeRules(raw.rules) } };
 }
 
 /** A phone number as Sarvam wants it: +91 and ten digits for an Indian mobile. Null when it is not a usable number. */
@@ -178,6 +189,7 @@ export interface CallAnalysis {
   answers: { question: string; answer: string }[];
   summary: string;
   recommendation: 'proceed' | 'maybe' | 'not_suitable';
+  checks: ScreeningCheck[];
 }
 
 function transcriptText(transcript: { role: string; text: string }[]): string {
@@ -185,20 +197,25 @@ function transcriptText(transcript: { role: string; text: string }[]): string {
 }
 
 /** Turns the transcript into an answer per question, a summary and a recommendation. Plain fallback without Gemini. */
-export async function analyseCall(questions: string[], transcript: { role: 'agent' | 'user'; text: string }[]): Promise<CallAnalysis> {
+export async function analyseCall(questions: string[], transcript: { role: 'agent' | 'user'; text: string }[], requirements: string[] = []): Promise<CallAnalysis> {
+  const musts = questions.map((q, i) => ({ question: q, requirement: requirements[i] || '' })).filter((m) => m.requirement);
   const fallback: CallAnalysis = {
     answers: questions.map((q) => ({ question: q, answer: 'See the transcript.' })),
     summary: transcript.length ? 'The call was completed. Read the transcript for the answers.' : 'No conversation was recorded.',
     recommendation: 'maybe',
+    // Without a reading of the call, no must-have can be said to be met.
+    checks: musts.map((m) => ({ ...m, result: 'unclear' as const, note: 'Could not be read from the call.' })),
   };
   const apiKey = process.env.GEMINI_API_KEY || '';
   if (!apiKey || transcript.length === 0) return fallback;
   const prompt = `This is the transcript of a short screening phone call between an AI caller and a teacher who applied to a school in India.
 Read it and reply with ONLY JSON:
-{"answers": [{"question": "...", "answer": "..."}], "summary": "...", "recommendation": "proceed" | "maybe" | "not_suitable"}
+{"answers": [{"question": "...", "answer": "..."}], "summary": "...", "recommendation": "proceed" | "maybe" | "not_suitable", "checks": [{"requirement": "...", "result": "met" | "not_met" | "unclear", "note": "..."}]}
 - One entry in "answers" for each of these questions, in this order, with the question copied exactly. The answer is what the candidate said, in one short plain sentence. If they did not answer it, write "Not answered".
 ${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 - "summary": two or three plain sentences a school principal can read in ten seconds.
+${musts.length ? `- "checks": one entry for each must-have below, in this order, with the requirement copied exactly. "met" if what the candidate said satisfies it, "not_met" if what they said clearly does not, "unclear" if they did not say enough. "note" is a few words on why.
+${musts.map((m, i) => `${i + 1}. For the question "${m.question}": ${m.requirement}`).join('\n')}` : '- "checks": an empty array.'}
 - "recommendation": "proceed" if they are interested and nothing rules them out; "not_suitable" if they are not interested or something clearly rules them out (for example no B.Ed where required, or cannot join); otherwise "maybe".
 
 Transcript:
@@ -210,7 +227,13 @@ ${transcriptText(transcript)}`;
     const parsed = JSON.parse((response.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')) as Partial<CallAnalysis>;
     const answers = questions.map((q, i) => ({ question: q, answer: String(parsed.answers?.[i]?.answer || 'Not answered').slice(0, 400) }));
     const recommendation = parsed.recommendation === 'proceed' || parsed.recommendation === 'not_suitable' ? parsed.recommendation : 'maybe';
-    return { answers, summary: String(parsed.summary || fallback.summary).slice(0, 800), recommendation };
+    const rawChecks = Array.isArray(parsed.checks) ? parsed.checks : [];
+    const checks: ScreeningCheck[] = musts.map((m, i) => {
+      const c = rawChecks[i] as Partial<ScreeningCheck> | undefined;
+      const result = c?.result === 'met' || c?.result === 'not_met' ? c.result : 'unclear';
+      return { question: m.question, requirement: m.requirement, result, ...(c?.note ? { note: String(c.note).slice(0, 160) } : {}) };
+    });
+    return { answers, summary: String(parsed.summary || fallback.summary).slice(0, 800), recommendation, checks };
   } catch (err) {
     console.warn('Screening call analysis failed:', err instanceof Error ? err.message : err);
     return fallback;
