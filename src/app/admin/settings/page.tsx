@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Building2, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
-import { Badge, Card, CardHeader, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
+import { Badge, Card, CardHeader, PageHeader, SaveBar, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import type { ReviewRound, RoleDef } from '@/lib/types';
 import { accessOf } from '@/lib/permissions';
 import { DEFAULT_SHORTLIST_BANDS, normalizeBands, type ShortlistBand } from '@/lib/shortlistBands';
@@ -97,11 +97,6 @@ function RolesCard() {
       <CardHeader
         title="Role names"
         description="Names only, not people. Give roles your school's own names, such as Maths Coordinator or Vice Principal, and choose which seat each one uses. How many people you can have of each seat is shown on the Team page."
-        action={
-          <button type="button" onClick={save} disabled={saving || !dirty} className={buttonClass('primary', 'sm')}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        }
       />
       {!roles ? (
         <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
@@ -141,6 +136,7 @@ function RolesCard() {
               <span key={l.level} className="block"><strong className="text-slate-700">{l.label}:</strong> {l.help}</span>
             ))}
           </p>
+          <SaveBar onSave={save} saving={saving} dirty={dirty} />
         </div>
       )}
     </Card>
@@ -216,11 +212,6 @@ function RoundsCard() {
       <CardHeader
         title="Review rounds"
         description="After HR shortlists a teacher, they go through these rounds in order. In each round, the roles you tick give their yes or no with their opinion. The last round is the final decision."
-        action={
-          <button type="button" onClick={save} disabled={saving || !dirty} className={buttonClass('primary', 'sm')}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        }
       />
       {!rounds ? (
         <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
@@ -276,6 +267,7 @@ function RoundsCard() {
             <p className="text-sm text-slate-500">{rounds.length} of {max} rounds</p>
           </div>
           <p className="text-sm text-slate-500">The school admin can always give the yes or no in any round. Teachers already part-way through keep the rounds they have cleared.</p>
+          <SaveBar onSave={save} saving={saving} dirty={dirty} />
         </div>
       )}
     </Card>
@@ -374,17 +366,6 @@ export default function SettingsPage() {
         <CardHeader
           title="Score colours"
           description="Candidates are shown in a colour by their AI score. Set where each colour starts and ends."
-          action={
-            <div className="flex gap-2">
-              {dirty && (
-                <button type="button" onClick={() => setDraft(null)} className={buttonClass('ghost', 'sm')}>Undo</button>
-              )}
-              <button type="button" onClick={() => setDraft(DEFAULT_SHORTLIST_BANDS.map((b) => ({ ...b })))} className={buttonClass('secondary', 'sm')}>Use the standard</button>
-              <button type="button" onClick={saveBands} disabled={savingBands || !dirty} className={buttonClass('primary', 'sm')}>
-                {savingBands ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          }
         />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {bands.map((b) => (
@@ -410,6 +391,10 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+        <SaveBar onSave={saveBands} saving={savingBands} dirty={dirty}>
+          <button type="button" onClick={() => setDraft(DEFAULT_SHORTLIST_BANDS.map((b) => ({ ...b })))} className={buttonClass('secondary', 'sm')}>Use the standard</button>
+          {dirty && <button type="button" onClick={() => setDraft(null)} className={buttonClass('ghost', 'sm')}>Undo</button>}
+        </SaveBar>
       </Card>
 
       <Card>

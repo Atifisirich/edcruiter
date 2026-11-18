@@ -111,6 +111,39 @@ export function CardHeader({
   );
 }
 
+/**
+ * The Save row at the bottom of a card that is edited and then saved. Sits
+ * after everything the person fills in, says when there is something unsaved,
+ * and keeps any extra buttons (Undo, "Use the standard") on its left.
+ */
+export function SaveBar({
+  onSave,
+  saving,
+  dirty,
+  children,
+  label = 'Save changes',
+}: {
+  onSave: () => void;
+  saving: boolean;
+  dirty: boolean;
+  children?: React.ReactNode;
+  label?: string;
+}) {
+  return (
+    <div className="mt-6 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+      <div className="flex items-center gap-3 ml-auto">
+        <span className={`text-sm ${dirty ? 'text-amber-700 font-medium' : 'text-slate-400'}`} aria-live="polite">
+          {dirty ? 'You have unsaved changes' : 'All changes saved'}
+        </span>
+        <button type="button" onClick={onSave} disabled={saving || !dirty} className={buttonClass('primary')}>
+          {saving ? 'Saving…' : label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function StatCard({
   label,
   value,

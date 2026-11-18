@@ -96,3 +96,67 @@ export function cleanRequirements(questions: string[], input: unknown): string[]
   const list = Array.isArray(input) ? input : [];
   return questions.map((_, i) => (typeof list[i] === 'string' ? list[i].replace(/\s+/g, ' ').trim().slice(0, 200) : ''));
 }
+
+// --- Presets and a plain-words reading of the rules ---------------------------
+
+export interface RulePreset { key: string; name: string; help: string; rules: Omit<ScreeningRules, 'enabled' | 'window_start_hour' | 'window_end_hour'> }
+
+/** Ready-made choices, so a school does not have to understand every setting to start. */
+export const RULE_PRESETS: RulePreset[] = [
+  {
+    key: 'careful',
+    name: 'Careful (recommended)',
+    help: 'Good fits get the test link at once. Unsure ones wait for HR. Not suitable ones are only flagged.',
+    rules: { on_proceed: 'send_link', on_maybe: 'hold', on_not_suitable: 'flag', retries: 2, retry_gap_hours: 4, after_no_answer: 'flag' },
+  },
+  {
+    key: 'fast',
+    name: 'Fast',
+    help: 'Good fits and unsure ones both get the test link at once. Not suitable ones are flagged. If nobody answers, they still get the link.',
+    rules: { on_proceed: 'send_link', on_maybe: 'send_link', on_not_suitable: 'flag', retries: 2, retry_gap_hours: 4, after_no_answer: 'send_link' },
+  },
+  {
+    key: 'manual',
+    name: 'HR decides everything',
+    help: 'Nothing is sent on its own. HR sees every result and presses "Send the test link" for the ones they want.',
+    rules: { on_proceed: 'hold', on_maybe: 'hold', on_not_suitable: 'flag', retries: 2, retry_gap_hours: 4, after_no_answer: 'flag' },
+  },
+];
+
+/** The preset these rules match, if any (the calling hours are not part of a preset). */
+export function matchingPreset(rules: ScreeningRules): string | null {
+  const hit = RULE_PRESETS.find((p) => (Object.keys(p.rules) as (keyof typeof p.rules)[]).every((k) => p.rules[k] === rules[k]));
+  return hit?.key ?? null;
+}
+
+function hourText(h: number): string {
+  const h24 = h % 24;
+  return `${h24 % 12 === 0 ? 12 : h24 % 12} ${h24 < 12 ? 'am' : 'pm'}`;
+}
+
+const DOES: Record<ScreeningAction, string> = {
+  send_link: 'the test link is sent to them right away (email, and WhatsApp if they agreed)',
+  hold: 'HR sees a "Send the test link" button and decides',
+  flag: 'nothing is sent; the candidate is flagged for HR to decide',
+};
+
+/** What the rules mean, in plain sentences, for the school to read back before saving. */
+export function describeRules(rules: ScreeningRules, musts: number): string[] {
+  if (!rules.enabled) {
+    return ['Nothing happens automatically. The AI call only writes up the answers; HR reads them and sends test links themselves.'];
+  }
+  const lines = [
+    `Good fit (interested${musts ? ', and every must-have is met' : ''}): ${DOES[rules.on_proceed]}.`,
+    `Needs a look (unsure${musts ? ', or a must-have could not be confirmed' : ''}): ${DOES[rules.on_maybe]}.`,
+    `Not suitable (not interested${musts ? ', or a must-have is not met' : ''}): ${DOES[rules.on_not_suitable]}.`,
+  ];
+  if (rules.retries === 0) {
+    lines.push(`If they do not pick up: ${rules.after_no_answer === 'send_link' ? 'the test link is sent right away' : 'nothing is sent; HR is flagged'}. There are no retries.`);
+  } else {
+    lines.push(
+      `If they do not pick up: the AI tries again up to ${rules.retries} ${rules.retries === 1 ? 'time' : 'times'}, ${rules.retry_gap_hours} ${rules.retry_gap_hours === 1 ? 'hour' : 'hours'} apart, only between ${hourText(rules.window_start_hour)} and ${hourText(rules.window_end_hour)} (India time). If they still do not answer, ${rules.after_no_answer === 'send_link' ? 'the test link is sent anyway' : 'HR is flagged and nothing is sent'}.`
+    );
+  }
+  lines.push('A test link is never sent twice, and never to someone who has already started the test.');
+  return lines;
+}

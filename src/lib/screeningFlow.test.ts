@@ -79,3 +79,27 @@ describe('the rules a school saves', () => {
     expect(s.requirements.every((r) => r === '')).toBe(true);
   });
 });
+
+import { describeRules, matchingPreset, RULE_PRESETS } from './screeningFlow';
+
+describe('presets and the plain-words summary', () => {
+  it('recognises a preset, and says none when the rules were changed', () => {
+    const careful = RULE_PRESETS[0];
+    expect(matchingPreset({ ...DEFAULT_RULES, enabled: true, ...careful.rules })).toBe('careful');
+    expect(matchingPreset({ ...DEFAULT_RULES, enabled: true, ...careful.rules, retries: 4 })).toBeNull();
+  });
+
+  it('explains every rule in a sentence, mentioning must-haves only when there are some', () => {
+    const lines = describeRules({ ...DEFAULT_RULES, enabled: true }, 2);
+    expect(lines[0]).toMatch(/Good fit.*every must-have is met.*test link is sent to them right away/);
+    expect(lines[1]).toMatch(/Needs a look.*HR sees a "Send the test link" button/);
+    expect(lines[2]).toMatch(/Not suitable.*flagged/);
+    expect(lines.join(' ')).toMatch(/up to 2 times, 4 hours apart, only between 9 am and 7 pm/);
+    expect(describeRules({ ...DEFAULT_RULES, enabled: true }, 0)[0]).not.toMatch(/must-have/);
+  });
+
+  it('says nothing is automatic when the rules are off, and handles no retries', () => {
+    expect(describeRules(DEFAULT_RULES, 0)).toHaveLength(1);
+    expect(describeRules({ ...DEFAULT_RULES, enabled: true, retries: 0, after_no_answer: 'send_link' }, 0).join(' ')).toMatch(/There are no retries/);
+  });
+});
