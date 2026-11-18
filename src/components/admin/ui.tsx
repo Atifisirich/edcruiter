@@ -217,11 +217,11 @@ export function ProgressBar({ percent, tone = 'indigo' }: { percent: number; ton
 }
 
 /** A row of segments that fills as stages are completed (used for test progress). */
-export function StepDots({ done, total }: { done: number; total: number }) {
+export function StepDots({ done, total, small = false }: { done: number; total: number; small?: boolean }) {
   return (
     <div className="flex items-center gap-1" aria-label={`${done} of ${total} stages done`}>
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`h-1.5 w-5 rounded-full ${i < done ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+        <span key={i} className={`h-1.5 ${small ? 'w-3.5' : 'w-5'} rounded-full ${i < done ? 'bg-indigo-600' : 'bg-slate-200'}`} />
       ))}
     </div>
   );

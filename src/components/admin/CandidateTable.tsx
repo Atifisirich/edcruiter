@@ -11,6 +11,7 @@ import { Badge, StepDots, buttonClass, type Tone } from './ui';
 import { useAdmin } from './adminContext';
 
 const BAND_TONE: Record<ShortlistBand['tone'], Tone> = { danger: 'rose', warning: 'amber', success: 'emerald' };
+const BAND_DOT: Record<ShortlistBand['tone'], string> = { danger: 'bg-rose-500', warning: 'bg-amber-500', success: 'bg-emerald-500' };
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -101,23 +102,25 @@ export default function CandidateTable({
         ))}
       </ul>
 
-      {/* Tablet and desktop: a table */}
-      <div className={`hidden md:block ${compact ? '' : 'overflow-x-auto'}`}>
-        <table className="w-full text-left text-sm">
+      {/* Tablet and desktop: a table that always fits its card, so nothing hides off to the side.
+          Fixed layout: the small columns get set widths and Candidate takes what is left.
+          Status and test progress share one column, so each column is wide enough that
+          text never breaks mid-word; a long degree is cut to two lines (hover shows it all). */}
+      <div className="hidden md:block">
+        <table className={`w-full text-left text-sm ${compact ? '' : 'table-fixed'}`}>
           <thead>
             <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500">
               {selection && (
-                <th className="py-3 pl-6 pr-0 w-8">
+                <th className="py-3 pl-6 pr-0 w-12">
                   <input type="checkbox" checked={allTicked} onChange={toggleAll} aria-label="Select every candidate shown" className="w-4 h-4 accent-indigo-600 cursor-pointer" />
                 </th>
               )}
               <th className={`py-3 ${selection ? 'pl-3' : 'pl-6'} pr-3 font-semibold`}>Candidate</th>
-              <th className="py-3 px-3 font-semibold">Role</th>
-              {!compact && <th className="py-3 px-3 font-semibold hidden xl:table-cell">Qualification</th>}
-              {!compact && <th className="py-3 px-3 font-semibold">Test progress</th>}
-              <th className="py-3 px-3 font-semibold">AI score</th>
-              <th className="py-3 px-3 font-semibold">Status</th>
-              <th className="py-3 pl-3 pr-6 font-semibold text-right">
+              <th className={`py-3 px-3 font-semibold ${compact ? '' : 'w-[13%]'}`}>Role</th>
+              {!compact && <th className="py-3 px-3 font-semibold hidden xl:table-cell w-[16%]">Qualification</th>}
+              <th className={`py-3 px-3 font-semibold ${compact ? '' : 'w-[18%]'}`}>Status</th>
+              <th className={`py-3 px-3 font-semibold ${compact ? '' : 'w-[14%]'}`}>AI score</th>
+              <th className={`py-3 pl-2 pr-5 font-semibold text-right ${compact ? '' : 'w-[8.5rem] 2xl:w-48'}`}>
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -125,53 +128,55 @@ export default function CandidateTable({
           <tbody className="divide-y divide-slate-100">
             {rows.map(({ c, state, score, band, creds }) => (
               <tr key={c.id} className={`transition-colors ${selection?.selected.has(c.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/80'}`}>
-                {selection && <td className="py-3.5 pl-6 pr-0 w-8">{tick(c)}</td>}
+                {selection && <td className="py-3.5 pl-6 pr-0">{tick(c)}</td>}
                 <td className={`py-3.5 ${selection ? 'pl-3' : 'pl-6'} pr-3`}>
-                  <Link href={`/admin/candidates/${c.id}`} className="flex items-center gap-3 group">
+                  <Link href={`/admin/candidates/${c.id}`} className="flex items-center gap-3 group min-w-0">
                     <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center justify-center shrink-0">{initials(c.name)}</span>
-                    <span className="min-w-0">
-                      <span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate max-w-[14rem]">{c.name}</span>
-                      <span className="block text-xs text-slate-500 truncate max-w-[14rem]">{c.email}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block font-semibold text-slate-900 group-hover:text-indigo-700 truncate ${compact ? 'max-w-[14rem]' : ''}`} title={c.name}>{c.name}</span>
+                      <span className={`block text-xs text-slate-500 truncate ${compact ? 'max-w-[14rem]' : ''}`} title={c.email || undefined}>{c.email}</span>
                     </span>
                   </Link>
                 </td>
                 <td className="py-3.5 px-3">
-                  <span className="block font-medium text-slate-800">{c.applied_subject || 'Not set'}</span>
-                  <span className="block text-xs text-slate-500">{c.applied_segment?.split('(')[0].trim() || '—'}</span>
+                  <span className="block font-medium text-slate-800 truncate capitalize">{c.applied_subject || 'Not set'}</span>
+                  <span className="block text-xs text-slate-500 truncate">{c.applied_segment?.split('(')[0].trim() || '—'}</span>
                 </td>
                 {!compact && (
                   <td className="py-3.5 px-3 hidden xl:table-cell">
-                    <span className="block text-slate-800">{creds.highestDegree}</span>
-                    <Badge tone={creds.hasBEd ? 'emerald' : 'rose'} className="mt-1">{creds.bedLabel}</Badge>
-                  </td>
-                )}
-                {!compact && (
-                  <td className="py-3.5 px-3">
-                    <StepDots done={state.stagesDone} total={TEST_STAGE_COUNT} />
-                    <span className="block text-xs text-slate-500 mt-1.5">{state.stagesDone} of {TEST_STAGE_COUNT} stages</span>
-                  </td>
-                )}
-                <td className="py-3.5 px-3">
-                  {band ? (
-                    <span className="flex flex-col items-start gap-1">
-                      <span className="text-lg font-bold text-slate-900 leading-none">{score}<span className="text-xs font-medium text-slate-400"> /100</span></span>
-                      <Badge tone={BAND_TONE[band.tone]}>{band.label}</Badge>
+                    <span className="text-slate-800 line-clamp-2 leading-snug" title={creds.highestDegree}>{creds.highestDegree}</span>
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                      B.Ed <Badge tone={creds.hasBEd ? 'emerald' : 'rose'}>{creds.bedLabel}</Badge>
                     </span>
-                  ) : (
-                    <span className="text-sm text-slate-400">Not scored yet</span>
-                  )}
-                </td>
+                  </td>
+                )}
                 <td className="py-3.5 px-3">
                   <Badge tone={state.tone}>{state.label}</Badge>
-                  {compact && <StepDots done={state.stagesDone} total={TEST_STAGE_COUNT} />}
+                  <span className="mt-2 flex items-center gap-2" title={`${state.stagesDone} of ${TEST_STAGE_COUNT} test stages done`}>
+                    <StepDots done={state.stagesDone} total={TEST_STAGE_COUNT} small />
+                    <span className="text-xs text-slate-500 whitespace-nowrap">{state.stagesDone}/{TEST_STAGE_COUNT}</span>
+                  </span>
                 </td>
-                <td className="py-3.5 pl-3 pr-6">
-                  <div className="flex items-center justify-end gap-2">
+                <td className="py-3.5 px-3">
+                  {band ? (
+                    <span className="flex flex-col items-start gap-1.5">
+                      <span className="text-lg font-bold text-slate-900 leading-none">{score}<span className="text-xs font-medium text-slate-400"> /100</span></span>
+                      <span className="flex items-start gap-1.5 text-xs font-medium text-slate-600 leading-snug">
+                        <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${BAND_DOT[band.tone]}`} />
+                        {band.label}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-sm text-slate-400 whitespace-nowrap">Not scored</span>
+                  )}
+                </td>
+                <td className={`py-3.5 ${compact ? 'pl-3 pr-6' : 'pl-2 pr-5'}`}>
+                  <div className="flex items-center justify-end gap-1.5">
                     {!compact && (
                       <button
                         type="button"
                         onClick={() => void copyInvite(c)}
-                        className={buttonClass('ghost', 'sm')}
+                        className={`${buttonClass('ghost', 'sm')} px-2!`}
                         title="Copy the test code and link"
                         aria-label={`Copy test code and link for ${c.name}`}
                       >
@@ -179,7 +184,12 @@ export default function CandidateTable({
                       </button>
                     )}
                     <Link href={`/admin/candidates/${c.id}`} className={buttonClass('secondary', 'sm')} aria-label={`View report for ${c.name}`}>
-                      {compact ? <ChevronRight className="w-4 h-4" /> : 'View report'}
+                      {compact ? <ChevronRight className="w-4 h-4" /> : (
+                        <>
+                          <span className="2xl:hidden">Report</span>
+                          <span className="hidden 2xl:inline">View report</span>
+                        </>
+                      )}
                     </Link>
                   </div>
                 </td>
