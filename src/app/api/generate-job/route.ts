@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const subjectName = subject || 'Physics';
     const roleTitle = title || `${subjectName} Faculty`;
-    const boardType = board || 'CBSE & Cambridge IGCSE';
+    const boardType = (typeof board === 'string' && board.trim()) || 'CBSE';
     const segmentLevel = segment || 'Secondary (Grades 9-10)';
     const expBand = experience || '3 - 6 Years';
     // No more Manneguda-style fallback — a school with no branch selected

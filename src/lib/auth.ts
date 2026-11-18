@@ -113,15 +113,23 @@ export async function requireStaff(options?: {
     throw new AuthError('Sign in to continue.', 401);
   }
 
-  if (options?.anyOf && !options.anyOf.includes(ctx.role)) {
-    throw new AuthError('Your role does not have access to this resource.', 403);
-  }
-
-  if (options?.minRole && ROLE_RANK[ctx.role] < ROLE_RANK[options.minRole]) {
+  if (!roleAllowed(ctx.role, options)) {
     throw new AuthError('Your role does not have access to this resource.', 403);
   }
 
   return ctx;
+}
+
+/**
+ * Whether a role passes a route's role rule. The platform owner (support mode)
+ * may do whatever a school admin may, so a rule that lets the school admin in
+ * lets the super admin in too.
+ */
+export function roleAllowed(role: UserRole, options?: { minRole?: UserRole; anyOf?: UserRole[] }): boolean {
+  const anyOf = options?.anyOf?.includes('SCHOOL_ADMIN') ? [...options.anyOf, 'SUPER_ADMIN' as UserRole] : options?.anyOf;
+  if (anyOf && !anyOf.includes(role)) return false;
+  if (options?.minRole && ROLE_RANK[role] < ROLE_RANK[options.minRole]) return false;
+  return true;
 }
 
 /**

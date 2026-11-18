@@ -167,7 +167,19 @@ function loadBank(file) {
 }
 function saveBank(file, bank) {
   // One question per line, so a change shows up clearly when the file is reviewed.
-  fs.writeFileSync(path.join(BANK_DIR, `${file}.json`), `[\n${bank.map((q) => '  ' + JSON.stringify(q)).join(',\n')}\n]\n`);
+  // On Windows an editor, indexer or virus scanner can hold the file for a
+  // moment; wait and try again rather than lose the batch.
+  const target = path.join(BANK_DIR, `${file}.json`);
+  const text = `[\n${bank.map((q) => '  ' + JSON.stringify(q)).join(',\n')}\n]\n`;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      fs.writeFileSync(target, text);
+      return;
+    } catch (err) {
+      if (attempt >= 10) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000 * attempt);
+    }
+  }
 }
 function nextNumber(bank, prefix) {
   let max = 0;

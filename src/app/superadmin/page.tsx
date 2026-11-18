@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Building2, Plus, Lock, Unlock, FileText, CheckCircle2, AlertTriangle, Users, Trash2 } from 'lucide-react';
+import { Shield, Building2, Plus, FileText, Trash2, LifeBuoy } from 'lucide-react';
+import { enterSupportMode } from '@/lib/supportMode';
 import { School, SchoolBilling, AuditLogEntry, DeletionRequest } from '@/lib/types';
 import { workspaceBlockReason } from '@/lib/schoolStatus';
 
@@ -51,7 +52,7 @@ export default function SuperAdminPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [supportMode, setSupportMode] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // New School Form State
@@ -150,6 +151,19 @@ export default function SuperAdminPage() {
     }
   };
 
+  // Support mode: open this school's own hiring dashboard, recorded in its activity log.
+  const openWorkspace = async (school: School) => {
+    if (!window.confirm(`Open ${school.name}'s workspace in support mode? This is recorded in the school's activity log, and anything you change there is done as Edcruiter support.`)) return;
+    setOpeningId(school.id);
+    try {
+      await enterSupportMode(school.id);
+      window.location.href = '/admin';
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not open the workspace');
+      setOpeningId(null);
+    }
+  };
+
   const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSchoolName || !newSchoolCode) return;
@@ -195,23 +209,13 @@ export default function SuperAdminPage() {
           </p>
         </div>
 
-        {/* Support Mode Toggle */}
-        <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-          <div className="text-xs">
-            <strong className="text-slate-900 font-bold block">Candidate Support Mode</strong>
-            <span className="text-[11px] text-slate-500 font-medium">
-              {supportMode ? 'Explicit Support Mode Active (Logged)' : 'Zero Default Access to Tenant Candidates'}
-            </span>
-          </div>
-          <button
-            onClick={() => setSupportMode(!supportMode)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
-              supportMode ? 'bg-amber-600 text-white shadow-amber-600/20' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-            }`}
-          >
-            {supportMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-            {supportMode ? 'Support Mode ON' : 'Support Mode OFF'}
-          </button>
+        {/* Support mode lives on each school below: "Open workspace". */}
+        <div className="flex items-start gap-2.5 bg-amber-50 p-3.5 rounded-2xl border border-amber-200 max-w-sm">
+          <LifeBuoy className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-900 font-medium">
+            <strong className="block font-bold">Support mode</strong>
+            You see no school&apos;s candidates by default. Use <strong>Open workspace</strong> on a school to work inside its dashboard; each visit is logged in that school&apos;s activity.
+          </p>
         </div>
       </div>
 
@@ -285,6 +289,14 @@ export default function SuperAdminPage() {
                 </span>
                 <span className="text-slate-600 font-semibold">{sch.branches.length} Campuses</span>
                 <PlanControls school={sch} onActivate={activatePlan} />
+                <button
+                  type="button"
+                  onClick={() => openWorkspace(sch)}
+                  disabled={openingId === sch.id}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-600 text-white cursor-pointer hover:bg-amber-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  <LifeBuoy className="w-3.5 h-3.5" /> {openingId === sch.id ? 'Opening…' : 'Open workspace'}
+                </button>
                 {sch.status === 'active' && (
                   <button
                     type="button"

@@ -7,6 +7,7 @@ import {
   GraduationCap, Clock, Award, ArrowRight, Briefcase, 
   Check, Filter, ArrowUpRight, Compass, ShieldCheck
 } from 'lucide-react';
+import { CURRICULA, followsBoard } from '@/lib/subjects';
 
 interface MarketplaceJob {
   id: string;
@@ -73,7 +74,7 @@ export default function JobsMarketplacePage() {
                           job.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           job.school_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSubject = selectedSubject === 'ALL' || job.subject.toLowerCase() === selectedSubject.toLowerCase();
-    const matchesBoard = selectedBoard === 'ALL' || job.board.toLowerCase().includes(selectedBoard.toLowerCase());
+    const matchesBoard = selectedBoard === 'ALL' || followsBoard(job.board, selectedBoard);
     const matchesLocation = selectedLocation === 'ALL' || job.branch.toLowerCase().includes(selectedLocation.toLowerCase());
     return matchesSearch && matchesSubject && matchesBoard && matchesLocation;
   });
@@ -147,8 +148,7 @@ export default function JobsMarketplacePage() {
                 className="w-full p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium focus:border-indigo-600 focus:outline-none"
               >
                 <option value="ALL">Curriculum: All Boards</option>
-                <option value="CBSE">CBSE Board</option>
-                <option value="Cambridge">Cambridge IGCSE</option>
+                {CURRICULA.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
 

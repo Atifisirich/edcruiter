@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { storedSchoolId } from '@/lib/supportMode';
 
 /**
  * Admin and reviewer pages read their school from localStorage
@@ -18,7 +19,8 @@ import { Loader2 } from 'lucide-react';
  * itself, writes it where those pages already look, and only then renders
  * them — so the first render reads the right value instead of racing it.
  * A platform super admin has no school of their own, so nothing is
- * overwritten for them.
+ * overwritten for them: they choose one with "Open workspace" on the
+ * super admin page (support mode), and are sent there if they have not.
  */
 export default function SchoolIdGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -30,10 +32,16 @@ export default function SchoolIdGate({ children }: { children: React.ReactNode }
       .then((me) => {
         if (me?.school_id) {
           try { localStorage.setItem('edcruiter_school_id', me.school_id); } catch { /* storage blocked — pages fall back as before */ }
+        } else if (me?.role === 'SUPER_ADMIN' && !storedSchoolId()) {
+          // The platform owner picks a school first (support mode), instead of
+          // landing on an empty dashboard for a demo school.
+          window.location.replace('/superadmin');
+          return false;
         }
+        return true;
       })
-      .catch(() => { /* not signed in or offline — the pages' own auth handling takes over */ })
-      .finally(() => { if (!cancelled) setReady(true); });
+      .catch(() => true /* not signed in or offline — the pages' own auth handling takes over */)
+      .then((show) => { if (!cancelled && show !== false) setReady(true); });
     return () => { cancelled = true; };
   }, []);
 

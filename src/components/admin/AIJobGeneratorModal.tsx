@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import GradePicker from '@/components/admin/GradePicker';
-import { VACANCY_SUBJECTS } from '@/lib/subjects';
+import { CURRICULA, VACANCY_SUBJECTS, curriculumLabel } from '@/lib/subjects';
 
 interface AIJobGeneratorModalProps {
   isOpen: boolean;
@@ -32,7 +32,6 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
     title: '',
     subject: 'Physics',
     segment: 'Senior Secondary (Grades 11-12)',
-    board: 'CBSE & Cambridge IGCSE',
     branch_id: '',
     experience: '3 – 6 Years Exp',
     salary_range: '₹7.8 LPA – ₹9.5 LPA'
@@ -41,6 +40,9 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
   const [generatedJob, setGeneratedJob] = useState<any>(null);
   const [grades, setGrades] = useState<string[]>([]);
   const [gradeError, setGradeError] = useState(false);
+  // Each board is its own tick box; a vacancy can follow more than one.
+  const [boards, setBoards] = useState<string[]>([]);
+  const [boardError, setBoardError] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -69,6 +71,10 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
       setGradeError(true);
       return;
     }
+    if (boards.length === 0) {
+      setBoardError(true);
+      return;
+    }
     if (!formData.branch_id) return;
     setLoading(true);
     try {
@@ -78,6 +84,8 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          // Saved in the list's own order, whatever order they were ticked in.
+          board: curriculumLabel(CURRICULA.filter((b) => boards.includes(b))),
           grades,
           branch: selectedBranch?.name || '',
           target_branch_id: formData.branch_id
@@ -179,20 +187,36 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
                 </div>
 
                 <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1.5">
-                    Curriculum / Board Alignment *
-                  </label>
-                  <select
-                    value={formData.board}
-                    onChange={e => setFormData({ ...formData, board: e.target.value })}
-                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 text-zinc-900 dark:text-white focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="CBSE & Cambridge IGCSE">CBSE & Cambridge IGCSE</option>
-                    <option value="CBSE Board (Central)">CBSE Board (Central)</option>
-                    <option value="Cambridge IGCSE & A-Levels">Cambridge IGCSE & A-Levels</option>
-                    <option value="IB World School (PYP/MYP/DP)">IB World School (PYP/MYP/DP)</option>
-                    <option value="ICSE / ISC Board">ICSE / ISC Board</option>
-                  </select>
+                  <span className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1.5">
+                    Curriculum / board * <span className="font-normal text-zinc-500">(tick every one that applies)</span>
+                  </span>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="Curriculum / board">
+                    {CURRICULA.map((b) => {
+                      const on = boards.includes(b);
+                      return (
+                        <label
+                          key={b}
+                          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border cursor-pointer select-none ${
+                            on
+                              ? 'bg-indigo-50 border-indigo-400 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-200'
+                              : 'bg-slate-50 dark:bg-zinc-900 border-slate-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => {
+                              setBoardError(false);
+                              setBoards((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]));
+                            }}
+                            className="accent-indigo-600"
+                          />
+                          {b}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {boardError && <p className="mt-1 text-sm text-rose-600">Tick at least one curriculum.</p>}
                 </div>
 
                 <div>

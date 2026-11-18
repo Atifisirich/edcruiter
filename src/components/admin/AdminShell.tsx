@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Activity, Briefcase, CalendarCheck2, CheckCircle2, ClipboardCheck, ChevronDown, CloudUpload, FileCheck2, LayoutDashboard, LogOut,
-  Menu, MessageSquare, Plus, Settings, ShieldCheck, TriangleAlert, UserPlus, Users, UsersRound, X, XCircle, Globe,
+  Menu, MessageSquare, Plus, Settings, ShieldCheck, TriangleAlert, UserPlus, Users, UsersRound, X, XCircle, Globe, LifeBuoy,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import BrandMark from '@/components/shared/BrandMark';
@@ -16,6 +16,7 @@ import { AdminContext, type AdminContextValue, type ToastKind } from '@/componen
 import { buttonClass } from '@/components/admin/ui';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { workspaceBlockReason } from '@/lib/schoolStatus';
+import { exitSupportMode } from '@/lib/supportMode';
 import { countByTab } from '@/lib/candidateProgress';
 import type { Candidate, School } from '@/lib/types';
 import { accessOf, type Access } from '@/lib/permissions';
@@ -297,6 +298,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </header>
 
           <main className="flex-1 min-w-0 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+            {user?.role === 'SUPER_ADMIN' && (
+              <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <LifeBuoy className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="flex-1 min-w-0">
+                  <strong className="font-semibold">Support mode:</strong>{' '}
+                  {school ? <>you are working inside <strong>{school.name}</strong> as Edcruiter support. Your visit is in the school&apos;s activity log.</> : 'this school could not be loaded.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => { await exitSupportMode(schoolId); window.location.href = '/superadmin'; }}
+                  className={buttonClass('secondary', 'sm')}
+                >
+                  <LogOut className="w-4 h-4" /> Exit support mode
+                </button>
+              </div>
+            )}
             {blocked && school && (
               <div role="status" className="flex gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
                 <TriangleAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />

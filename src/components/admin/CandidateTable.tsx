@@ -21,12 +21,15 @@ export default function CandidateTable({
   bands,
   emptyState,
   compact = false,
+  selection,
 }: {
   candidates: Candidate[];
   bands: ShortlistBand[];
   emptyState: React.ReactNode;
   /** A narrower table for a side-by-side card: fewer columns, no horizontal scroll. */
   compact?: boolean;
+  /** Tick boxes for acting on several candidates at once (the school admin's delete). */
+  selection?: { selected: Set<string>; onChange: (next: Set<string>) => void };
 }) {
   const { toast } = useAdmin();
 
@@ -42,6 +45,29 @@ export default function CandidateTable({
     }
   };
 
+  const toggle = (id: string) => {
+    if (!selection) return;
+    const next = new Set(selection.selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    selection.onChange(next);
+  };
+  const allTicked = !!selection && candidates.length > 0 && candidates.every((c) => selection.selected.has(c.id));
+  const toggleAll = () => {
+    if (!selection) return;
+    const next = new Set(selection.selected);
+    for (const c of candidates) { if (allTicked) next.delete(c.id); else next.add(c.id); }
+    selection.onChange(next);
+  };
+  const tick = (c: Candidate) => selection && (
+    <input
+      type="checkbox"
+      checked={selection.selected.has(c.id)}
+      onChange={() => toggle(c.id)}
+      aria-label={`Select ${c.name}`}
+      className="w-4 h-4 accent-indigo-600 cursor-pointer"
+    />
+  );
+
   const rows = candidates.map((c) => {
     const state = candidateState(c);
     const score = Number(c.total_ai_score || 0);
@@ -54,8 +80,9 @@ export default function CandidateTable({
       {/* Phone: one card per candidate */}
       <ul className="md:hidden divide-y divide-slate-100">
         {rows.map(({ c, state, score, band }) => (
-          <li key={c.id}>
-            <Link href={`/admin/candidates/${c.id}`} className="flex items-start gap-3 px-4 py-4 hover:bg-slate-50">
+          <li key={c.id} className="flex items-start">
+            {selection && <span className="pl-4 pt-7">{tick(c)}</span>}
+            <Link href={`/admin/candidates/${c.id}`} className="flex flex-1 min-w-0 items-start gap-3 px-4 py-4 hover:bg-slate-50">
               <span className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 text-sm font-semibold flex items-center justify-center shrink-0">{initials(c.name)}</span>
               <span className="min-w-0 flex-1 space-y-1.5">
                 <span className="flex items-center justify-between gap-2">
@@ -79,7 +106,12 @@ export default function CandidateTable({
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <th className="py-3 pl-6 pr-3 font-semibold">Candidate</th>
+              {selection && (
+                <th className="py-3 pl-6 pr-0 w-8">
+                  <input type="checkbox" checked={allTicked} onChange={toggleAll} aria-label="Select every candidate shown" className="w-4 h-4 accent-indigo-600 cursor-pointer" />
+                </th>
+              )}
+              <th className={`py-3 ${selection ? 'pl-3' : 'pl-6'} pr-3 font-semibold`}>Candidate</th>
               <th className="py-3 px-3 font-semibold">Role</th>
               {!compact && <th className="py-3 px-3 font-semibold hidden xl:table-cell">Qualification</th>}
               {!compact && <th className="py-3 px-3 font-semibold">Test progress</th>}
@@ -92,8 +124,9 @@ export default function CandidateTable({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(({ c, state, score, band, creds }) => (
-              <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                <td className="py-3.5 pl-6 pr-3">
+              <tr key={c.id} className={`transition-colors ${selection?.selected.has(c.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/80'}`}>
+                {selection && <td className="py-3.5 pl-6 pr-0 w-8">{tick(c)}</td>}
+                <td className={`py-3.5 ${selection ? 'pl-3' : 'pl-6'} pr-3`}>
                   <Link href={`/admin/candidates/${c.id}`} className="flex items-center gap-3 group">
                     <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center justify-center shrink-0">{initials(c.name)}</span>
                     <span className="min-w-0">

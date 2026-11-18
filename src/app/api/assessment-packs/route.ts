@@ -38,9 +38,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Generation limit reached for this hour.' }, { status: 429 });
     }
 
-    const subject = body.subject || 'Physics';
-    const segment = body.segment || 'Primary (Grades 1–5)';
-    const board = body.board || 'CBSE';
+    // The subject can be typed freely ("Other"), and it goes into the AI prompt,
+    // so keep it to one short plain line.
+    const text = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+    const subject = text(body.subject, 60) || 'Physics';
+    const segment = text(body.segment, 80) || 'Primary (Grades 1–5)';
+    const board = text(body.board, 60) || 'CBSE';
     const save = body.save !== false;
 
     const data = await generateAssessmentPackData({ subject, segment, board });

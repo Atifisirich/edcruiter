@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSchoolId, AuthError, StaffContext } from './auth';
+import { resolveSchoolId, roleAllowed, AuthError, StaffContext } from './auth';
+import { HIRING_TEAM } from './permissions';
 import { User } from './types';
 
 function staffCtx(overrides: Partial<StaffContext> = {}): StaffContext {
@@ -39,5 +40,22 @@ describe('resolveSchoolId', () => {
     const ctx = staffCtx({ isSuperAdmin: true, schoolId: null, role: 'SUPER_ADMIN' });
     expect(() => resolveSchoolId(ctx, null)).toThrow(AuthError);
     expect(() => resolveSchoolId(ctx, '')).toThrow(AuthError);
+  });
+});
+
+describe('roleAllowed (support mode)', () => {
+  it('lets the platform owner do what the school admin and HR may', () => {
+    expect(roleAllowed('SUPER_ADMIN', { anyOf: HIRING_TEAM })).toBe(true);
+    expect(roleAllowed('SUPER_ADMIN', { minRole: 'SCHOOL_ADMIN' })).toBe(true);
+  });
+
+  it('still keeps reviewers out of hiring-team work and HR out of admin-only work', () => {
+    expect(roleAllowed('REPORTING_MANAGER', { anyOf: HIRING_TEAM })).toBe(false);
+    expect(roleAllowed('HR', { anyOf: HIRING_TEAM })).toBe(true);
+    expect(roleAllowed('HR', { minRole: 'SCHOOL_ADMIN' })).toBe(false);
+  });
+
+  it('does not widen a rule the school admin is not on', () => {
+    expect(roleAllowed('SUPER_ADMIN', { anyOf: ['HR'] })).toBe(false);
   });
 });

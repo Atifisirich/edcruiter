@@ -7,6 +7,8 @@ import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { AssessmentPack } from '@/lib/types';
 import { useAdmin } from '@/components/admin/adminContext';
 import { isAdmin } from '@/lib/permissions';
+import { CURRICULA, testSubjects } from '@/lib/subjects';
+import QuestionBankPanel from '@/components/admin/QuestionBankPanel';
 
 const SEGMENTS = [
   'Pre-primary (Ages 3–6)',
@@ -15,15 +17,18 @@ const SEGMENTS = [
   'Secondary (Grades 9-10)',
   'Senior secondary (Grades 11–12)'
 ];
-const SUBJECTS = ['Biology', 'Physics', 'Mathematics', 'Chemistry', 'English', 'Computer Science'];
-const BOARDS = ['CBSE', 'Cambridge IGCSE', 'ICSE', 'IB', 'State Board'];
+const OTHER = 'Other (type the subject)';
 
 export default function AssessmentLibraryPage() {
   // HR writes new tests; putting one in use, archiving or deleting it is the admin's.
-  const { user } = useAdmin();
+  const { user, school } = useAdmin();
   const admin = isAdmin(user?.role);
+  // Every vacancy subject plus the school's own, so a test can be written for
+  // any subject the school hires for (Psychology, Economics, Telugu, PET…).
+  const subjects = testSubjects(school?.subjects || []);
   const [packs, setPacks] = useState<AssessmentPack[]>([]);
-  const [subject, setSubject] = useState('Biology');
+  const [subject, setSubject] = useState('English');
+  const [customSubject, setCustomSubject] = useState('');
   const [segment, setSegment] = useState('Primary (Grades 1–5)');
   const [board, setBoard] = useState('CBSE');
   const [generating, setGenerating] = useState(false);
@@ -31,6 +36,7 @@ export default function AssessmentLibraryPage() {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'mcqs' | 'lesson' | 'demo' | 'scenario'>('mcqs');
   const [filter, setFilter] = useState<'all' | 'active' | 'draft' | 'archived'>('all');
+  const [view, setView] = useState<'tests' | 'bank'>('tests');
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
@@ -59,13 +65,18 @@ export default function AssessmentLibraryPage() {
   useEffect(() => { load(); }, []);
 
   const generate = async () => {
+    const chosen = subject === OTHER ? customSubject.trim() : subject;
+    if (!chosen) {
+      setError('Type the subject for this test.');
+      return;
+    }
     setGenerating(true);
     setError('');
     try {
       const res = await fetch('/api/assessment-packs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ school_id: schoolId, subject, segment, board, save: true })
+        body: JSON.stringify({ school_id: schoolId, subject: chosen, segment, board, save: true })
       });
       const data = await res.json();
       if (!res.ok || !data.pack) throw new Error(data.error || 'Could not generate this test');
@@ -103,11 +114,28 @@ export default function AssessmentLibraryPage() {
       <div className="space-y-6">
         <PageHeader
           title="AI tests"
-          description="Create a subject test, switch on the ones teachers should take, and archive older versions."
+          description="Create a subject test, switch on the ones teachers should take, and see the question bank every candidate's paper is drawn from."
           badge={<Badge tone="indigo">{activeCount} active · {packs.length} in total</Badge>}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div role="tablist" aria-label="AI tests" className="inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200">
+          {([['tests', 'School tests'], ['bank', 'Question bank']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => setView(key)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer ${view === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === 'bank' && <QuestionBankPanel schoolId={schoolId} />}
+
+        {view === 'tests' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <section className="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
             <h2 className="text-sm font-black flex items-center gap-2"><Wand2 className="w-4 h-4 text-indigo-600" /> Create new test</h2>
             <label className="block text-xs font-bold text-slate-600">Grade / sector
@@ -117,12 +145,24 @@ export default function AssessmentLibraryPage() {
             </label>
             <label className="block text-xs font-bold text-slate-600">Subject
               <select value={subject} onChange={(e) => setSubject(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm">
-                {SUBJECTS.map((s) => <option key={s}>{s}</option>)}
+                {subjects.map((s) => <option key={s}>{s}</option>)}
+                <option>{OTHER}</option>
               </select>
             </label>
+            {subject === OTHER && (
+              <label className="block text-xs font-bold text-slate-600">Subject name
+                <input
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  maxLength={60}
+                  placeholder="e.g. Sociology, Robotics, Sanskrit"
+                  className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm"
+                />
+              </label>
+            )}
             <label className="block text-xs font-bold text-slate-600">Curriculum
               <select value={board} onChange={(e) => setBoard(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm">
-                {BOARDS.map((s) => <option key={s}>{s}</option>)}
+                {CURRICULA.map((s) => <option key={s}>{s}</option>)}
               </select>
             </label>
             {error && <p className="text-xs text-rose-600">{error}</p>}
@@ -287,7 +327,7 @@ export default function AssessmentLibraryPage() {
               </div>
             )}
           </section>
-        </div>
+        </div>}
       </div>
     </div>
   );

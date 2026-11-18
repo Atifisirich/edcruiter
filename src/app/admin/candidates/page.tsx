@@ -2,10 +2,12 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CloudUpload, Search, SearchX, UserPlus, Users } from 'lucide-react';
+import { CheckSquare, CloudUpload, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
+import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
+import { isAdmin } from '@/lib/permissions';
 import { candidateState, countByTab, TAB_LABEL, TAB_ORDER, type CandidateTab } from '@/lib/candidateProgress';
 import { normalizeBands } from '@/lib/shortlistBands';
 
@@ -14,7 +16,12 @@ type TabKey = 'all' | CandidateTab;
 function CandidatesList() {
   const router = useRouter();
   const params = useSearchParams();
-  const { school, candidates, loading, openAddCandidate, openBulkUpload } = useAdmin();
+  const { school, user, candidates, loading, openAddCandidate, openBulkUpload } = useAdmin();
+  // Only the school admin (or Edcruiter support) removes candidates.
+  const canDelete = isAdmin(user?.role);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const requested = params.get('tab');
   const tab: TabKey = (TAB_ORDER as string[]).includes(requested || '') ? (requested as CandidateTab) : 'all';
@@ -56,6 +63,9 @@ function CandidatesList() {
       })
       .sort((a, b) => Number(b.total_ai_score || 0) - Number(a.total_ai_score || 0) || (b.created_at || '').localeCompare(a.created_at || ''));
   }, [candidates, tab, subject, grade, scoreFilter, search, greenMin, yellowMin]);
+
+  // Ticked candidates still in the school's list, in the order shown.
+  const selectedList = useMemo(() => candidates.filter((c) => selected.has(c.id)), [candidates, selected]);
 
   const filtering = tab !== 'all' || subject !== 'ALL' || grade !== 'ALL' || scoreFilter !== 'any' || search.trim() !== '';
 
@@ -144,11 +154,42 @@ function CandidatesList() {
           {filtering && (
             <button type="button" onClick={reset} className={buttonClass('ghost', 'sm')}>Clear filters</button>
           )}
+          {canDelete && candidates.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setSelecting((on) => !on); setSelected(new Set()); }}
+              className={buttonClass(selecting ? 'primary' : 'secondary', 'sm')}
+            >
+              <CheckSquare className="w-4 h-4" /> {selecting ? 'Done selecting' : 'Select'}
+            </button>
+          )}
         </div>
+
+        {selecting && (
+          <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-3 border-b border-slate-100 bg-indigo-50/60 text-sm">
+            <span className="font-medium text-slate-800">{selectedList.length} selected</span>
+            <button type="button" onClick={() => setSelected(new Set(visible.map((c) => c.id)))} className={buttonClass('ghost', 'sm')}>
+              Select all {visible.length} shown
+            </button>
+            {selectedList.length > 0 && (
+              <button type="button" onClick={() => setSelected(new Set())} className={buttonClass('ghost', 'sm')}>Clear</button>
+            )}
+            <span className="flex-1" />
+            <button
+              type="button"
+              disabled={selectedList.length === 0}
+              onClick={() => setConfirmDelete(true)}
+              className={buttonClass('danger', 'sm')}
+            >
+              <Trash2 className="w-4 h-4" /> Delete selected
+            </button>
+          </div>
+        )}
 
         <CandidateTable
           candidates={visible}
           bands={bands}
+          selection={selecting ? { selected, onChange: setSelected } : undefined}
           emptyState={
             candidates.length === 0 ? (
               <EmptyState
@@ -185,6 +226,14 @@ function CandidatesList() {
           </p>
         )}
       </Card>
+
+      {confirmDelete && selectedList.length > 0 && (
+        <DeleteCandidatesDialog
+          candidates={selectedList}
+          onClose={() => setConfirmDelete(false)}
+          onDeleted={() => { setConfirmDelete(false); setSelected(new Set()); setSelecting(false); }}
+        />
+      )}
     </div>
   );
 }
