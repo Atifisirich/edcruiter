@@ -45,6 +45,8 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
   });
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  // True from sending until the first word arrives: the dots show while the model starts up.
+  const [waiting, setWaiting] = useState(false);
   const [summary, setSummary] = useState('');
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -54,7 +56,7 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
   useEffect(() => {
     try { sessionStorage.setItem(KEY, JSON.stringify(turns.slice(-30))); } catch { /* storage blocked */ }
     end.current?.scrollIntoView({ block: 'end' });
-  }, [turns, open, busy]);
+  }, [turns, open, busy, waiting]);
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -65,19 +67,52 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
     setError('');
     setSent(false);
     setBusy(true);
+    setWaiting(true);
+    let answer = '';
     try {
       const res = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: next.map((t) => ({ role: t.role, text: t.text })), page: pathname }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'The assistant is not available right now.');
-      setSummary(data.summary || '');
-      setTurns([...next, { role: 'assistant', text: data.reply, link: data.link || undefined, offerTeam: data.offer_team === true }]);
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'The assistant is not available right now.');
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finished = false;
+      const handle = (line: string) => {
+        if (!line.trim()) return;
+        let event: { t: string; text?: string; summary?: string; link?: string; offer_team?: boolean };
+        try { event = JSON.parse(line); } catch { return; }
+        if (event.t === 'delta' && event.text) {
+          answer += event.text;
+          setWaiting(false);
+          setTurns([...next, { role: 'assistant', text: answer }]);
+        } else if (event.t === 'done') {
+          finished = true;
+          setSummary(event.summary || '');
+          setTurns([...next, { role: 'assistant', text: answer, link: event.link || undefined, offerTeam: event.offer_team === true }]);
+        } else if (event.t === 'error') {
+          throw new Error(event.text || 'The assistant is not available right now.');
+        }
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        lines.forEach(handle);
+      }
+      handle(buffer);
+      if (!finished && !answer) throw new Error('The assistant is not available right now.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The assistant is not available right now.');
     } finally {
+      setWaiting(false);
       setBusy(false);
     }
   };
@@ -152,7 +187,7 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
             {turns.map((t, i) => (
               <div key={i} className={t.role === 'user' ? 'flex justify-end' : 'flex'}>
                 <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 whitespace-pre-wrap break-words ${t.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-900'}`}>
-                  {t.role === 'assistant' ? <RichText text={t.text} /> : t.text}
+                  {t.role === 'assistant' ? <RichText text={t.text.trimEnd()} /> : t.text}
                   {t.link && (
                     <Link href={t.link} onClick={() => setOpen(false)} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-700 underline">
                       <ExternalLink className="w-3.5 h-3.5" /> Take me there
@@ -162,7 +197,15 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
               </div>
             ))}
 
-            {busy && <p className="text-xs text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…</p>}
+            {waiting && (
+              <div className="flex" aria-label="The assistant is typing">
+                <div className="rounded-2xl px-4 py-3 bg-slate-100 flex items-center gap-1">
+                  {[0, 150, 300].map((d) => (
+                    <span key={d} className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
+                </div>
+              </div>
+            )}
             {error && <p className="text-xs text-rose-600">{error}</p>}
 
             {sent ? (
