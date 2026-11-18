@@ -1,7 +1,8 @@
 /**
  * Everything the help bot knows about Edcruiter, written for the AI to read.
  * When a feature changes, change it here too, or the bot will give old advice.
- * It is plain text on purpose: the AI reads it as its handbook.
+ * It is plain text on purpose: the AI reads it as its handbook. Facts only:
+ * the bot's rules (what it must never do) live in systemPrompt in assistant.ts.
  */
 
 export const GUIDE_VERSION = '2026-11-18';
@@ -33,7 +34,7 @@ Choose a role title, subject, grades, the curriculum/board (tick every one that 
 # Candidates (Candidates page)
 - Add one candidate with "Add candidate", or many with "Upload CVs" (PDF CVs are read by AI) or a spreadsheet.
 - Each candidate gets an application ID (a code like EDC-PHYS-AB12) and a personal link. The invite goes out by WhatsApp and email when you add the candidate with the "Add and send invite" button, or when you upload a list. The link works for 7 days and needs no password.
-- There is NO "Resend invite" button. To give a candidate their link again: on the Candidates list, click the copy icon in their row ("Copy the test code and link") and send them that text yourself; or tell them to open the candidate login page (edcruiter.com/candidate/login) and sign in with their application ID, which the report also shows.
+- To give a candidate their link again: on the Candidates list, click the copy icon in their row ("Copy the test code and link") and send them that text yourself; or tell them to sign in at edcruiter.com/candidate/login with their application ID, which their report also shows. (There is no resend button, so never suggest one.)
 - Tabs filter by progress. Click a candidate to open their report: CV review, each stage's answers and videos, AI scores, flags from proctoring, and the decision panel.
 - "Select" lets admins/HR tick several candidates. Admins can "Delete selected" (type DELETE to confirm; this removes everything and cannot be undone). HR can use "AI call selected".
 - A candidate who stopped midway can get "one more go" from the admin if they ran out of tries.
@@ -79,7 +80,7 @@ Cards, top to bottom: Your school, Score colours (shortlist colour ranges), Cand
 
 # Common problems and fixes
 - "Your school is waiting for approval" / "Choose a plan": the school needs activating by the Edcruiter team; write to edcruiterofficial@gmail.com.
-- Candidate says the test link does not open: links last 7 days. There is no resend button; copy their code and link with the copy icon on the Candidates list and send it again, or have them sign in with their application ID at edcruiter.com/candidate/login.
+- Candidate says the test link does not open: links last 7 days, so it has probably expired. Give them their link again (see Candidates above).
 - Camera or microphone blocked: click the camera icon in the browser address bar, choose Allow, reload, and try again. Use Chrome on a laptop or phone, with good light.
 - Stage "was closed because it was left for a while": leaving a stage for about 3 minutes closes that go; open it again from the list of stages (it gives new questions and counts as a go).
 - "This stage is already finished": each stage can be submitted once.
@@ -91,10 +92,4 @@ Cards, top to bottom: Your school, Score colours (shortlist colour ranges), Cand
 - Real call not ringing: calls need a valid mobile number, the candidate must not be on the Do Not Disturb list, and the platform must have calls switched on. If "Demo" shows, real calls are not on yet.
 - Forgot password: use "Forgot password" on the login page.
 - Deleting a candidate or data deletion requests: admin only; deletion is permanent.
-
-# What you must never do
-- Never help a candidate answer test questions, write their lesson plan, or script their video. You can explain how the platform works, what a stage involves, and technical fixes only.
-- Never reveal other people's or other schools' data. You cannot see any candidate or school data in this chat.
-- Never invent a feature or a button. Only name a button or menu that is written in this handbook; if you are not sure of the exact name, describe it in general words ("the copy icon in their row") or say you're not sure. If something is not covered here, say so and offer to pass it to the Edcruiter team.
-- Never ask for or accept passwords, API keys, card or bank details.
 `;

@@ -213,9 +213,10 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
                 <CheckCircle2 className="w-4 h-4 shrink-0" /> Sent to the Edcruiter team with this conversation. They will reply by email.
               </p>
             ) : (
-              canSend && !busy && (
-                <div className={`rounded-xl p-3 text-xs border ${last?.offerTeam ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-                  <p className="text-slate-700">{last?.offerTeam ? 'I could not fully solve this. Want the Edcruiter team to look at it?' : 'Still stuck? You can send this conversation to the Edcruiter team.'}</p>
+              canSend && !busy && (last?.offerTeam ? (
+                // The bot could not solve it: offer the team plainly.
+                <div className="rounded-xl p-3 text-xs border bg-amber-50 border-amber-200">
+                  <p className="text-slate-700">Want the Edcruiter team to look at this?</p>
                   <button
                     type="button"
                     onClick={() => void sendToTeam()}
@@ -225,7 +226,17 @@ export default function HelpAssistant({ audience }: { audience: 'staff' | 'candi
                     {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send to the Edcruiter team
                   </button>
                 </div>
-              )
+              ) : (
+                // Answered: keep the way to a person, but as one quiet line instead of a box under every reply.
+                <button
+                  type="button"
+                  onClick={() => void sendToTeam()}
+                  disabled={sending}
+                  className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {sending && <Loader2 className="w-3 h-3 animate-spin" />} Still stuck? Send this chat to the Edcruiter team
+                </button>
+              ))
             )}
             <div ref={end} />
           </div>
