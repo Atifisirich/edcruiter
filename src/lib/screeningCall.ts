@@ -31,8 +31,8 @@ export const STARTER_SCREENING_QUESTIONS = [
 ];
 
 export const MAX_SCREENING_QUESTIONS = 12;
-/** What a school pays per answered call unless the platform owner sets another price. */
-export const STANDARD_CALL_PRICE_INR = 9;
+/** What a school pays per started minute of an answered call, unless the platform owner sets another rate. */
+export const STANDARD_PRICE_PER_MINUTE_INR = 9;
 /** Sarvam pay-as-you-go agent rate plus its phone line (₹0.20 per 30 seconds), per started minute. */
 export const COST_PER_MINUTE_INR = 3.5 + 0.4;
 
@@ -43,9 +43,20 @@ export function screeningSettingsOf(school: Pick<School, 'screening_call'> | nul
   };
 }
 
-export function callPriceOf(school: Pick<School, 'screening_call_price_inr'> | null | undefined): number {
-  const p = school?.screening_call_price_inr;
-  return typeof p === 'number' && Number.isFinite(p) && p >= 0 ? p : STANDARD_CALL_PRICE_INR;
+/** The school's rate per started minute. */
+export function pricePerMinuteOf(school: Pick<School, 'screening_call_price_per_min_inr'> | null | undefined): number {
+  const p = school?.screening_call_price_per_min_inr;
+  return typeof p === 'number' && Number.isFinite(p) && p >= 0 ? p : STANDARD_PRICE_PER_MINUTE_INR;
+}
+
+/** Whole minutes billed for a call: every started minute counts, as Sarvam bills it. */
+export function billedMinutes(durationSec: number | undefined): number {
+  return durationSec && durationSec > 0 ? Math.ceil(durationSec / 60) : 0;
+}
+
+/** What the school is charged for an answered call of this length. */
+export function callChargeInr(school: Pick<School, 'screening_call_price_per_min_inr'> | null | undefined, durationSec: number | undefined): number {
+  return billedMinutes(durationSec) * pricePerMinuteOf(school);
 }
 
 /** Checks the school's edited settings before they are saved. */
@@ -158,8 +169,7 @@ export function statusFromSarvam(status: unknown): ScreeningCall['status'] {
 
 /** Platform cost of a connected call: Sarvam charges whole started minutes. */
 export function callCostInr(durationSec: number | undefined): number {
-  if (!durationSec || durationSec <= 0) return 0;
-  return Math.round(Math.ceil(durationSec / 60) * COST_PER_MINUTE_INR * 100) / 100;
+  return Math.round(billedMinutes(durationSec) * COST_PER_MINUTE_INR * 100) / 100;
 }
 
 // --- Reading the conversation ---------------------------------------------

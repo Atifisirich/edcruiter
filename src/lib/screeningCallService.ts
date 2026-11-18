@@ -5,7 +5,7 @@
 
 import { db } from './db';
 import {
-  analyseCall, callCostInr, callPriceOf, callVariables, demoTranscript, placeSarvamCall,
+  analyseCall, callChargeInr, callCostInr, callVariables, demoTranscript, placeSarvamCall,
   sarvamEnv, screeningSettingsOf, statusFromSarvam, toCallNumber,
 } from './screeningCall';
 import type { Candidate, ScreeningCall } from './types';
@@ -91,7 +91,7 @@ export async function finishLiveCall(call: ScreeningCall, payload: Record<string
     duration_sec: duration,
     ended_at: new Date().toISOString(),
     failure_reason: typeof payload.failure_reason === 'string' ? payload.failure_reason.slice(0, 300) : undefined,
-    price_inr: answered ? callPriceOf(school) : 0,
+    price_inr: answered ? callChargeInr(school, duration) : 0,
     cost_inr: answered ? callCostInr(duration) : 0,
   });
   if (answered && transcript.length) {
@@ -101,7 +101,7 @@ export async function finishLiveCall(call: ScreeningCall, payload: Record<string
 }
 
 /** This month's answered calls and what they come to, for the school's settings and the owner. */
-export function callUsageThisMonth(schoolId: string): { calls: number; amount_inr: number; cost_inr: number } {
+export function callUsageThisMonth(schoolId: string): { calls: number; minutes: number; amount_inr: number; cost_inr: number } {
   const start = new Date();
   start.setDate(1);
   start.setHours(0, 0, 0, 0);
@@ -109,6 +109,7 @@ export function callUsageThisMonth(schoolId: string): { calls: number; amount_in
     .filter((c) => c.mode === 'live' && c.status === 'completed' && Date.parse(c.started_at) >= start.getTime());
   return {
     calls: calls.length,
+    minutes: calls.reduce((n, c) => n + (c.duration_sec ? Math.ceil(c.duration_sec / 60) : 0), 0),
     amount_inr: calls.reduce((n, c) => n + (c.price_inr || 0), 0),
     cost_inr: Math.round(calls.reduce((n, c) => n + (c.cost_inr || 0), 0) * 100) / 100,
   };

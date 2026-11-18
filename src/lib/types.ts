@@ -171,8 +171,8 @@ export interface School {
   policy_questions?: PolicyQuestion[];
   /** The AI screening phone call: the school's questions and whether new applicants are called automatically. See screeningCall.ts. */
   screening_call?: ScreeningCallSettings;
-  /** What the school pays per answered AI screening call, in rupees. Set by the platform owner; absent means the standard price. */
-  screening_call_price_inr?: number;
+  /** What the school pays per started minute of an answered AI screening call, in rupees. Set by the platform owner; absent means the standard rate. */
+  screening_call_price_per_min_inr?: number;
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
 }
@@ -222,7 +222,7 @@ export interface ScreeningCall {
   summary?: string;
   recommendation?: 'proceed' | 'maybe' | 'not_suitable';
   failure_reason?: string;
-  /** What the school is charged for this call (answered calls only). */
+  /** What the school is charged for this call: started minutes × its rate (answered calls only). */
   price_inr?: number;
   /** What the call cost the platform (Sarvam minutes plus the phone line), for the owner. */
   cost_inr?: number;

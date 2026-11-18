@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  callCostInr, callPriceOf, callVariables, parseScreeningSettings, screeningSettingsOf, statusFromSarvam,
-  STANDARD_CALL_PRICE_INR, STARTER_SCREENING_QUESTIONS, toCallNumber, webhookToken,
+  billedMinutes, callChargeInr, callCostInr, callVariables, parseScreeningSettings, pricePerMinuteOf, screeningSettingsOf, statusFromSarvam,
+  STANDARD_PRICE_PER_MINUTE_INR, STARTER_SCREENING_QUESTIONS, toCallNumber, webhookToken,
 } from './screeningCall';
 
 describe('AI screening call rules', () => {
@@ -26,9 +26,15 @@ describe('AI screening call rules', () => {
     expect(parseScreeningSettings({ questions: Array(13).fill('A long enough question?') }).ok).toBe(false);
   });
 
-  it('charges the standard price unless the platform owner set another', () => {
-    expect(callPriceOf({})).toBe(STANDARD_CALL_PRICE_INR);
-    expect(callPriceOf({ screening_call_price_inr: 25 })).toBe(25);
+  it('charges Rs 9 per started minute unless the platform owner set another rate', () => {
+    expect(STANDARD_PRICE_PER_MINUTE_INR).toBe(9);
+    expect(pricePerMinuteOf({})).toBe(9);
+    expect(pricePerMinuteOf({ screening_call_price_per_min_inr: 6 })).toBe(6);
+    expect(billedMinutes(0)).toBe(0);
+    expect(billedMinutes(60)).toBe(1);
+    expect(billedMinutes(61)).toBe(2);
+    expect(callChargeInr({}, 150)).toBe(27);
+    expect(callChargeInr({}, undefined)).toBe(0);
   });
 
   it('counts the platform cost in whole started minutes', () => {

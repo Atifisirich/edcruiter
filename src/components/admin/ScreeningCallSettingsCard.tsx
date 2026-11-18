@@ -8,9 +8,9 @@ import { MAX_SCREENING_QUESTIONS, STARTER_SCREENING_QUESTIONS } from '@/lib/scre
 
 type Loaded = {
   settings: { questions: string[]; auto_call_on_apply: boolean };
-  price_inr: number;
+  price_per_min_inr: number;
   mode: 'live' | 'demo';
-  usage: { calls: number; amount_inr: number; cost_inr?: number };
+  usage: { calls: number; minutes: number; amount_inr: number; cost_inr?: number };
 };
 
 /** The school's AI screening call: its questions, automatic calls for new applicants, price and this month's usage. */
@@ -71,13 +71,13 @@ export default function ScreeningCallSettingsCard() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <p className="text-xs text-slate-500">Price per answered call</p>
-              <p className="font-bold text-slate-900">₹{data.price_inr}</p>
-              <p className="text-[11px] text-slate-500">Unanswered or busy calls are free.</p>
+              <p className="text-xs text-slate-500">Price</p>
+              <p className="font-bold text-slate-900">₹{data.price_per_min_inr} per minute</p>
+              <p className="text-[11px] text-slate-500">Each started minute of an answered call. Unanswered or busy calls are free. A 3-minute call is ₹{data.price_per_min_inr * 3}.</p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <p className="text-xs text-slate-500">This month</p>
-              <p className="font-bold text-slate-900">{data.usage.calls} {data.usage.calls === 1 ? 'call' : 'calls'} · ₹{data.usage.amount_inr}</p>
+              <p className="font-bold text-slate-900">{data.usage.calls} {data.usage.calls === 1 ? 'call' : 'calls'} · {data.usage.minutes} min · ₹{data.usage.amount_inr}</p>
               {typeof data.usage.cost_inr === 'number' && <p className="text-[11px] text-slate-500">Platform cost ₹{data.usage.cost_inr} (only you see this)</p>}
             </div>
             <div className={`p-3 rounded-xl border ${data.mode === 'live' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -102,7 +102,7 @@ export default function ScreeningCallSettingsCard() {
                 <RotateCcw className="w-3.5 h-3.5" /> Starter set
               </button>
             </div>
-            <p className="text-xs text-slate-500">Keep it short: five or six questions make a call of about three minutes.</p>
+            <p className="text-xs text-slate-500">Keep it short: calls are charged by the minute, and five or six questions take about three minutes.</p>
             <ol className="space-y-2">
               {questions.map((q, i) => (
                 <li key={i} className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
-import { callPriceOf, parseScreeningSettings, sarvamEnv, screeningSettingsOf } from '@/lib/screeningCall';
+import { pricePerMinuteOf, parseScreeningSettings, sarvamEnv, screeningSettingsOf } from '@/lib/screeningCall';
 import { callUsageThisMonth } from '@/lib/screeningCallService';
 
 /**
@@ -17,9 +17,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       settings: screeningSettingsOf(school),
       custom: !!school?.screening_call,
-      price_inr: callPriceOf(school),
+      price_per_min_inr: pricePerMinuteOf(school),
       mode: sarvamEnv() ? 'live' : 'demo',
-      usage: ctx.isSuperAdmin ? usage : { calls: usage.calls, amount_inr: usage.amount_inr },
+      usage: ctx.isSuperAdmin ? usage : { calls: usage.calls, minutes: usage.minutes, amount_inr: usage.amount_inr },
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not load the call settings.' }, { status: 500 });
