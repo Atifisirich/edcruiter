@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Candidate, StageConfig, StageKey, StageResult, QuestionnaireItem, AssessmentPack, HRPolicyDocument, ScheduledInterview, PolicyQuestion } from '@/lib/types';
 import PolicyVideoStep, { type PolicyAnswerDraft } from '@/components/candidate/PolicyVideoStep';
+import HelpAssistant from '@/components/shared/HelpAssistant';
 import { SLOKA_DEFAULT_STAGES, DEFAULT_QUESTIONNAIRES } from '@/lib/defaultData';
 import LiveProctoringWebcam from '@/components/candidate/LiveProctoringWebcam';
 import ApplicationIdCard from '@/components/candidate/ApplicationIdCard';
@@ -1517,6 +1518,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           </div>
         </div>
       )}
+
+      {/* The help bot is only here between stages; it is never on screen during a stage, and the server refuses it then too. */}
+      {view === 'hub' && !proctored && <HelpAssistant audience="candidate" />}
     </div>
   );
 }

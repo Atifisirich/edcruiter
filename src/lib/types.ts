@@ -221,6 +221,25 @@ export interface ScreeningCallSettings {
   rules?: ScreeningRules;
 }
 
+/** A request for help sent to the Edcruiter team from the help bot. */
+export interface SupportMessage {
+  id: string;
+  /** The school it came from; null for a candidate whose school is unknown or a platform user. */
+  school_id: string | null;
+  school_name?: string;
+  from: { kind: 'staff' | 'candidate'; name: string; email?: string; role?: string };
+  /** The page the person was on. */
+  page: string;
+  /** What the person wants help with, in their words or the bot's summary. */
+  summary: string;
+  transcript: { role: 'user' | 'assistant'; text: string }[];
+  status: 'new' | 'resolved';
+  created_at: string;
+  resolved_at?: string;
+  /** A note the team keeps, such as how it was solved. */
+  note?: string;
+}
+
 export interface ScreeningCheck {
   question: string;
   requirement: string;

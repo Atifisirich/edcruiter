@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Building2, Plus, FileText, Trash2, LifeBuoy } from 'lucide-react';
 import { enterSupportMode } from '@/lib/supportMode';
 import { SEAT_TYPES, seatLimitsOf } from '@/lib/seats';
+import SupportInbox from '@/components/admin/SupportInbox';
 import { School, SchoolBilling, AuditLogEntry, DeletionRequest } from '@/lib/types';
 import { workspaceBlockReason } from '@/lib/schoolStatus';
 
@@ -378,6 +379,8 @@ export default function SuperAdminPage() {
           ))}
         </div>
       </div>
+
+      <SupportInbox />
 
       {/* Pending Right-to-Erasure Requests */}
       <div className="glass-card rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">

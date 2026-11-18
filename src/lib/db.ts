@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { ScreeningCall, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -32,6 +32,7 @@ interface DatabaseSchema {
   stageAttempts?: StageAttempt[];
   questionBank?: BankState;
   screeningCalls?: ScreeningCall[];
+  supportMessages?: SupportMessage[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -686,6 +687,26 @@ class DB {
     Object.assign(call, updates);
     this.save();
     return call;
+  }
+
+  // --- Help bot requests to the Edcruiter team ---
+
+  addSupportMessage(m: SupportMessage): SupportMessage {
+    (this.data.supportMessages ??= []).push(m);
+    this.save();
+    return m;
+  }
+
+  getSupportMessages(): SupportMessage[] {
+    return [...(this.data.supportMessages ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  updateSupportMessage(id: string, updates: Partial<Pick<SupportMessage, 'status' | 'resolved_at' | 'note'>>): SupportMessage | undefined {
+    const m = (this.data.supportMessages ??= []).find((x) => x.id === id);
+    if (!m) return undefined;
+    Object.assign(m, updates);
+    this.save();
+    return m;
   }
 
   getAllScreeningCalls(): ScreeningCall[] {

@@ -12,6 +12,7 @@ import BrandMark from '@/components/shared/BrandMark';
 import AIJobGeneratorModal from '@/components/admin/AIJobGeneratorModal';
 import ExcelCandidateUploaderModal from '@/components/admin/ExcelCandidateUploaderModal';
 import AddCandidateModal from '@/components/admin/AddCandidateModal';
+import HelpAssistant from '@/components/shared/HelpAssistant';
 import { AdminContext, type AdminContextValue, type ToastKind } from '@/components/admin/adminContext';
 import { buttonClass } from '@/components/admin/ui';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
@@ -344,6 +345,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
+      <HelpAssistant audience="staff" />
       <AddCandidateModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
       <AIJobGeneratorModal isOpen={vacancyOpen} onClose={() => setVacancyOpen(false)} onJobCreated={() => void refresh()} />
       <ExcelCandidateUploaderModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} onSuccess={() => void refresh()} />
