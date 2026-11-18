@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Building2, Plus, FileText, Trash2, LifeBuoy } from 'lucide-react';
 import { enterSupportMode } from '@/lib/supportMode';
+import { SEAT_TYPES, seatLimitsOf } from '@/lib/seats';
 import { School, SchoolBilling, AuditLogEntry, DeletionRequest } from '@/lib/types';
 import { workspaceBlockReason } from '@/lib/schoolStatus';
 
@@ -35,6 +36,71 @@ function PlanControls({ school, onActivate }: {
         className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white cursor-pointer hover:bg-emerald-700"
       >
         {school.status === 'active' ? 'Update plan' : 'Approve & activate'}
+      </button>
+    </div>
+  );
+}
+
+/** The platform owner's per-school team seats: how many admins, principals, subject heads, recruiters and management. */
+function SeatControls({ school, onSaved }: { school: School; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, number>>(() => seatLimitsOf(school));
+  const [saving, setSaving] = useState(false);
+  const current = seatLimitsOf(school);
+  const total = Object.values(current).reduce((a, b) => a + b, 0);
+  const field = 'w-16 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800';
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/schools', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: school.id, updates: { seat_limits: values } })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not save the seats');
+      setOpen(false);
+      onSaved();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not save the seats');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setValues(seatLimitsOf(school)); setOpen(true); }}
+        className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-slate-300 text-slate-700 cursor-pointer hover:bg-slate-50"
+        title={SEAT_TYPES.map((t) => `${t.label}: ${current[t.level]}`).join(', ')}
+      >
+        Team seats ({total})
+      </button>
+    );
+  }
+  return (
+    <div className="w-full flex flex-wrap items-end gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+      {SEAT_TYPES.map((t) => (
+        <label key={t.level} className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600">
+          {t.label}
+          <input
+            type="number"
+            min={t.level === 'SCHOOL_ADMIN' ? 1 : 0}
+            max={100}
+            value={values[t.level]}
+            onChange={(e) => setValues((v) => ({ ...v, [t.level]: Number(e.target.value) }))}
+            className={field}
+          />
+        </label>
+      ))}
+      <button type="button" onClick={save} disabled={saving} className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700 disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save seats'}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-100">
+        Cancel
       </button>
     </div>
   );
@@ -289,6 +355,7 @@ export default function SuperAdminPage() {
                 </span>
                 <span className="text-slate-600 font-semibold">{sch.branches.length} Campuses</span>
                 <PlanControls school={sch} onActivate={activatePlan} />
+                <SeatControls school={sch} onSaved={fetchSuperAdminData} />
                 <button
                   type="button"
                   onClick={() => openWorkspace(sch)}

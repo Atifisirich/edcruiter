@@ -5,6 +5,7 @@ import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { formatWhatsAppDisplay, toWhatsAppE164 } from '@/lib/whatsapp';
 import { authErrorResponse, auditAsStaff, requireNewSignup, requireSchoolAccess, requireStaff } from '@/lib/auth';
 import { stripProtectedSchoolFields } from '@/lib/schoolStatus';
+import { parseSeatLimits, SEAT_TYPES } from '@/lib/seats';
 
 export async function GET(req: NextRequest) {
   try {
@@ -158,9 +159,27 @@ export async function PUT(req: NextRequest) {
         appearance_observations: rs.appearance_observations === true,
       };
     }
+    // Team seats are the platform owner's to set (a school admin's attempt is
+    // already stripped above). Whole numbers only, and at least one admin seat.
+    let seatSummary = '';
+    if ('seat_limits' in cleaned) {
+      const seats = parseSeatLimits(cleaned.seat_limits);
+      if (!seats.ok) return NextResponse.json({ error: seats.error }, { status: 400 });
+      cleaned.seat_limits = seats.limits;
+      seatSummary = SEAT_TYPES.map((t) => `${t.label} ${seats.limits[t.level]}`).join(', ');
+    }
+
     const updated = db.updateSchool(ctx.schoolId, cleaned);
     if (!updated) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
+    }
+
+    if (seatSummary) {
+      auditAsStaff(ctx, ctx.schoolId, {
+        action: 'TEAM_SEATS_UPDATED',
+        resource: `School: ${updated.name}`,
+        details: `Team seats set by Edcruiter: ${seatSummary}.`
+      });
     }
 
     auditAsStaff(ctx, ctx.schoolId, {

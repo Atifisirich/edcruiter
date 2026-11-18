@@ -4,6 +4,7 @@ import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth
 import { MAX_ROLE_NAMES } from '@/lib/planLimits';
 import { parseRoles, rolesOf } from '@/lib/roles';
 import { ACCESS_CHOICES } from '@/lib/team';
+import { seatUse } from '@/lib/seats';
 
 function schoolIdParam(req: NextRequest) {
   return new URL(req.url).searchParams.get('school_id');
@@ -33,8 +34,22 @@ export async function PUT(req: NextRequest) {
     const parsed = parseRoles(body?.roles, members);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
+    // A role moved to another seat type (say "Vice Principal" from subject
+    // head to principal) moves the people holding it too: they must fit.
+    const school = db.getSchoolById(ctx.schoolId);
+    const after = { ...school, roles: parsed.roles };
+    const over = seatUse(after, members).find((s) => s.used > s.limit && s.used > seatUse(school, members).find((b) => b.level === s.level)!.used);
+    if (over) {
+      return NextResponse.json({ error: `That would give ${over.used} people ${over.label} seats, and this school has ${over.limit}. Move someone first.` }, { status: 400 });
+    }
+
     const updated = db.updateSchool(ctx.schoolId, { roles: parsed.roles });
     if (!updated) return NextResponse.json({ error: 'School not found.' }, { status: 404 });
+    // Keep each person's stored access level in step with the role they hold.
+    for (const m of members) {
+      const def = parsed.roles.find((r) => r.id === (m.role_id ?? m.role));
+      if (def && def.level !== m.role) db.updateUser(m.id, { role: def.level });
+    }
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'ROLES_UPDATED',

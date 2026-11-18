@@ -163,6 +163,8 @@ export interface School {
   report_settings?: ReportSettings;
   /** The school's own role names. Absent means the standard roles. See roles.ts. */
   roles?: RoleDef[];
+  /** How many people of each kind the school may have, set by the platform owner. Absent means the standard seats. See seats.ts. */
+  seat_limits?: Partial<Record<UserRole, number>>;
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
 }

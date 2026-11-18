@@ -18,6 +18,8 @@ type Member = {
   is_you: boolean;
 };
 
+type Seat = { level: string; label: string; help: string; used: number; limit: number };
+
 function schoolQuery() {
   try {
     const id = localStorage.getItem('edcruiter_school_id');
@@ -31,6 +33,7 @@ export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [max, setMax] = useState(25);
   const [roles, setRoles] = useState<RoleDef[]>([]);
+  const [seats, setSeats] = useState<Seat[]>([]);
   const [emailReady, setEmailReady] = useState(true);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -39,10 +42,20 @@ export default function TeamPage() {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', email: '', role_id: '' });
-  // Until someone picks one, new people start in the first reviewer-level role.
-  const defaultRoleId = roles.find((r) => r.level === 'REPORTING_MANAGER')?.id ?? roles[0]?.id ?? '';
+  const seatFor = (level: string) => seats.find((s) => s.level === level);
+  const seatFull = (level: string) => {
+    const s = seatFor(level);
+    return !!s && s.used >= s.limit;
+  };
+  // Until someone picks one, new people start in the first role with a free seat, a subject head if possible.
+  const defaultRoleId =
+    roles.find((r) => r.level === 'REPORTING_MANAGER' && !seatFull(r.level))?.id ??
+    roles.find((r) => !seatFull(r.level))?.id ??
+    roles[0]?.id ?? '';
   const chosenRoleId = form.role_id || defaultRoleId;
   const chosenRole = roles.find((r) => r.id === chosenRoleId);
+  const chosenFull = chosenRole ? seatFull(chosenRole.level) : false;
+  const allFull = seats.length > 0 && seats.every((s) => s.used >= s.limit);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
@@ -63,6 +76,7 @@ export default function TeamPage() {
         setMembers(data.members);
         setMax(data.max);
         setRoles(data.roles || []);
+        setSeats(data.seats || []);
         setEmailReady(Boolean(data.emailReady));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load your team.');
@@ -154,7 +168,7 @@ export default function TeamPage() {
       <div className="max-w-4xl space-y-6">
         <PageHeader
           title="Your team"
-          description="Add the principal, HR staff and reviewers who work with you. Everyone you add signs in to the same school, with the access their role allows."
+          description="Add your principals, subject heads, recruiters and management. Everyone you add signs in to the same school, with the access their role allows."
         />
 
         {loading ? (
@@ -182,6 +196,32 @@ export default function TeamPage() {
               </div>
             )}
 
+            {seats.length > 0 && (
+              <section aria-label="Team seats" className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-black text-slate-900">Team seats</h2>
+                  <p className="text-xs text-slate-500">{members.length} of {max} people in all</p>
+                </div>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {seats.map((s) => {
+                    const full = s.used >= s.limit;
+                    return (
+                      <li key={s.level} className={`p-3 rounded-2xl border ${full ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                        <p className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-bold text-slate-900">{s.label}</span>
+                          <span className={`text-sm font-black ${full ? 'text-amber-700' : 'text-indigo-700'}`}>{s.used} of {s.limit}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">{s.help}</p>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-[11px] text-slate-500">
+                  Seats are set for your school by Edcruiter. Need more? Write to edcruiterofficial@gmail.com. Your own role names (Settings, Roles) each use one of these seats.
+                </p>
+              </section>
+            )}
+
             <form onSubmit={add} className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm">
                 <UserPlus className="w-4 h-4" /> Add a team member
@@ -201,21 +241,32 @@ export default function TeamPage() {
                   Role
                   <select value={chosenRoleId} onChange={(e) => setForm({ ...form, role_id: e.target.value })}
                     className="mt-1.5 w-full min-h-12 p-3 rounded-xl bg-slate-50 border border-slate-300 text-base sm:text-sm">
-                    {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    {roles.map((r) => {
+                      const s = seatFor(r.level);
+                      return (
+                        <option key={r.id} value={r.id} disabled={seatFull(r.level)}>
+                          {r.name}{s ? ` (${s.used} of ${s.limit} used)` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
               </div>
               <p className="text-[11px] text-slate-500">{chosenRole ? ROLE_HELP[chosenRole.level] : ''}</p>
-              <button type="submit" disabled={adding || members.length >= max}
+              <button type="submit" disabled={adding || chosenFull || allFull}
                 className="w-full sm:w-auto min-h-12 justify-center brand-primary-btn px-5 py-3 rounded-xl font-bold text-sm sm:text-xs shadow-xl inline-flex items-center gap-2 cursor-pointer disabled:opacity-50">
                 {adding ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</> : <><Send className="w-4 h-4" /> Add and send invitation</>}
               </button>
-              {members.length >= max ? <p className="text-[11px] text-amber-700">Your plan’s team limit is reached ({max} people). Write to edcruiterofficial@gmail.com to move to a bigger plan.</p> : null}
+              {allFull ? (
+                <p className="text-[11px] text-amber-700">Every seat is taken. Remove someone, or write to edcruiterofficial@gmail.com for more seats.</p>
+              ) : chosenFull && chosenRole ? (
+                <p className="text-[11px] text-amber-700">All {seatFor(chosenRole.level)?.label} seats are taken. Choose another role, or remove someone in this one first.</p>
+              ) : null}
             </form>
 
             <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100 text-sm font-black text-slate-900">
-                {members.length} of {max} team members
+                {members.length} {members.length === 1 ? 'person' : 'people'} on your team
               </div>
               <ul className="divide-y divide-slate-100">
                 {members.map((m) => (
@@ -236,7 +287,9 @@ export default function TeamPage() {
                       className="w-full sm:w-auto min-h-11 p-2 rounded-xl bg-slate-50 border border-slate-300 text-base sm:text-xs font-semibold"
                       aria-label={`Role for ${m.name}`}
                     >
-                      {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id} disabled={r.level !== m.role && seatFull(r.level)}>{r.name}</option>
+                      ))}
                     </select>
                     <div className="flex items-center gap-2">
                       {m.status === 'invited' && (

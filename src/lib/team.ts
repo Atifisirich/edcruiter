@@ -9,35 +9,33 @@ import type { User, UserRole } from './types';
  */
 export const TEAM_ROLES: UserRole[] = ['SCHOOL_ADMIN', 'HR', 'REPORTING_MANAGER', 'INSTITUTE_HEAD', 'FINAL_DECISION_MAKER'];
 
-/** The three kinds of access a school chooses between when it names a role. */
+/**
+ * The five kinds of seat a school's roles sit on. When a school names a role
+ * ("Maths Coordinator", "Vice Principal") it picks one of these, and that
+ * decides both what the person can do and which seat they use (seats.ts).
+ * Principal, subject head and management are all reviewers; the review rounds
+ * decide which of them decides what.
+ */
 export const ACCESS_CHOICES: { level: UserRole; label: string; help: string }[] = [
-  { level: 'SCHOOL_ADMIN', label: 'School admin', help: 'Management. Everything, including deleting or changing data, the team, settings and review rounds, and seeing everyone’s work.' },
-  { level: 'HR', label: 'HR', help: 'Posts vacancies, adds and invites candidates, creates tests, schedules interviews, shortlists, and sends offers. Cannot delete or change data.' },
-  { level: 'REPORTING_MANAGER', label: 'Reviewer', help: 'Reads candidate reports and gives a yes or no with their opinion, in the review rounds their role is assigned to.' },
+  { level: 'SCHOOL_ADMIN', label: 'School admin', help: 'Everything, including deleting or changing data, the team, settings and review rounds.' },
+  { level: 'INSTITUTE_HEAD', label: 'Principal', help: 'Reads candidate reports and gives a yes or no, with their opinion, in the rounds given to principals.' },
+  { level: 'REPORTING_MANAGER', label: 'Subject head / Coordinator', help: 'Reads candidate reports and gives a yes or no, with their opinion, in the rounds given to subject heads.' },
+  { level: 'HR', label: 'Recruiter (HR)', help: 'Posts vacancies, adds and invites candidates, creates tests, schedules interviews, shortlists and sends offers. Cannot delete or change data.' },
+  { level: 'FINAL_DECISION_MAKER', label: 'Management (final decision)', help: 'Reads candidate reports and gives the final yes or no.' },
 ];
-
-export const MAX_TEAM_SIZE = 25;
 
 /** The standard role names, which are also the names used before a school renames them. */
 export const ROLE_LABEL: Record<string, string> = {
   SCHOOL_ADMIN: 'School admin',
-  HR: 'HR',
-  REPORTING_MANAGER: 'Subject lead (HOD)',
+  HR: 'Recruiter (HR)',
+  REPORTING_MANAGER: 'Subject head / Coordinator',
   INSTITUTE_HEAD: 'Principal',
   FINAL_DECISION_MAKER: 'Management',
   SUPER_ADMIN: 'Platform owner',
 };
 
-const ACCESS_HELP = Object.fromEntries(ACCESS_CHOICES.map((c) => [c.level, c.help]));
-
 /** What a role at this level can do, in a sentence. */
-export const ROLE_HELP: Record<string, string> = {
-  SCHOOL_ADMIN: ACCESS_HELP.SCHOOL_ADMIN,
-  HR: ACCESS_HELP.HR,
-  REPORTING_MANAGER: ACCESS_HELP.REPORTING_MANAGER,
-  INSTITUTE_HEAD: ACCESS_HELP.REPORTING_MANAGER,
-  FINAL_DECISION_MAKER: ACCESS_HELP.REPORTING_MANAGER,
-};
+export const ROLE_HELP: Record<string, string> = Object.fromEntries(ACCESS_CHOICES.map((c) => [c.level, c.help]));
 
 export type TeamInput = { name: string; email: string; role: UserRole };
 

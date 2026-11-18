@@ -31,12 +31,12 @@ function bandProblem(bands: ShortlistBand[]): string | null {
 
 interface Level { level: RoleDef['level']; label: string; help: string }
 
-/** The school's own role names. Each one sits on one of the standard access levels. */
+/** The school's own role names. Each one sits on one of the five seat types (seats.ts). */
 function RolesCard() {
   const { schoolId, toast } = useAdmin();
   const [roles, setRoles] = useState<RoleDef[] | null>(null);
   const [levels, setLevels] = useState<Level[]>([]);
-  const [max, setMax] = useState(12);
+  const [max, setMax] = useState(25);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -95,7 +95,7 @@ function RolesCard() {
     <Card>
       <CardHeader
         title="Role names"
-        description="Name the roles your team holds. Each one carries one of the standard kinds of access, so renaming a role never changes what people can do."
+        description="Names only, not people. Give roles your school's own names, such as Maths Coordinator or Vice Principal, and choose which seat each one uses. How many people you can have of each seat is shown on the Team page."
         action={
           <button type="button" onClick={save} disabled={saving || !dirty} className={buttonClass('primary', 'sm')}>
             {saving ? 'Saving…' : 'Save'}
@@ -117,13 +117,9 @@ function RolesCard() {
                 className={inputClass}
               />
               <select
-                // The older Principal and Management levels are reviewer access too, shown as Reviewer.
-                value={accessOf(r.level) === 'reviewer' ? 'REPORTING_MANAGER' : r.level}
-                onChange={(e) => {
-                  const level = e.target.value as RoleDef['level'];
-                  if (!(accessOf(level) === 'reviewer' && accessOf(r.level) === 'reviewer')) update(r.id, { level });
-                }}
-                aria-label="Access"
+                value={r.level}
+                onChange={(e) => update(r.id, { level: e.target.value as RoleDef['level'] })}
+                aria-label="Seat type"
                 className={`${selectClass} w-full`}
               >
                 {levels.map((l) => <option key={l.level} value={l.level}>{l.label}</option>)}
@@ -137,7 +133,7 @@ function RolesCard() {
             <button type="button" onClick={add} disabled={roles.length >= max} className={buttonClass('secondary', 'sm')}>
               <Plus className="w-4 h-4" /> Add a role
             </button>
-            <p className="text-sm text-slate-500">{roles.length} of {max} role names</p>
+            <p className="text-sm text-slate-500">{roles.length} of {max} role names (names, not people)</p>
           </div>
           <p className="text-sm text-slate-500">
             {levels.map((l) => (

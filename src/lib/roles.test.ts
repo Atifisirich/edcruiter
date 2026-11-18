@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROLES, parseRoles, roleDefFor, rolesOf } from './roles';
-import { MAX_ROLE_NAMES, teamLimit, teamLimitMessage } from './planLimits';
+import { MAX_ROLE_NAMES } from './planLimits';
+import { parseSeatLimits, seatLimitsOf, seatProblem, seatUse, totalSeats } from './seats';
 
 const ids = () => 'role_new';
 
@@ -74,21 +75,44 @@ describe('parseRoles', () => {
   });
 });
 
-describe('team limits by plan', () => {
-  it('grow with the plan', () => {
-    expect(teamLimit({ billing: { plan: 'trial' } })).toBe(3);
-    expect(teamLimit({ billing: { plan: 'starter' } })).toBe(5);
-    expect(teamLimit({ billing: { plan: 'growth' } })).toBe(15);
-    expect(teamLimit({ billing: { plan: 'complimentary' } })).toBe(25);
+describe('team seats', () => {
+  const person = (id: string, role: string, role_id?: string) => ({ id, role, role_id } as { id: string; role: 'SCHOOL_ADMIN'; role_id?: string });
+
+  it('start at 2 admins, 5 principals, 15 subject heads, 2 recruiters and 2 management', () => {
+    expect(seatLimitsOf(undefined)).toEqual({ SCHOOL_ADMIN: 2, INSTITUTE_HEAD: 5, REPORTING_MANAGER: 15, HR: 2, FINAL_DECISION_MAKER: 2 });
+    expect(totalSeats(undefined)).toBe(26);
   });
 
-  it('gives a school with no plan record the full allowance, and an unknown plan the Starter one', () => {
-    expect(teamLimit({})).toBe(25);
-    expect(teamLimit(undefined)).toBe(25);
-    expect(teamLimit({ billing: { plan: 'mystery' } })).toBe(5);
+  it('use the numbers the platform owner set for this school', () => {
+    const school = { seat_limits: { INSTITUTE_HEAD: 1, HR: 0 } };
+    expect(seatLimitsOf(school)).toMatchObject({ INSTITUTE_HEAD: 1, HR: 0, REPORTING_MANAGER: 15 });
   });
 
-  it('says what the plan allows and how to get more', () => {
-    expect(teamLimitMessage({ billing: { plan: 'starter' } })).toMatch(/Starter plan includes up to 5 team members/);
+  it("count a school's own role names against the seat of their level", () => {
+    const school = { roles: [...DEFAULT_ROLES, { id: 'role_vp', name: 'Vice Principal', level: 'INSTITUTE_HEAD' as const }] };
+    const used = seatUse(school, [person('a', 'SCHOOL_ADMIN'), person('b', 'INSTITUTE_HEAD', 'role_vp'), person('c', 'INSTITUTE_HEAD')]);
+    expect(used.find((s) => s.level === 'INSTITUTE_HEAD')).toMatchObject({ used: 2, limit: 5, label: 'Principal' });
+  });
+
+  it('refuse one more person once a seat type is full, but not someone already in it', () => {
+    const school = { seat_limits: { INSTITUTE_HEAD: 1 } };
+    const members = [person('a', 'SCHOOL_ADMIN'), person('p', 'INSTITUTE_HEAD')];
+    expect(seatProblem(school, members, 'INSTITUTE_HEAD')).toMatch(/The 1 Principal seat is taken/);
+    expect(seatProblem(school, members, 'INSTITUTE_HEAD', 'p')).toBeNull();
+    expect(seatProblem(school, members, 'REPORTING_MANAGER')).toBeNull();
+    expect(seatProblem({ seat_limits: { HR: 0 } }, members, 'HR')).toMatch(/no Recruiter \(HR\) seats/);
+  });
+
+  it('accept only whole numbers, with at least one admin seat', () => {
+    const good = { SCHOOL_ADMIN: 2, INSTITUTE_HEAD: 5, REPORTING_MANAGER: 15, HR: 2, FINAL_DECISION_MAKER: 2 };
+    expect(parseSeatLimits(good)).toEqual({ ok: true, limits: good });
+    expect(parseSeatLimits({ ...good, HR: 1.5 }).ok).toBe(false);
+    expect(parseSeatLimits({ ...good, HR: -1 }).ok).toBe(false);
+    expect(parseSeatLimits({ ...good, SCHOOL_ADMIN: 0 }).ok).toBe(false);
+    expect(parseSeatLimits(null).ok).toBe(false);
+  });
+
+  it('allow 25 role names, which are names and not people', () => {
+    expect(MAX_ROLE_NAMES).toBe(25);
   });
 });

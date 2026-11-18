@@ -4,9 +4,9 @@ import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth
 import { checkRateLimit } from '@/lib/rateLimit';
 import { emailIsConfigured } from '@/lib/emailClient';
 import { sendSetPasswordEmail } from '@/lib/accountEmails';
-import { MAX_TEAM_SIZE, memberStatus, parseTeamInput, removalProblem, roleChangeProblem, ROLE_LABEL } from '@/lib/team';
-import { teamLimit, teamLimitMessage } from '@/lib/planLimits';
+import { memberStatus, parseTeamInput, removalProblem, roleChangeProblem, ROLE_LABEL } from '@/lib/team';
 import { roleDefFor, rolesOf } from '@/lib/roles';
+import { seatProblem, seatUse, totalSeats } from '@/lib/seats';
 import type { School, User } from '@/lib/types';
 
 /**
@@ -44,7 +44,9 @@ export async function GET(req: NextRequest) {
     const members = db.getUsersBySchool(ctx.schoolId).map((u) => present(u, ctx.user.id, school));
     return NextResponse.json({
       members,
-      max: Math.min(teamLimit(school), MAX_TEAM_SIZE),
+      max: totalSeats(school),
+      // How many of each seat (admin, principal, subject head, recruiter, management) are used.
+      seats: seatUse(school, db.getUsersBySchool(ctx.schoolId)),
       roles: rolesOf(school),
       emailReady: emailIsConfigured(),
     });
@@ -75,10 +77,8 @@ export async function POST(req: NextRequest) {
     const { name, email, role } = parsed.value;
 
     const members = db.getUsersBySchool(ctx.schoolId);
-    const limit = Math.min(teamLimit(school), MAX_TEAM_SIZE);
-    if (members.length >= limit) {
-      return NextResponse.json({ error: teamLimitMessage(school), limit }, { status: 403 });
-    }
+    const full = seatProblem(school, members, roleDef?.level ?? role);
+    if (full) return NextResponse.json({ error: full }, { status: 403 });
     if (db.getUserByEmail(email)) {
       return NextResponse.json(
         { error: 'That email already has an Edcruiter login, here or at another school. Use a different email address.' },
@@ -150,6 +150,8 @@ export async function PATCH(req: NextRequest) {
     if (newRole && (newRole !== target.role || (newDef && newDef.id !== (target.role_id ?? target.role)))) {
       const problem = roleChangeProblem(members, target, newRole);
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      const full = seatProblem(school, members, newRole, target.id);
+      if (full) return NextResponse.json({ error: full }, { status: 403 });
       const before = roleDefFor(school, target).name;
       const updated = db.updateUser(target.id, newDef ? { role: newDef.level, role_id: newDef.id } : { role: newRole });
       auditAsStaff(ctx, ctx.schoolId, {

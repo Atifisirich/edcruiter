@@ -39,10 +39,11 @@ beforeEach(() => {
   school = { id: 's1', name: 'Green Valley', billing: { plan: 'starter' } };
 });
 
-describe('team members and the plan', () => {
-  it('lists the school\'s roles and the plan\'s team limit', async () => {
+describe('team members and seats', () => {
+  it('lists the school\'s roles and its seats, 26 in all by default', async () => {
     const body = await (await GET(req('GET'))).json();
-    expect(body.max).toBe(5);
+    expect(body.max).toBe(26);
+    expect(body.seats).toContainEqual(expect.objectContaining({ level: 'SCHOOL_ADMIN', used: 1, limit: 2 }));
     expect(body.roles).toEqual(DEFAULT_ROLES);
     expect(body.members[0]).toMatchObject({ role_name: 'School admin', role_id: 'SCHOOL_ADMIN' });
   });
@@ -61,20 +62,32 @@ describe('team members and the plan', () => {
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it('stops adding people once the plan\'s limit is reached', async () => {
-    members = Array.from({ length: 5 }, (_, i) => person(`u${i}`, i === 0 ? 'SCHOOL_ADMIN' : 'REPORTING_MANAGER'));
-    const res = await POST(req('POST', { name: 'Sixth Person', email: 'sixth@school.in', role_id: 'REPORTING_MANAGER' }));
+  it('stops adding principals once the 5 principal seats are taken', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN'), ...Array.from({ length: 5 }, (_, i) => person(`p${i}`, 'INSTITUTE_HEAD'))];
+    const res = await POST(req('POST', { name: 'Sixth Principal', email: 'sixth@school.in', role_id: 'INSTITUTE_HEAD' }));
     const body = await res.json();
     expect(res.status).toBe(403);
-    expect(body.error).toMatch(/Starter plan includes up to 5 team members/);
+    expect(body.error).toMatch(/All 5 Principal seats are taken/);
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it('allows more people on a bigger plan', async () => {
-    school = { ...school, billing: { plan: 'growth' } };
-    members = Array.from({ length: 8 }, (_, i) => person(`u${i}`, i === 0 ? 'SCHOOL_ADMIN' : 'REPORTING_MANAGER'));
-    const res = await POST(req('POST', { name: 'Ninth Person', email: 'ninth@school.in', role_id: 'REPORTING_MANAGER' }));
+  it('still adds a subject head while the principal seats are full', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN'), ...Array.from({ length: 5 }, (_, i) => person(`p${i}`, 'INSTITUTE_HEAD'))];
+    const res = await POST(req('POST', { name: 'New Coordinator', email: 'coord@school.in', role_id: 'REPORTING_MANAGER' }));
     expect(res.status).toBe(201);
+  });
+
+  it('follows the seats the platform owner set for this school', async () => {
+    school = { ...school, seat_limits: { HR: 0 } };
+    const res = await POST(req('POST', { name: 'Recruiter', email: 'rec@school.in', role_id: 'HR' }));
+    expect(res.status).toBe(403);
+  });
+
+  it('will not move someone into a full seat', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN'), person('r1', 'REPORTING_MANAGER'), person('h1', 'HR'), person('h2', 'HR')];
+    const res = await PATCH(req('PATCH', { id: 'r1', role_id: 'HR' }));
+    expect(res.status).toBe(403);
+    expect(updateUser).not.toHaveBeenCalled();
   });
 
   it('still accepts a plain access level from older callers', async () => {
