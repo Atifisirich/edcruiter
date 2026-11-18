@@ -32,7 +32,7 @@ export const STARTER_SCREENING_QUESTIONS = [
 
 export const MAX_SCREENING_QUESTIONS = 12;
 /** What a school pays per answered call unless the platform owner sets another price. */
-export const STANDARD_CALL_PRICE_INR = 39;
+export const STANDARD_CALL_PRICE_INR = 9;
 /** Sarvam pay-as-you-go agent rate plus its phone line (₹0.20 per 30 seconds), per started minute. */
 export const COST_PER_MINUTE_INR = 3.5 + 0.4;
 
