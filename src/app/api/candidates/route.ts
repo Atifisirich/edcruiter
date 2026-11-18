@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
+import { screeningSettingsOf } from '@/lib/screeningCall';
+import { startScreeningCall } from '@/lib/screeningCallService';
 import { warmPack } from '@/lib/ensurePack';
 import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
@@ -248,6 +250,12 @@ export async function POST(req: NextRequest) {
 
     db.createCandidate(newCandidate);
     after(() => warmPack(newCandidate.school_id, newCandidate.applied_subject, newCandidate.applied_segment));
+    // The school chose to have every new applicant called by the AI screener.
+    const callSchool = db.getSchoolById(newCandidate.school_id);
+    if (screeningSettingsOf(callSchool).auto_call_on_apply) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
+      after(() => startScreeningCall(newCandidate.school_id, newCandidate, { requestedBy: 'Automatic (new applicant)', trigger: 'auto', appUrl }).then(() => undefined));
+    }
 
     // Consent is recorded either way, so a "no" is durable and auditable —
     // only a "yes" allows WhatsApp sends later. A school adding a lead by hand

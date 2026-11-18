@@ -9,6 +9,7 @@ import type { ReviewRound, RoleDef } from '@/lib/types';
 import { accessOf } from '@/lib/permissions';
 import { DEFAULT_SHORTLIST_BANDS, normalizeBands, type ShortlistBand } from '@/lib/shortlistBands';
 import { reportSettingsOf } from '@/lib/teachingProfile';
+import ScreeningCallSettingsCard from '@/components/admin/ScreeningCallSettingsCard';
 
 const BAND_STYLE: Record<ShortlistBand['tone'], { box: string; name: string }> = {
   danger: { box: 'border-rose-200 bg-rose-50/60', name: 'Needs work' },
@@ -438,6 +439,8 @@ export default function SettingsPage() {
         </div>
         <p className="mt-4 text-sm text-slate-400">Applies to profiles written from now on. Use Refresh on a candidate to rewrite an existing one.</p>
       </Card>
+
+      <ScreeningCallSettingsCard />
 
       <RolesCard />
 

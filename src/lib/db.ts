@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { ScreeningCall, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -31,6 +31,7 @@ interface DatabaseSchema {
   teachingProfiles?: TeachingProfile[];
   stageAttempts?: StageAttempt[];
   questionBank?: BankState;
+  screeningCalls?: ScreeningCall[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -135,6 +136,7 @@ class DB {
         if (!this.data.scheduledInterviews) this.data.scheduledInterviews = [];
         if (!this.data.teachingProfiles) this.data.teachingProfiles = [];
         if (!this.data.stageAttempts) this.data.stageAttempts = [];
+        if (!this.data.screeningCalls) this.data.screeningCalls = [];
       } catch (err) {
         // Never overwrite a store we could not read: set it aside so the data
         // can still be recovered, then start fresh.
@@ -626,6 +628,9 @@ class DB {
         }
         this.data.uploadOwners = this.data.uploadOwners.filter(u => u.candidate_id !== candidateId);
       }
+      if (this.data.screeningCalls) {
+        this.data.screeningCalls = this.data.screeningCalls.filter(c => c.candidate_id !== candidateId);
+      }
       this.save();
       return true;
     }
@@ -667,6 +672,32 @@ class DB {
   }
 
   // Question bank: how often each question has been given, and which are retired
+  // --- AI screening calls (see screeningCall.ts) ---
+
+  addScreeningCall(call: ScreeningCall): ScreeningCall {
+    (this.data.screeningCalls ??= []).push(call);
+    this.save();
+    return call;
+  }
+
+  updateScreeningCall(id: string, updates: Partial<ScreeningCall>): ScreeningCall | undefined {
+    const call = (this.data.screeningCalls ??= []).find((c) => c.id === id);
+    if (!call) return undefined;
+    Object.assign(call, updates);
+    this.save();
+    return call;
+  }
+
+  getScreeningCall(id: string): ScreeningCall | undefined {
+    return (this.data.screeningCalls ?? []).find((c) => c.id === id);
+  }
+
+  getScreeningCallsBySchool(schoolId: string, candidateId?: string): ScreeningCall[] {
+    return (this.data.screeningCalls ?? [])
+      .filter((c) => c.school_id === schoolId && (!candidateId || c.candidate_id === candidateId))
+      .sort((a, b) => b.started_at.localeCompare(a.started_at));
+  }
+
   getBankState(): BankState {
     return (this.data.questionBank ??= { exposures: {}, retired: [] });
   }

@@ -169,6 +169,10 @@ export interface School {
   policy_video?: PolicyVideo;
   /** The "Do you agree…?" questions asked after the policy video. Absent means the starter set. See policyVideo.ts. */
   policy_questions?: PolicyQuestion[];
+  /** The AI screening phone call: the school's questions and whether new applicants are called automatically. See screeningCall.ts. */
+  screening_call?: ScreeningCallSettings;
+  /** What the school pays per answered AI screening call, in rupees. Set by the platform owner; absent means the standard price. */
+  screening_call_price_inr?: number;
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
 }
@@ -187,6 +191,41 @@ export interface PolicyVideo {
   chunks: number;
   uploaded_at: string;
   uploaded_by: string;
+}
+
+export interface ScreeningCallSettings {
+  questions: string[];
+  auto_call_on_apply: boolean;
+}
+
+export type ScreeningCallStatus = 'calling' | 'completed' | 'no_answer' | 'busy' | 'failed';
+
+/** One AI screening phone call to a candidate. */
+export interface ScreeningCall {
+  id: string;
+  school_id: string;
+  candidate_id: string;
+  /** live: a real phone call through Sarvam. demo: no call was made; a sample conversation for showing the feature. */
+  mode: 'live' | 'demo';
+  status: ScreeningCallStatus;
+  /** Sarvam's id for the call attempt (live calls). */
+  attempt_id?: string;
+  /** The school's questions as they were when the call was placed. */
+  questions: string[];
+  requested_by: string;
+  trigger: 'manual' | 'auto';
+  started_at: string;
+  ended_at?: string;
+  duration_sec?: number;
+  transcript?: { role: 'agent' | 'user'; text: string }[];
+  answers?: { question: string; answer: string }[];
+  summary?: string;
+  recommendation?: 'proceed' | 'maybe' | 'not_suitable';
+  failure_reason?: string;
+  /** What the school is charged for this call (answered calls only). */
+  price_inr?: number;
+  /** What the call cost the platform (Sarvam minutes plus the phone line), for the owner. */
+  cost_inr?: number;
 }
 
 /** One "Do you agree…?" question after the policy video. */

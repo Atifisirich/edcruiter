@@ -2,12 +2,12 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckSquare, CloudUpload, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
+import { CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
 import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
-import { isAdmin } from '@/lib/permissions';
+import { isAdmin, isHiringTeam } from '@/lib/permissions';
 import { candidateState, countByTab, TAB_LABEL, TAB_ORDER, type CandidateTab } from '@/lib/candidateProgress';
 import { normalizeBands } from '@/lib/shortlistBands';
 
@@ -16,9 +16,11 @@ type TabKey = 'all' | CandidateTab;
 function CandidatesList() {
   const router = useRouter();
   const params = useSearchParams();
-  const { school, user, candidates, loading, openAddCandidate, openBulkUpload } = useAdmin();
-  // Only the school admin (or Edcruiter support) removes candidates.
+  const { school, schoolId, user, candidates, loading, openAddCandidate, openBulkUpload, toast } = useAdmin();
+  // Only the school admin (or Edcruiter support) removes candidates; admin and HR can call them.
   const canDelete = isAdmin(user?.role);
+  const canCall = isHiringTeam(user?.role);
+  const [calling, setCalling] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -63,6 +65,28 @@ function CandidatesList() {
       })
       .sort((a, b) => Number(b.total_ai_score || 0) - Number(a.total_ai_score || 0) || (b.created_at || '').localeCompare(a.created_at || ''));
   }, [candidates, tab, subject, grade, scoreFilter, search, greenMin, yellowMin]);
+
+  // An AI screening call to every ticked candidate.
+  const callSelected = async () => {
+    if (!window.confirm(`Start an AI screening call to ${selectedList.length} ${selectedList.length === 1 ? 'candidate' : 'candidates'}?`)) return;
+    setCalling(true);
+    try {
+      const r = await fetch('/api/screening-calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId, candidate_ids: selectedList.map((c) => c.id) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      const started = (d.started || []).length;
+      const problems: { error: string }[] = d.problems || [];
+      if (started) toast(`${started} screening ${started === 1 ? 'call' : 'calls'} started. Results appear on each candidate's page.`, 'success');
+      if (problems.length) toast(problems.slice(0, 2).map((p) => p.error).join(' ') + (problems.length > 2 ? ` (+${problems.length - 2} more)` : ''), 'error');
+      if (!started && !problems.length) toast(d.error || 'Could not start the calls.', 'error');
+      if (started) { setSelected(new Set()); setSelecting(false); }
+    } finally {
+      setCalling(false);
+    }
+  };
 
   // Ticked candidates still in the school's list, in the order shown.
   const selectedList = useMemo(() => candidates.filter((c) => selected.has(c.id)), [candidates, selected]);
@@ -154,7 +178,7 @@ function CandidatesList() {
           {filtering && (
             <button type="button" onClick={reset} className={buttonClass('ghost', 'sm')}>Clear filters</button>
           )}
-          {canDelete && candidates.length > 0 && (
+          {(canDelete || canCall) && candidates.length > 0 && (
             <button
               type="button"
               onClick={() => { setSelecting((on) => !on); setSelected(new Set()); }}
@@ -175,14 +199,26 @@ function CandidatesList() {
               <button type="button" onClick={() => setSelected(new Set())} className={buttonClass('ghost', 'sm')}>Clear</button>
             )}
             <span className="flex-1" />
-            <button
-              type="button"
-              disabled={selectedList.length === 0}
-              onClick={() => setConfirmDelete(true)}
-              className={buttonClass('danger', 'sm')}
-            >
-              <Trash2 className="w-4 h-4" /> Delete selected
-            </button>
+            {canCall && (
+              <button
+                type="button"
+                disabled={selectedList.length === 0 || calling}
+                onClick={() => void callSelected()}
+                className={buttonClass('primary', 'sm')}
+              >
+                <PhoneCall className="w-4 h-4" /> {calling ? 'Starting calls…' : 'AI call selected'}
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                disabled={selectedList.length === 0}
+                onClick={() => setConfirmDelete(true)}
+                className={buttonClass('danger', 'sm')}
+              >
+                <Trash2 className="w-4 h-4" /> Delete selected
+              </button>
+            )}
           </div>
         )}
 

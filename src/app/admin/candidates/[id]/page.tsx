@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import CandidateProfileModal from '@/components/reviewer/CandidateProfileModal';
 import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
+import ScreeningCallPanel from '@/components/admin/ScreeningCallPanel';
 import { useAdmin } from '@/components/admin/adminContext';
 import { buttonClass } from '@/components/admin/ui';
 import { isAdmin } from '@/lib/permissions';
@@ -28,6 +29,8 @@ export default function CandidateReportPage() {
         candidateId={id}
         onClose={() => router.push('/admin/candidates')}
       />
+
+      {candidate && <ScreeningCallPanel candidateId={candidate.id} candidateName={candidate.name} />}
 
       {canDelete && (
         <section className="mt-8 rounded-2xl border border-rose-200 bg-rose-50/50 p-5 flex flex-wrap items-center justify-between gap-3">
