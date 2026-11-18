@@ -15,13 +15,37 @@
       "written": 0,
       "stopped": "the daily Gemini quota is used up",
       "finished": "2026-10-31T16:07:47.081Z"
+    },
+    {
+      "started": "2026-11-18T02:07:58.388Z",
+      "calls": 0,
+      "kept": 0,
+      "written": 0,
+      "stopped": "finished",
+      "finished": "2026-11-18T02:07:58.419Z"
+    },
+    {
+      "started": "2026-11-18T02:08:07.335Z",
+      "calls": 4,
+      "kept": 1,
+      "written": 0,
+      "stopped": "error: UNKNOWN: unknown error, open 'C:\\Users\\atif khan\\Desktop\\hirin\\src\\lib\\bank\\hindi.json'",
+      "finished": "2026-11-18T02:09:15.152Z"
+    },
+    {
+      "started": "2026-11-18T02:09:41.237Z",
+      "calls": 314,
+      "kept": 2568,
+      "written": 0,
+      "stopped": "finished",
+      "finished": "2026-11-18T04:05:34.312Z"
     }
   ],
   "totals": {
-    "written": 127,
-    "kept": 119,
-    "dropped_invalid": 1,
-    "dropped_duplicate": 3,
-    "dropped_unverified": 4
+    "written": 2748,
+    "kept": 2688,
+    "dropped_invalid": 17,
+    "dropped_duplicate": 32,
+    "dropped_unverified": 11
   }
 }
