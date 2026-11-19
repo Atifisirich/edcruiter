@@ -415,7 +415,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         const nextStage = SLOKA_DEFAULT_STAGES.find(s => !completedKeys.includes(s.key));
         if (nextStage) {
           setActiveStageKey(nextStage.key);
-        } else if (completedKeys.length >= SLOKA_DEFAULT_STAGES.length) {
+        } else if (completedKeys.length >= SLOKA_DEFAULT_STAGES.length && (cData.candidate.interview_mode ?? 'five_stage') === 'five_stage') {
+          // Only the five-stage test ends on this screen. With the AI interview, the list shows what is left.
           setAllCompleted(true);
         }
         // Whatever stage they were on when they left, they come back to the list.
@@ -634,7 +635,15 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
 
         const currentStageIndex = SLOKA_DEFAULT_STAGES.findIndex(s => s.key === stageKey);
         const nextStage = SLOKA_DEFAULT_STAGES[currentStageIndex + 1];
-        if (nextStage) {
+        const withInterview = (candidate?.interview_mode ?? 'five_stage') !== 'five_stage';
+        if (withInterview && (candidate?.interview_mode === 'ai' || !nextStage)) {
+          setHubNotice(stageKey === 'identity_verification'
+            ? 'Your details are saved. Your spoken interview is next.'
+            : candidate?.interview_mode === 'both' ? 'Stage 5 saved. Your spoken interview is next.' : 'Saved. Thank you.');
+          setActiveStageKey(nextStage?.key ?? stageKey);
+          setView('hub');
+          window.scrollTo({ top: 0 });
+        } else if (nextStage) {
           const number = currentStageIndex + 1;
           setHubNotice(number === 1
             ? 'Stage 1 saved. Take Stage 2 whenever you are ready.'
@@ -845,11 +854,11 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           </div>
         )}
 
-        <StageProgress
+        {(candidate.interview_mode ?? 'five_stage') !== 'ai' && <StageProgress
           activeKey={allCompleted ? '' : (STAGE_ORDER.find((k) => !stageResults.some((r) => r.stage_key === k)) ?? activeStageKey)}
           completedKeys={allCompleted ? SLOKA_DEFAULT_STAGES.map((st) => st.key) : stageResults.map((r) => r.stage_key)}
           onSelect={() => { if (!proctored) { setStageError(''); setView('hub'); } }}
-        />
+        />}
 
         {/* STAGE 1: Full-Width Layout (No unnecessary right-side box) */}
         {allCompleted ? (
@@ -888,7 +897,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           </div>
         ) : view === 'hub' ? (
           <>
-            {(candidate.ai_interview?.status === 'invited' || candidate.ai_interview?.status === 'in_progress') && (
+            {(candidate.interview_mode ?? 'five_stage') === 'five_stage' && (candidate.ai_interview?.status === 'invited' || candidate.ai_interview?.status === 'in_progress') && (
               <div className="max-w-3xl mx-auto mb-5 p-5 rounded-3xl bg-indigo-600 text-white flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-200">The school has invited you</p>
@@ -901,6 +910,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             <StageHub
               doneKeys={stageResults.map((r) => r.stage_key)}
               candidateName={candidate.name || identityData.name}
+              candidateId={candidate.id}
+              mode={candidate.interview_mode ?? 'five_stage'}
+              interviewDone={candidate.ai_interview?.status === 'completed'}
               schoolName={schoolName}
               applicationId={candidate.invite_code}
               testReady={packReady}

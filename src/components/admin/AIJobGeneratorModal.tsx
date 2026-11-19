@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import GradePicker from '@/components/admin/GradePicker';
+import InterviewModePicker from '@/components/admin/InterviewModePicker';
+import type { InterviewMode } from '@/lib/types';
 import { CURRICULA, VACANCY_SUBJECTS, curriculumLabel } from '@/lib/subjects';
 
 interface AIJobGeneratorModalProps {
@@ -43,6 +45,7 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
   // Each board is its own tick box; a vacancy can follow more than one.
   const [boards, setBoards] = useState<string[]>([]);
   const [boardError, setBoardError] = useState(false);
+  const [interviewMode, setInterviewMode] = useState<InterviewMode>('five_stage');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,6 +90,7 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
           // Saved in the list's own order, whatever order they were ticked in.
           board: curriculumLabel(CURRICULA.filter((b) => boards.includes(b))),
           grades,
+          interview_mode: interviewMode,
           branch: selectedBranch?.name || '',
           target_branch_id: formData.branch_id
         })
@@ -184,6 +188,10 @@ export default function AIJobGeneratorModal({ isOpen, onClose, onJobCreated }: A
                 <div className="md:col-span-2">
                   <GradePicker value={grades} onChange={(g) => { setGrades(g); setGradeError(false); }} label="Grades this vacancy is for" required />
                   {gradeError && <p className="mt-1 text-sm text-rose-600">Choose at least one grade.</p>}
+                </div>
+
+                <div className="md:col-span-2">
+                  <InterviewModePicker value={interviewMode} onChange={setInterviewMode} />
                 </div>
 
                 <div>

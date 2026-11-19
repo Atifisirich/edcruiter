@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 const setConsent = vi.fn();
 const createCandidate = vi.fn();
 let school: Record<string, unknown> | undefined;
-let vacancies: Record<string, { id: string; school_id: string; status: string }> = {};
+let vacancies: Record<string, { id: string; school_id: string; status: string; interview_mode?: string }> = {};
 vi.mock('@/lib/db', () => ({
   db: {
     createCandidate: (...a: unknown[]) => createCandidate(...a),
@@ -170,5 +170,31 @@ describe('the vacancy an applicant came through', () => {
     expect(createCandidate).not.toHaveBeenCalled();
     staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
     expect((await post({ ...lead, job_id: 'job_1', school_attested: true })).status).toBe(201);
+  });
+});
+
+describe('what an applicant goes through', () => {
+  it('follows the vacancy: the AI path invites them to the interview straight away', async () => {
+    vacancies = { job_1: { id: 'job_1', school_id: 's1', status: 'active', interview_mode: 'ai' } };
+    staff = null;
+    await post({ ...lead, job_id: 'job_1' });
+    const made = createCandidate.mock.calls[0][0];
+    expect(made.interview_mode).toBe('ai');
+    expect(made.ai_interview.status).toBe('invited');
+  });
+  it('is the usual test, with no interview invitation, when the vacancy chose that or nothing', async () => {
+    vacancies = { job_1: { id: 'job_1', school_id: 's1', status: 'active', interview_mode: 'five_stage' }, job_2: { id: 'job_2', school_id: 's1', status: 'active' } };
+    staff = null;
+    await post({ ...lead, job_id: 'job_1' });
+    await post({ ...lead, job_id: 'job_2' });
+    for (const call of createCandidate.mock.calls) {
+      expect(call[0].interview_mode).toBeUndefined();
+      expect(call[0].ai_interview).toBeUndefined();
+    }
+  });
+  it('cannot be chosen by the applicant', async () => {
+    staff = null;
+    await post({ ...lead, interview_mode: 'ai' });
+    expect(createCandidate.mock.calls[0][0].interview_mode).toBeUndefined();
   });
 });

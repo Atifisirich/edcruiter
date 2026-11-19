@@ -6,7 +6,7 @@ import { ChevronRight, Copy } from 'lucide-react';
 import type { Candidate } from '@/lib/types';
 import { credentialsFromCandidate } from '@/lib/credentials';
 import { bandForScore, type ShortlistBand } from '@/lib/shortlistBands';
-import { candidateState, TEST_STAGE_COUNT } from '@/lib/candidateProgress';
+import { candidateState } from '@/lib/candidateProgress';
 import { Badge, StepDots, buttonClass, type Tone } from './ui';
 import { copyApplicationMessage } from './copyApplication';
 import { useAdmin } from './adminContext';
@@ -93,7 +93,7 @@ export default function CandidateTable({
                 <span className="block text-sm text-slate-500 truncate">{[c.applied_subject, c.applied_segment?.split('(')[0].trim()].filter(Boolean).join(' · ') || 'Role not set'}</span>
                 <span className="flex items-center gap-2">
                   <Badge tone={state.tone}>{state.label}</Badge>
-                  <StepDots done={state.stagesDone} total={TEST_STAGE_COUNT} />
+                  <StepDots done={state.stagesDone} total={state.stepsTotal} />
                 </span>
               </span>
               <ChevronRight className="w-4 h-4 text-slate-300 mt-3 shrink-0" />
@@ -152,9 +152,9 @@ export default function CandidateTable({
                 )}
                 <td className="py-3.5 px-3">
                   <Badge tone={state.tone}>{state.label}</Badge>
-                  <span className="mt-2 flex items-center gap-2" title={`${state.stagesDone} of ${TEST_STAGE_COUNT} test stages done`}>
-                    <StepDots done={state.stagesDone} total={TEST_STAGE_COUNT} small />
-                    <span className="text-xs text-slate-500 whitespace-nowrap">{state.stagesDone}/{TEST_STAGE_COUNT}</span>
+                  <span className="mt-2 flex items-center gap-2" title={`${state.stagesDone} of ${state.stepsTotal} test stages done`}>
+                    <StepDots done={state.stagesDone} total={state.stepsTotal} small />
+                    <span className="text-xs text-slate-500 whitespace-nowrap">{state.stagesDone}/{state.stepsTotal}</span>
                   </span>
                 </td>
                 <td className="py-3.5 px-3">

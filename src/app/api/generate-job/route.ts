@@ -6,6 +6,7 @@ import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActiv
 import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { postingText } from '@/lib/jobPosting';
+import { cleanMode } from '@/lib/interviewMode';
 
 export async function POST(req: NextRequest) {
   try {
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
       // the description directly.
       is_verified: true,
       status: 'active',
+      ...(cleanMode(body.interview_mode) ? { interview_mode: cleanMode(body.interview_mode) } : {}),
       created_at: jobDescription.created_at
     };
 

@@ -3,10 +3,11 @@
 import React, { useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import GradePicker from '@/components/admin/GradePicker';
+import InterviewModePicker from '@/components/admin/InterviewModePicker';
 import { inputClass, selectClass, buttonClass } from '@/components/admin/ui';
 import { cleanGrades, gradesFromSegment } from '@/lib/grades';
 import { CURRICULA, VACANCY_SUBJECTS, curriculumLabel, followsBoard } from '@/lib/subjects';
-import type { PublicVacancy, Branch } from '@/lib/types';
+import type { InterviewMode, PublicVacancy, Branch } from '@/lib/types';
 
 const toLines = (list?: string[]) => (list ?? []).join('\n');
 const fromLines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -49,6 +50,7 @@ export default function EditVacancyModal({
   const [requirements, setRequirements] = useState(toLines(job.requirements));
   const [open, setOpen] = useState(job.status !== 'closed');
   const [urgent, setUrgent] = useState(Boolean(job.is_urgent));
+  const [mode, setMode] = useState<InterviewMode>(job.interview_mode ?? 'five_stage');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -80,6 +82,7 @@ export default function EditVacancyModal({
           responsibilities: fromLines(responsibilities),
           requirements: fromLines(requirements),
           is_urgent: urgent,
+          interview_mode: mode,
           status: open ? 'active' : 'closed',
         }),
       });
@@ -163,6 +166,8 @@ export default function EditVacancyModal({
               <textarea className={`${inputClass} min-h-[120px]`} value={requirements} onChange={(e) => setRequirements(e.target.value)} />
             </Field>
           </div>
+
+          <InterviewModePicker value={mode} onChange={setMode} />
 
           <div className="space-y-2.5 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm">
             <label className="flex items-start gap-3 cursor-pointer">

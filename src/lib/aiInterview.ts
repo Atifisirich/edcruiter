@@ -306,3 +306,16 @@ export function sampleTranscript(candidate: Pick<Candidate, 'name' | 'applied_su
 export function inProgressOf(i: Pick<AiInterview, 'status'> | undefined): boolean {
   return i?.status === 'in_progress';
 }
+
+/** A fresh invitation, for a candidate whose vacancy uses the AI interview. */
+export function invitedInterview(candidate: Pick<Candidate, 'applied_subject' | 'applied_segment'>): AiInterview {
+  return {
+    id: `int_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    status: 'invited',
+    mode: 'live',
+    language: 'English',
+    invited_at: new Date().toISOString(),
+    plan: defaultPlan(candidate),
+    transcript: [],
+  };
+}

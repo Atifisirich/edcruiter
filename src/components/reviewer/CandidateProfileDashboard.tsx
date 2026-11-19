@@ -140,7 +140,7 @@ export default function CandidateProfileDashboard({
           </div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
-              {candidate ? candidateState({ ...candidate, stages_completed: stageResults.length }).label : 'In progress'}
+              {candidate ? candidateState({ ...candidate, stages_completed: stageResults.length, done_keys: stageResults.map((r) => r.stage_key), ai_interview_status: candidate.ai_interview?.status }).label : 'In progress'}
             </span>
             <button
               type="button"

@@ -4,6 +4,7 @@ import { autoCallNewApplicant } from '@/lib/screeningCallService';
 import { warmPack } from '@/lib/ensurePack';
 import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
+import { invitedInterview } from '@/lib/aiInterview';
 import { Candidate } from '@/lib/types';
 import { makeInviteCode } from '@/lib/inviteCode';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
@@ -33,6 +34,10 @@ export async function GET(req: NextRequest) {
       ...c,
       // How far through the five-stage test they are, for the dashboard.
       stages_completed: new Set(db.getStageResultsByCandidate(ctx.schoolId, c.id).map((r) => r.stage_key)).size,
+      done_keys: [...new Set(db.getStageResultsByCandidate(ctx.schoolId, c.id).map((r) => r.stage_key))],
+      ai_interview_status: c.ai_interview?.status,
+      // The list does not need the transcript or report of every interview.
+      ai_interview: undefined,
     }));
     return NextResponse.json({ candidates });
   } catch (error) {
@@ -231,6 +236,8 @@ export async function POST(req: NextRequest) {
     // The vacancy they applied through, kept only if it really is one of this school's.
     const vacancy = typeof requestedJobId === 'string' ? db.getJobById(requestedJobId) : undefined;
     const job_id = vacancy && vacancy.school_id === school_id ? vacancy.id : undefined;
+    // What this person goes through is whatever the vacancy they applied for says.
+    const interview_mode = job_id ? vacancy?.interview_mode : undefined;
     // Nobody new applies to a vacancy the school has closed (staff adding someone by hand still can).
     if (!staffCtx && vacancy && job_id && vacancy.status === 'closed') {
       return NextResponse.json({ error: 'This vacancy has been closed and is no longer taking applications.' }, { status: 410 });
@@ -262,6 +269,7 @@ export async function POST(req: NextRequest) {
       ...(education ? { education } : {}),
       target_branch_id: target_branch_id || staffCtx?.user.branch_id || undefined,
       ...(job_id ? { job_id } : {}),
+      ...(interview_mode && interview_mode !== 'five_stage' ? { interview_mode, ai_interview: invitedInterview({ applied_subject, applied_segment }) } : {}),
       video_intro_url: video_intro_url || '',
       reading_passage_text,
       reading_passage_score,

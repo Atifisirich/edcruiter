@@ -5,6 +5,7 @@ import { PublicVacancy } from '@/lib/types';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import { assertSchoolActive, authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
 import { HIRING_TEAM, isAdmin } from '@/lib/permissions';
+import { cleanMode } from '@/lib/interviewMode';
 
 export async function GET(req: NextRequest) {
   try {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       is_verified: true,
       is_urgent: Boolean(body.is_urgent),
       status: 'active',
+      ...(cleanMode(body.interview_mode) ? { interview_mode: cleanMode(body.interview_mode) } : {}),
       created_at: new Date().toISOString()
     };
 

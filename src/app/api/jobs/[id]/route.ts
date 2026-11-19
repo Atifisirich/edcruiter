@@ -4,6 +4,7 @@ import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth
 import { HIRING_TEAM } from '@/lib/permissions';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
 import type { PublicVacancy } from '@/lib/types';
+import { cleanMode } from '@/lib/interviewMode';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -60,6 +61,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (typeof body.is_urgent === 'boolean') patch.is_urgent = body.is_urgent;
     if (body.status === 'active' || body.status === 'closed') patch.status = body.status;
+    const mode = cleanMode(body.interview_mode);
+    if (mode) patch.interview_mode = mode;
 
     const saved = db.updateJob(id, patch);
     auditAsStaff(ctx, ctx.schoolId, {

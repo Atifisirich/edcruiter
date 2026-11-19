@@ -135,7 +135,9 @@ export async function POST(req: NextRequest) {
         transcript_source: verified ? 'sarvam' : 'browser',
         report,
       };
-      db.updateCandidate(candidate.school_id, candidate.id, { ai_interview: interview });
+      // When the interview is the assessment (no scored stages), its score is the candidate's score in the list.
+      const scoreFromInterview = candidate.interview_mode === 'ai' && report.scored && !interview.by_staff;
+      db.updateCandidate(candidate.school_id, candidate.id, { ai_interview: interview, ...(scoreFromInterview ? { total_ai_score: report.overall } : {}) });
       audit('AI_INTERVIEW_COMPLETED', `Interview finished after ${Math.round(seconds / 60)} min.`);
       return NextResponse.json({ status: interview.status });
     }

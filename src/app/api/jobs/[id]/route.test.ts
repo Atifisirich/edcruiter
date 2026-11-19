@@ -95,6 +95,17 @@ describe('editing a vacancy', () => {
   });
 });
 
+describe('choosing how applicants are assessed', () => {
+  it('saves one of the three choices and ignores anything else', async () => {
+    await patch('job_1', { interview_mode: 'ai' });
+    expect(jobs[0].interview_mode).toBe('ai');
+    await patch('job_1', { interview_mode: 'bogus' });
+    expect(jobs[0].interview_mode).toBe('ai');
+    await patch('job_1', { interview_mode: 'both' });
+    expect(jobs[0].interview_mode).toBe('both');
+  });
+});
+
 describe('deleting a vacancy', () => {
   it('lets HR delete one', async () => {
     expect((await del('job_1')).status).toBe(200);

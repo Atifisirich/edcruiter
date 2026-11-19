@@ -43,6 +43,7 @@ export default function PublicJobApplicationPage() {
           location: j.location || '',
           branch: j.branch,
           experience_required: j.experience_required,
+          interview_mode: j.interview_mode,
           salary_range: j.salary_range,
           posted_date: j.posted_date || 'Just now',
           overview: j.description,
@@ -257,6 +258,16 @@ export default function PublicJobApplicationPage() {
               <p className="text-xs text-slate-600 leading-relaxed">
                 {job.overview}
               </p>
+            </div>
+
+            {/* What the assessment is */}
+            <div className="bg-indigo-50 p-5 rounded-3xl border border-indigo-100 text-xs text-indigo-950 leading-relaxed">
+              <strong className="block text-sm font-extrabold mb-1">How you will be assessed</strong>
+              {job.interview_mode === 'ai'
+                ? 'You fill in your details and upload your CV, then have a 12-minute spoken interview with an AI interviewer from your own phone or laptop, then a short school policy step. About 30 minutes in all.'
+                : job.interview_mode === 'both'
+                  ? 'The online test, then a 12-minute spoken interview with an AI interviewer. About 90 minutes in all, and you can do it in more than one sitting.'
+                  : 'A short profile with your CV, a subject test, a recorded teaching demo, a classroom scenario and a school policy step. About 60 to 75 minutes, and you can do it in more than one sitting.'}
             </div>
 
             {/* Key Responsibilities */}

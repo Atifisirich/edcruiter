@@ -658,6 +658,8 @@ export interface Candidate {
   resume_analysis?: ResumeAnalysisReport;
   /** The optional spoken AI interview. See aiInterview.ts. */
   ai_interview?: AiInterview;
+  /** What this candidate goes through, copied from the vacancy they applied for. Missing means the five-stage test. */
+  interview_mode?: InterviewMode;
   status: 'in_progress' | 'passed' | 'rejected' | 'hired';
   shortlist_status?: 'pending' | 'shortlisted' | 'rejected' | 'hold';
   total_ai_score?: number; // 0 - 100 aggregate score
@@ -1032,6 +1034,8 @@ export interface PublicVacancy {
   is_verified?: boolean;
   is_urgent?: boolean;
   status: 'active' | 'closed';
+  /** What applicants to this vacancy go through. Missing means the five-stage test. */
+  interview_mode?: InterviewMode;
   created_at: string;
 }
 
@@ -1076,3 +1080,6 @@ export interface AiInterview {
   transcript_source?: 'sarvam' | 'browser' | 'sample';
   report?: AiInterviewReport;
 }
+
+/** five_stage: the five-stage test. ai: details and CV, a spoken AI interview, then the school policies. both: the five stages, then the AI interview. */
+export type InterviewMode = 'five_stage' | 'ai' | 'both';

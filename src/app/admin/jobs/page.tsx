@@ -12,6 +12,7 @@ import { useAdmin } from '@/components/admin/adminContext';
 import { PageHeader, buttonClass } from '@/components/admin/ui';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { isHiringTeam } from '@/lib/permissions';
+import { inviteLength, MODE_LABEL, modeOf } from '@/lib/interviewMode';
 import { appliedTo } from '@/lib/vacancyCandidates';
 import { countByTab } from '@/lib/candidateProgress';
 import type { PublicVacancy } from '@/lib/types';
@@ -70,7 +71,7 @@ export default function SchoolJobsPage() {
   const copyInvite = (job: PublicVacancy) => {
     // A public link anyone can apply through, not a per-teacher assessment code.
     const link = `${window.location.origin}/jobs/${job.id}`;
-    const msg = `*Teaching vacancy • ${school?.name || 'Our school'}*\n\nDear Educator,\n\nWe are hiring for *${job.title}*${job.branch ? ` (${job.branch})` : ''}.\n\n👉 Apply here: ${link}\n⏱️ The online assessment takes about 60–75 minutes: a short profile, a written test, and two short videos.`;
+    const msg = `*Teaching vacancy • ${school?.name || 'Our school'}*\n\nDear Educator,\n\nWe are hiring for *${job.title}*${job.branch ? ` (${job.branch})` : ''}.\n\n👉 Apply here: ${link}\n⏱️ ${inviteLength(modeOf(job))}`;
     navigator.clipboard.writeText(msg);
     setCopiedJobId(job.id);
     setTimeout(() => setCopiedJobId(null), 2000);
@@ -277,6 +278,9 @@ export default function SchoolJobsPage() {
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${closed ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                         {closed ? 'Closed' : 'Active'}
                       </span>
+                      {modeOf(job) !== 'five_stage' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">{MODE_LABEL[modeOf(job)]}</span>
+                      )}
                       {canManage && (
                         <div className="flex items-center gap-1">
                           <button
