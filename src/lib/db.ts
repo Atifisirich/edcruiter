@@ -773,6 +773,23 @@ class DB {
     return job;
   }
 
+  updateJob(jobId: string, patch: Partial<PublicVacancy>): PublicVacancy | undefined {
+    const job = this.data.jobs?.find((j) => j.id === jobId);
+    if (!job) return undefined;
+    Object.assign(job, patch, { id: job.id, school_id: job.school_id });
+    this.save();
+    return job;
+  }
+
+  deleteJob(jobId: string): boolean {
+    if (!this.data.jobs) return false;
+    const before = this.data.jobs.length;
+    this.data.jobs = this.data.jobs.filter((j) => j.id !== jobId);
+    if (this.data.jobs.length === before) return false;
+    this.save();
+    return true;
+  }
+
   isSchoolActive(schoolId: string): boolean {
     return workspaceBlockReason(this.data.schools.find(s => s.id === schoolId)) === null;
   }

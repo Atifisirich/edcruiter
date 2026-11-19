@@ -2,6 +2,8 @@ import fs from 'fs';
 import { NextRequest, NextResponse } from 'next/server';
 import { findMediaOwner, safeUploadPath, UPLOADS_URL_PREFIX } from '@/lib/uploads';
 import { requireCandidateOrStaff } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { cvFilename } from '@/lib/cvFile';
 
 const CONTENT_TYPES: Record<string, string> = {
   webm: 'video/webm',
@@ -44,8 +46,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
   const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
   const data = fs.readFileSync(absPath);
 
+  // A CV opens in the browser by default; ?download=1 saves it, named after the candidate.
+  const download = req.nextUrl.searchParams.get('download') === '1';
+  const disposition: Record<string, string> = {};
+  if (ext === 'pdf') {
+    const name = cvFilename(db.getCandidateByIdPublic(owner.candidateId)?.name);
+    disposition['Content-Disposition'] = `${download ? 'attachment' : 'inline'}; filename="${name.ascii}"; filename*=UTF-8''${encodeURIComponent(name.full)}`;
+  }
+
   return new NextResponse(new Uint8Array(data), {
     headers: {
+      ...disposition,
       'Content-Type': contentType,
       'Cache-Control': 'private, max-age=0, must-revalidate',
       'X-Content-Type-Options': 'nosniff'

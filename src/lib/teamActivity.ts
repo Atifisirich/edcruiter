@@ -37,6 +37,8 @@ const KIND_OF: Record<string, WorkKind> = {
 export function actionLabel(action: string): string {
   const named: Record<string, string> = {
     JOB_POSTED: 'Posted a vacancy',
+    JOB_EDITED: 'Edited a vacancy',
+    JOB_DELETED: 'Deleted a vacancy',
     CANDIDATE_ADDED_BY_STAFF: 'Added a candidate',
     CANDIDATES_BULK_IMPORTED: 'Imported candidates',
     CANDIDATE_DELETED: 'Deleted a candidate',

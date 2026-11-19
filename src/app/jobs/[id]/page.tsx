@@ -134,6 +134,7 @@ export default function PublicJobApplicationPage() {
           applied_segment: job.segment,
           applied_grades: job.grades,
           target_branch_id: job.target_branch_id,
+          job_id: job.id,
           status: 'in_progress',
           whatsapp_consent: whatsappConsent
         })

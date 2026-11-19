@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
       boards_taught: requestedBoards,
       education: requestedEducation,
       target_branch_id,
+      job_id: requestedJobId,
       video_intro_url,
       reading_passage_text,
       reading_passage_score,
@@ -227,6 +228,14 @@ export async function POST(req: NextRequest) {
     // nobody is reviewing, or one that does not exist at all.
     assertSchoolActive(school_id);
 
+    // The vacancy they applied through, kept only if it really is one of this school's.
+    const vacancy = typeof requestedJobId === 'string' ? db.getJobById(requestedJobId) : undefined;
+    const job_id = vacancy && vacancy.school_id === school_id ? vacancy.id : undefined;
+    // Nobody new applies to a vacancy the school has closed (staff adding someone by hand still can).
+    if (!staffCtx && vacancy && job_id && vacancy.status === 'closed') {
+      return NextResponse.json({ error: 'This vacancy has been closed and is no longer taking applications.' }, { status: 410 });
+    }
+
     const newCandidate: Candidate = {
       id: newCandidateId(),
       school_id,
@@ -252,6 +261,7 @@ export async function POST(req: NextRequest) {
       ...(boards_taught.length ? { boards_taught } : {}),
       ...(education ? { education } : {}),
       target_branch_id: target_branch_id || staffCtx?.user.branch_id || undefined,
+      ...(job_id ? { job_id } : {}),
       video_intro_url: video_intro_url || '',
       reading_passage_text,
       reading_passage_score,

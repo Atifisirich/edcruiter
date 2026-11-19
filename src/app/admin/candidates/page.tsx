@@ -1,8 +1,9 @@
 'use client';
 
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
@@ -10,13 +11,15 @@ import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
 import { isAdmin, isHiringTeam } from '@/lib/permissions';
 import { candidateState, countByTab, TAB_LABEL, TAB_ORDER, type CandidateTab } from '@/lib/candidateProgress';
 import { normalizeBands } from '@/lib/shortlistBands';
+import { appliedTo } from '@/lib/vacancyCandidates';
+import type { PublicVacancy } from '@/lib/types';
 
 type TabKey = 'all' | CandidateTab;
 
 function CandidatesList() {
   const router = useRouter();
   const params = useSearchParams();
-  const { school, schoolId, user, candidates, loading, openAddCandidate, openBulkUpload, toast } = useAdmin();
+  const { school, schoolId, user, candidates: allCandidates, loading, openAddCandidate, openBulkUpload, toast } = useAdmin();
   // Only the school admin (or Edcruiter support) removes candidates; admin and HR can call them.
   const canDelete = isAdmin(user?.role);
   const canCall = isHiringTeam(user?.role);
@@ -27,6 +30,26 @@ function CandidatesList() {
 
   const requested = params.get('tab');
   const tab: TabKey = (TAB_ORDER as string[]).includes(requested || '') ? (requested as CandidateTab) : 'all';
+
+  // Opened from a vacancy card (?job=...): only the people who applied for that vacancy.
+  const jobId = params.get('job');
+  // The vacancy this page was opened for: undefined while it loads, null when it no longer exists.
+  const [loaded, setLoaded] = useState<{ jobId: string; vacancy: PublicVacancy | null } | null>(null);
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+    fetch(`/api/jobs?school_id=${schoolId}`)
+      .then((r) => (r.ok ? r.json() : { jobs: [] }))
+      .then((d) => { if (!cancelled) setLoaded({ jobId, vacancy: (d.jobs as PublicVacancy[] | undefined)?.find((j) => j.id === jobId) ?? null }); })
+      .catch(() => { if (!cancelled) setLoaded({ jobId, vacancy: null }); });
+    return () => { cancelled = true; };
+  }, [jobId, schoolId]);
+  const vacancy: PublicVacancy | null | undefined = !jobId ? null : loaded?.jobId === jobId ? loaded.vacancy : undefined;
+  const candidates = useMemo(() => {
+    if (!jobId) return allCandidates;
+    if (vacancy === undefined) return [];
+    return vacancy ? allCandidates.filter((c) => appliedTo(c, vacancy)) : allCandidates;
+  }, [allCandidates, jobId, vacancy]);
 
   const [search, setSearch] = useState('');
   const [subject, setSubject] = useState('ALL');
@@ -93,7 +116,13 @@ function CandidatesList() {
 
   const filtering = tab !== 'all' || subject !== 'ALL' || grade !== 'ALL' || scoreFilter !== 'any' || search.trim() !== '';
 
-  const goTab = (next: TabKey) => router.replace(next === 'all' ? '/admin/candidates' : `/admin/candidates?tab=${next}`, { scroll: false });
+  const goTab = (next: TabKey) => {
+    const q = new URLSearchParams();
+    if (jobId) q.set('job', jobId);
+    if (next !== 'all') q.set('tab', next);
+    const qs = q.toString();
+    router.replace(qs ? `/admin/candidates?${qs}` : '/admin/candidates', { scroll: false });
+  };
 
   const reset = () => {
     setSearch('');
@@ -124,6 +153,22 @@ function CandidatesList() {
           </>
         }
       />
+
+      {jobId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-sm">
+          <p className="text-indigo-950">
+            {vacancy === undefined
+              ? 'Loading the vacancy…'
+              : vacancy
+                ? <>Showing people who applied for <strong>{vacancy.title}</strong>{vacancy.branch ? ` (${vacancy.branch})` : ''}.</>
+                : 'That vacancy was not found, so nobody is shown for it.'}
+          </p>
+          <span className="flex items-center gap-2">
+            <Link href="/admin/jobs" className={buttonClass('ghost', 'sm')}><ArrowLeft className="w-4 h-4" /> Back to vacancies</Link>
+            <Link href="/admin/candidates" className={buttonClass('secondary', 'sm')}>Show all candidates</Link>
+          </span>
+        </div>
+      )}
 
       <Card padded={false} className="overflow-hidden">
         <div className="border-b border-slate-200 px-2 sm:px-4 overflow-x-auto">

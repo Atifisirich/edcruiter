@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 const setConsent = vi.fn();
 const createCandidate = vi.fn();
 let school: Record<string, unknown> | undefined;
+let vacancies: Record<string, { id: string; school_id: string; status: string }> = {};
 vi.mock('@/lib/db', () => ({
   db: {
     createCandidate: (...a: unknown[]) => createCandidate(...a),
     setConsent: (...a: unknown[]) => setConsent(...a),
     addAuditLog: () => undefined,
     getSchoolById: () => school,
+    getJobById: (id: string) => vacancies[id],
   },
 }));
 
@@ -48,6 +50,7 @@ const post = (body: object) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vacancies = {};
   school = connected;
   staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
   sendAssessmentInvite.mockResolvedValue({ ok: true, waMessageId: 'wamid.1' });
@@ -142,5 +145,30 @@ describe('someone applying from a public vacancy page', () => {
     const saved = createCandidate.mock.calls[0][0];
     expect(saved.school_id).toBe('s1');
     expect(saved.applied_grades).toEqual(['1', '2', '5']);
+  });
+});
+
+describe('the vacancy an applicant came through', () => {
+  it('is kept on the candidate when it is one of the own school vacancies', async () => {
+    vacancies = { job_1: { id: 'job_1', school_id: 's1', status: 'active' } };
+    staff = null;
+    expect((await post({ ...lead, job_id: 'job_1' })).status).toBe(201);
+    expect(createCandidate.mock.calls[0][0].job_id).toBe('job_1');
+  });
+  it('is dropped when it belongs to another school or does not exist', async () => {
+    vacancies = { job_other: { id: 'job_other', school_id: 's9', status: 'active' } };
+    staff = null;
+    await post({ ...lead, job_id: 'job_other' });
+    await post({ ...lead, job_id: 'job_missing' });
+    expect(createCandidate.mock.calls[0][0].job_id).toBeUndefined();
+    expect(createCandidate.mock.calls[1][0].job_id).toBeUndefined();
+  });
+  it('turns an applicant away from a closed vacancy, but not staff adding someone by hand', async () => {
+    vacancies = { job_1: { id: 'job_1', school_id: 's1', status: 'closed' } };
+    staff = null;
+    expect((await post({ ...lead, job_id: 'job_1' })).status).toBe(410);
+    expect(createCandidate).not.toHaveBeenCalled();
+    staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
+    expect((await post({ ...lead, job_id: 'job_1', school_attested: true })).status).toBe(201);
   });
 });

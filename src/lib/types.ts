@@ -648,6 +648,8 @@ export interface Candidate {
   /** Degrees and teacher training, kept apart. `qualification` holds a one-line summary of these. */
   education?: CandidateEducation;
   target_branch_id: string;
+  /** The vacancy this person applied through, when they came from the job board. */
+  job_id?: string;
   video_intro_url?: string;
   reading_passage_text?: string;
   reading_passage_score?: number;
