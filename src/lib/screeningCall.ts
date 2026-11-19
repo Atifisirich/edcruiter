@@ -24,6 +24,8 @@ import type {
   ScreeningLanguage, ScreeningQuestionSet,
 } from './types';
 import { cleanImportance, cleanRequirements, GROUP_KEYS, groupOf, normalizeRules } from './screeningFlow';
+import { checkTemplate, DEFAULT_SCRIPT, fillTemplate, knownKeys, parseScript, roleText, scriptOf, TONES, variableValues } from './callScript';
+import type { CallScript } from './types';
 
 export const STARTER_SCREENING_QUESTIONS = [
   'Are you still interested in this teaching position?',
@@ -89,6 +91,7 @@ export function screeningSettingsOf(school: Pick<School, 'screening_call'> | nul
       daily_digest: s?.notify?.daily_digest === true,
     },
     rules: normalizeRules(s?.rules),
+    script: scriptOf(s?.script),
   };
 }
 
@@ -120,7 +123,7 @@ export function callChargeInr(school: Pick<School, 'screening_call_price_per_min
 }
 
 /** Checks one list of questions as the school edited it. A question left blank is dropped with its requirement. */
-function parseSet(raw: unknown, label: string): { ok: true; set: ScreeningQuestionSet } | { ok: false; error: string } {
+function parseSet(raw: unknown, label: string, known: Set<string>): { ok: true; set: ScreeningQuestionSet } | { ok: false; error: string } {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const list = Array.isArray(r.questions) ? r.questions : [];
   const rawReqs = Array.isArray(r.requirements) ? r.requirements : [];
@@ -136,8 +139,10 @@ function parseSet(raw: unknown, label: string): { ok: true; set: ScreeningQuesti
   if (questions.length === 0) return { ok: false, error: `Add at least one question${where}.` };
   if (questions.length > MAX_SCREENING_QUESTIONS) return { ok: false, error: `Up to ${MAX_SCREENING_QUESTIONS} questions${where}; a screening call should stay short.` };
   if (questions.some((q) => q.length < 8 || q.length > 200)) return { ok: false, error: `Each question needs 8 to 200 characters${where}.` };
-  if (questions.some((q) => /[<>{}]/.test(q))) return { ok: false, error: `Questions cannot contain < > { or }${where}.` };
-  if (requirements.some((x) => /[<>{}]/.test(x))) return { ok: false, error: `What you want to hear cannot contain < > { or }${where}.` };
+  for (const [i, q] of questions.entries()) {
+    const err = checkTemplate(q, known, `Question ${i + 1}${where}`) ?? checkTemplate(requirements[i] ?? '', known, `What you want to hear for question ${i + 1}${where}`);
+    if (err) return { ok: false, error: err };
+  }
   const missing = kept.findIndex((x, i) => (x.imp === 'must' || x.imp === 'prefer') && !requirements[i]);
   if (missing >= 0) return { ok: false, error: `Question ${missing + 1}${where} is a must-have or preference: write what answer you want to hear.` };
   return { ok: true, set: { questions, requirements, importance } };
@@ -146,13 +151,16 @@ function parseSet(raw: unknown, label: string): { ok: true; set: ScreeningQuesti
 /** Checks the school's edited settings before they are saved. */
 export function parseScreeningSettings(input: unknown): { ok: true; settings: FullScreeningSettings } | { ok: false; error: string } {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
-  const main = parseSet(raw, '');
+  const script = parseScript(raw.script);
+  if (!script.ok) return script;
+  const known = knownKeys(script.script);
+  const main = parseSet(raw, '', known);
   if (!main.ok) return main;
   const sets: Partial<Record<ScreeningGroup, ScreeningQuestionSet>> = {};
   const rawSets = (raw.sets && typeof raw.sets === 'object' ? raw.sets : {}) as Record<string, unknown>;
   for (const g of GROUP_KEYS) {
     if (!rawSets[g]) continue;
-    const parsed = parseSet(rawSets[g], GROUPS_LABEL[g]);
+    const parsed = parseSet(rawSets[g], GROUPS_LABEL[g], known);
     if (!parsed.ok) return parsed;
     sets[g] = parsed.set;
   }
@@ -170,6 +178,7 @@ export function parseScreeningSettings(input: unknown): { ok: true; settings: Fu
       limits: raw.limits as ScreeningCallSettings['limits'],
       notify: raw.notify as ScreeningCallSettings['notify'],
       rules: raw.rules as ScreeningCallSettings['rules'],
+      script: script.script,
     },
   });
   return { ok: true, settings };
@@ -221,16 +230,34 @@ export function webhookToken(callId: string): string {
   return createHmac('sha256', process.env.AUTH_SECRET || 'dev').update(`screening-call:${callId}`).digest('base64url');
 }
 
-/** The variables the Sarvam agent's instructions read. */
-export function callVariables(candidate: Pick<Candidate, 'name' | 'applied_subject' | 'applied_segment'>, school: Pick<School, 'name'>, questions: string[], language = 'English') {
+/**
+ * The variables the Sarvam agent's instructions read. Everything the school
+ * wrote is filled in here, so the agent only gets finished plain text.
+ */
+export function callVariables(
+  candidate: Pick<Candidate, 'name' | 'applied_subject' | 'applied_segment'>,
+  school: Pick<School, 'name'>,
+  questions: string[],
+  language = 'English',
+  script: CallScript = DEFAULT_SCRIPT
+) {
+  const values = variableValues(script, candidate, school);
+  const fill = (t: string) => fillTemplate(t, values);
   return {
     // The Sarvam agent's instructions read this to choose the language it speaks.
     language,
-    candidate_name: candidate.name.split(' ')[0] || candidate.name,
+    candidate_name: values.candidate_name,
     school_name: school.name,
-    role: [candidate.applied_subject, 'teacher'].filter(Boolean).join(' ') + (candidate.applied_segment ? `, ${candidate.applied_segment.split('(')[0].trim()}` : ''),
+    role: roleText(candidate),
     question_count: String(questions.length),
-    questions: questions.map((q, i) => `${i + 1}. ${q}`).join('\n'),
+    questions: questions.map((q, i) => `${i + 1}. ${fill(q)}`).join('\n'),
+    agent_name: script.agent_name,
+    tone: TONES.find((t) => t.value === script.tone)!.help,
+    greeting: fill(script.greeting),
+    closing: fill(script.closing),
+    school_info: fill(script.school_info) || 'Nothing extra. If asked something you do not know, say the school team will answer it.',
+    instructions: fill(script.instructions) || 'None.',
+    max_minutes: String(script.max_minutes),
   };
 }
 
@@ -373,9 +400,15 @@ ${transcriptText(transcript)}`;
 export async function demoTranscript(
   candidate: Pick<Candidate, 'name' | 'applied_subject' | 'applied_segment' | 'notice_period' | 'experience_band' | 'qualification' | 'current_salary' | 'expected_salary' | 'current_location'>,
   school: Pick<School, 'name'>,
-  questions: string[]
+  questions: string[],
+  script: CallScript = DEFAULT_SCRIPT
 ): Promise<{ role: 'agent' | 'user'; text: string }[]> {
   const first = candidate.name.split(' ')[0] || candidate.name;
+  const values = variableValues(script, candidate, school);
+  const greeting = fillTemplate(script.greeting, values);
+  const closing = fillTemplate(script.closing, values);
+  const info = fillTemplate(script.school_info, values);
+  const tone = TONES.find((t) => t.value === script.tone)!.help;
   const known = [
     candidate.notice_period && `notice period ${candidate.notice_period}`,
     candidate.experience_band && `experience ${candidate.experience_band}`,
@@ -389,8 +422,11 @@ export async function demoTranscript(
     try {
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Write a short, realistic phone screening conversation (Indian English) between a polite AI caller from ${school.name} and ${candidate.name}, who applied for a ${candidate.applied_subject || 'teaching'} post (${candidate.applied_segment || 'school'}).
-The caller greets them by first name, says it is an automated screening call from ${school.name}, asks if it is a good time, then asks these questions one at a time, then thanks them and says the school will be in touch:
-${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+The caller is called ${script.agent_name}. Tone: ${tone}
+The caller opens with exactly: "${greeting}"
+Then asks these questions one at a time:
+${questions.map((q, i) => `${i + 1}. ${fillTemplate(q, values)}`).join('\n')}
+${info ? `If the candidate asks about the school, the caller may only use these facts: ${info}\nHave the candidate ask one short question that the caller answers from these facts.\n` : ''}Then the caller ends with exactly: "${closing}"
 The candidate answers naturally and briefly${known ? `, consistent with what they told the school: ${known}` : ''}.
 Reply with ONLY a JSON array of turns: [{"role": "agent" | "user", "text": "..."}].`;
       const response = await ai.models.generateContent({ model: 'gemini-flash-lite-latest', contents: prompt, config: { responseMimeType: 'application/json', temperature: 0.7 } });
@@ -406,13 +442,13 @@ Reply with ONLY a JSON array of turns: [{"role": "agent" | "user", "text": "..."
   }
   // Without Gemini: a plain script from the questions.
   const turns: { role: 'agent' | 'user'; text: string }[] = [
-    { role: 'agent', text: `Hello ${first}, this is an automated screening call from ${school.name} about your application. Is this a good time to talk for three minutes?` },
+    { role: 'agent', text: greeting },
     { role: 'user', text: 'Yes, go ahead.' },
   ];
   for (const q of questions) {
-    turns.push({ role: 'agent', text: q });
+    turns.push({ role: 'agent', text: fillTemplate(q, values) });
     turns.push({ role: 'user', text: 'Yes, that works for me.' });
   }
-  turns.push({ role: 'agent', text: `Thank you, ${first}. The school will be in touch about the next step.` });
+  turns.push({ role: 'agent', text: closing || `Thank you, ${first}. The school will be in touch about the next step.` });
   return turns;
 }

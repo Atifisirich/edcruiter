@@ -160,6 +160,8 @@ export interface School {
   hr_policy_answers?: HrPolicyAnswers;
   /** Hiring WhatsApp line used to send assessment invites to teachers. */
   whatsapp_hiring?: WhatsAppHiringConfig;
+  /** The Google account the school connected so interviews get real Google Meet links and calendar invites. See googleCalendar.ts. */
+  google_calendar?: GoogleCalendarConnection;
   /** Which video observations appear in the teaching profile. See teachingProfile.ts. */
   report_settings?: ReportSettings;
   /** The school's own role names. Absent means the standard roles. See roles.ts. */
@@ -282,6 +284,29 @@ export interface ScreeningCallSettings {
   /** Who at the school is told what. */
   notify?: { emails: string[]; good_fit_now: boolean; daily_digest: boolean };
   rules?: ScreeningRules;
+  /** The school's own call script and variables. Absent: the standard script. See callScript.ts. */
+  script?: CallScript;
+}
+
+export type CallTone = 'warm' | 'formal' | 'friendly';
+
+/** How the AI caller sounds and what it says, written by the school. Any text may use {{variables}}. */
+export interface CallScript {
+  /** The name the AI caller gives, e.g. "Priya". */
+  agent_name: string;
+  tone: CallTone;
+  /** The first thing said on the call. */
+  greeting: string;
+  /** The last thing said before hanging up. */
+  closing: string;
+  /** Facts the AI may share if the candidate asks: timings, salary range, address, transport. */
+  school_info: string;
+  /** Extra rules for the AI caller, e.g. "Never promise a salary". */
+  instructions: string;
+  /** The AI wraps up after about this many minutes. */
+  max_minutes: number;
+  /** The school's own variables, used as {{key}}. */
+  variables: { key: string; value: string }[];
 }
 
 /** A request for help sent to the Edcruiter team from the help bot. */
@@ -699,6 +724,15 @@ export type ScheduledInterviewStatus = 'scheduled' | 'completed' | 'cancelled';
  * a ScheduledInterview is what gets a candidate and a reviewer to the same
  * (virtual) room in the first place.
  */
+export interface GoogleCalendarConnection {
+  /** The Google account the events are created in. */
+  email: string;
+  /** Google's refresh token, encrypted at rest (secrets.ts). */
+  refresh_token_encrypted: string;
+  connected_at: string;
+  connected_by_name: string;
+}
+
 export interface ScheduledInterview {
   id: string;
   school_id: string;
@@ -713,6 +747,12 @@ export interface ScheduledInterview {
   notes?: string;
   scheduled_by_id: string;
   scheduled_by_name: string;
+  /** google_meet: made in the school's Google Calendar. pasted: HR's own link. jitsi: the free fallback room. Absent (older): pasted or jitsi. */
+  meeting_provider?: 'google_meet' | 'pasted' | 'jitsi';
+  /** The Google Calendar event, so a reschedule or cancel updates it. */
+  calendar_event_id?: string;
+  /** Who was told about it, for the HR screen. */
+  notified?: { candidate_whatsapp: boolean; candidate_email: boolean; staff: string[]; problems?: string[] };
   created_at: string;
   updated_at: string;
 }

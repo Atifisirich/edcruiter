@@ -9,6 +9,7 @@
  */
 
 import { db } from './db';
+import { fillTemplate, variableValues } from './callScript';
 import {
   analyseCall, callChargeInr, callCostInr, callVariables, demoTranscript, placeSarvamCall,
   questionSetFor, sarvamEnv, screeningSettingsOf, statusFromSarvam, toCallNumber, type FullScreeningSettings,
@@ -72,6 +73,7 @@ export async function startScreeningCall(
 
   const settings = screeningSettingsOf(school);
   const set = questionSetFor(settings, candidate);
+  const values = variableValues(settings.script, candidate, school);
   const now = Date.now();
   const later = opts.at && opts.at.getTime() > now + 30_000;
   const call = db.addScreeningCall({
@@ -80,8 +82,9 @@ export async function startScreeningCall(
     candidate_id: candidate.id,
     mode: env ? 'live' : 'demo',
     status: later ? 'scheduled' : 'calling',
-    questions: set.questions,
-    requirements: set.requirements,
+    // The school's {{variables}} are filled in now, so the call record, the answers and the checks read as said on the call.
+    questions: set.questions.map((q) => fillTemplate(q, values)),
+    requirements: set.requirements.map((r) => fillTemplate(r, values)),
     importance: set.importance,
     ...(set.own && set.group ? { group: set.group } : {}),
     language: callLanguage(settings.language, candidate.languages),
@@ -144,7 +147,7 @@ async function placeCall(call: ScreeningCall, school: School, candidate: Candida
   const phone = toCallNumber(candidate.phone);
   if (env && phone && call.mode === 'live') {
     try {
-      const attemptId = await placeSarvamCall(env, { callId: call.id, phone, variables: callVariables(candidate, school, call.questions, call.language), appUrl });
+      const attemptId = await placeSarvamCall(env, { callId: call.id, phone, variables: callVariables(candidate, school, call.questions, call.language, settings.script), appUrl });
       return { ok: true, call: db.updateScreeningCall(call.id, { attempt_id: attemptId }) ?? call };
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'The call could not be placed.';
@@ -162,7 +165,7 @@ async function placeCall(call: ScreeningCall, school: School, candidate: Candida
 
   // Demo: finish in the background, a few seconds later, like a short call would.
   void (async () => {
-    const transcript = await demoTranscript(candidate, school, call.questions);
+    const transcript = await demoTranscript(candidate, school, call.questions, settings.script);
     const analysis = await analyseCall(call.questions, transcript, call.requirements ?? [], call.importance ?? []);
     db.updateScreeningCall(call.id, {
       status: 'completed',

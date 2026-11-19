@@ -5,6 +5,7 @@ import { decide, mayTake, type DecisionAction, type DecisionInput } from '@/lib/
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { roundsOf } from '@/lib/reviewRounds';
+import { notifyRoundCleared } from '@/lib/interviewNotify';
 import { ATTEMPT_STAGES } from '@/lib/stageAttempts';
 import type { StageKey } from '@/lib/types';
 
@@ -84,6 +85,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       details: `${outcome.message}${input.note ? ` Note: ${input.note.trim()}` : ''}`,
     });
 
+    // A yes moves the teacher on: whoever runs the next round (and HR) is told to book it.
+    let nextUp: { id: string; name: string } | null | undefined;
+    let toldNext: string[] = [];
+    const passedRound = rounds.find((r) => r.id === round?.id);
+    if ((input.action === 'round_pass' || input.action === 'round_reject') && passedRound) {
+      // The round is decided, so its booked slot is no longer open.
+      for (const iv of db.getScheduledInterviewsByCandidate(ctx.schoolId, id)) {
+        if (iv.round === passedRound.id && iv.status === 'scheduled') db.updateScheduledInterview(iv.id, { status: 'completed' });
+      }
+    }
+    if (input.action === 'round_pass' && passedRound) {
+      const at = rounds.findIndex((r) => r.id === passedRound.id);
+      nextUp = rounds[at + 1] ?? null;
+      const school = db.getSchoolById(ctx.schoolId);
+      if (school) {
+        toldNext = await notifyRoundCleared({ school, candidate, round: passedRound, next: rounds[at + 1] ?? null, decidedBy: ctx.user, note: (input.note ?? '').trim() }).catch(() => []);
+      }
+    }
+
     const candidateNotified = outcome.declinesCandidate && body.notify_candidate !== false
       ? await notifyCandidateDeclined(ctx.schoolId, id).catch(() => undefined)
       : undefined;
@@ -93,6 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       message: outcome.message,
       candidate: db.getCandidateById(ctx.schoolId, id) || updated,
       candidate_notified: candidateNotified,
+      ...(nextUp !== undefined ? { next_round: nextUp, next_round_told: toldNext } : {}),
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not save the decision.' }, { status: 500 });

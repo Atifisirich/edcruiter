@@ -5,14 +5,29 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowRight, Loader2, AlertCircle,
-  ArrowLeft, GraduationCap
+  ArrowLeft, CheckCircle2, GraduationCap, Link2
 } from 'lucide-react';
-import { cleanIdentifier, extractInviteCode, signInPathFromPastedText } from '@/lib/candidateLink';
+import { cleanIdentifier, entryKind, extractInviteCode, signInPathFromPastedText } from '@/lib/candidateLink';
+
+/** A one-line check under a box: green when it is the right thing, amber with what to do when not. */
+function Hint({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <p className={`text-[11px] font-semibold flex items-center gap-1 ${ok ? 'text-emerald-700' : 'text-amber-700'}`}>
+      {ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+      <span>{children}</span>
+    </p>
+  );
+}
 
 export default function CandidateLoginPage() {
   const router = useRouter();
   const [identifier, setIdentifier] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [pastedLink, setPastedLink] = useState('');
+  const [moved, setMoved] = useState(false);
+  const idKind = entryKind(identifier);
+  const codeKind = entryKind(inviteCode);
+  const linkKind = entryKind(pastedLink);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +37,7 @@ export default function CandidateLoginPage() {
   // than showing no explanation for why they're on a login screen.
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('error') === 'link_expired') {
-      setError('That link has expired or was already used. Paste a newer link below, or enter your phone or email with your application ID.');
+      setError('That link has expired or was already used. Paste a newer link, or sign in with your mobile number or email and your application ID.');
     }
   }, []);
 
@@ -37,9 +52,17 @@ export default function CandidateLoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (openIfLink(identifier) || openIfLink(inviteCode)) return;
+    if (openIfLink(pastedLink) || openIfLink(identifier) || openIfLink(inviteCode)) return;
     if (!identifier.trim() || !inviteCode.trim()) {
-      setError('Paste your link, or enter your phone or email together with your application ID.');
+      setError('Fill in both boxes: your mobile number or email, and your application ID.');
+      return;
+    }
+    if (idKind !== 'phone' && idKind !== 'email') {
+      setError('The first box needs the mobile number or email you applied with.');
+      return;
+    }
+    if (codeKind !== 'application_id') {
+      setError('Your application ID starts with EDC-, for example EDC-PHYS-A4K2.');
       return;
     }
 
@@ -86,7 +109,7 @@ export default function CandidateLoginPage() {
           </div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight">Continue your application</h2>
           <p className="text-xs text-slate-500">
-            The easiest way is the link we sent you on WhatsApp or email: just tap it. Lost it? Paste it below, or enter your phone or email with your application ID.
+            Use the link we sent you, or sign in with your mobile number or email and your application ID.
           </p>
         </div>
 
@@ -97,34 +120,86 @@ export default function CandidateLoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
-              Your link, or your mobile number / email
+        <form onSubmit={handleLogin} className="space-y-5">
+          <section className="space-y-1.5 p-4 rounded-2xl border border-indigo-100 bg-indigo-50/50">
+            <label htmlFor="link" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-indigo-600" /> Have the link we sent you?
             </label>
+            <p className="text-[11px] text-slate-500">The easiest way: tap it in WhatsApp or email. Or paste it here and you go straight in.</p>
             <input
+              id="link"
               type="text"
-              placeholder="Paste your link, or 9876543210, or you@example.com"
-              value={identifier}
-              onChange={(e) => { setIdentifier(e.target.value); openIfLink(e.target.value); }}
-              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
-              autoFocus
+              inputMode="url"
+              placeholder="Paste your link (it has magic-login in it)"
+              value={pastedLink}
+              onChange={(e) => { setPastedLink(e.target.value); openIfLink(e.target.value); }}
+              className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-300 text-slate-900 text-sm focus:border-indigo-500 focus:outline-none placeholder-slate-400"
             />
+            {linkKind !== 'empty' && linkKind !== 'link' && (
+              <Hint ok={false}>That is not a link. {linkKind === 'application_id' ? 'It is your application ID: put it in the second box below.' : 'Use the boxes below instead.'}</Hint>
+            )}
+            {linkKind === 'link' && !signInPathFromPastedText(pastedLink) && (
+              <Hint ok={false}>This is not your sign-in link. Your link has “magic-login” in it.</Hint>
+            )}
+          </section>
+
+          <div className="flex items-center gap-3 text-[11px] font-bold text-slate-400 uppercase">
+            <span className="h-px flex-1 bg-slate-200" /> or sign in with two details <span className="h-px flex-1 bg-slate-200" />
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
-              Application ID
+            <label htmlFor="identifier" className="block text-xs font-bold text-slate-700">
+              1. Mobile number or email
             </label>
+            <p className="text-[11px] text-slate-500">The one you gave when you applied. For example 9876543210 or name@gmail.com.</p>
             <input
+              id="identifier"
               type="text"
-              placeholder="e.g. EDC-PHYS-A4K2"
+              inputMode="email"
+              autoComplete="username"
+              placeholder="9876543210 or name@gmail.com"
+              value={identifier}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (openIfLink(v)) return;
+                // An application ID typed here belongs in the second box.
+                if (entryKind(v) === 'application_id' && !inviteCode.trim()) {
+                  setInviteCode(extractInviteCode(v));
+                  setIdentifier('');
+                  setMoved(true);
+                  return;
+                }
+                setMoved(false);
+                setIdentifier(v);
+              }}
+              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
+              autoFocus
+            />
+            {moved && <Hint ok={false}>That was your application ID, so we moved it to box 2. Here, type your mobile number or email.</Hint>}
+            {idKind === 'phone' && <Hint ok>Mobile number</Hint>}
+            {idKind === 'email' && <Hint ok>Email address</Hint>}
+            {idKind === 'application_id' && <Hint ok={false}>That is your application ID. It goes in box 2. Here, type your mobile number or email.</Hint>}
+            {idKind === 'unknown' && identifier.trim().length > 3 && <Hint ok={false}>This does not look like a 10-digit mobile number or an email address.</Hint>}
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="appid" className="block text-xs font-bold text-slate-700">
+              2. Application ID
+            </label>
+            <p className="text-[11px] text-slate-500">Starts with EDC-. It is in the WhatsApp message or email we sent you (“Your application ID is…”). You can paste the whole message: we pick the ID out.</p>
+            <input
+              id="appid"
+              type="text"
+              autoCapitalize="characters"
+              placeholder="EDC-PHYS-A4K2"
               value={inviteCode}
               onChange={(e) => { setInviteCode(e.target.value); openIfLink(e.target.value); }}
               onBlur={(e) => setInviteCode(extractInviteCode(e.target.value))}
-              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm font-mono focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-colors"
+              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 text-sm font-mono uppercase focus:border-indigo-500 focus:outline-none placeholder-slate-400 placeholder:normal-case transition-colors"
             />
-            <p className="text-[11px] text-slate-500">Your personal ID for this application. It starts with EDC and is in the WhatsApp message or email we sent you ("Your application ID is…"). You can paste the whole message and we will pick it out.</p>
+            {codeKind === 'application_id' && <Hint ok>Application ID {extractInviteCode(inviteCode)}</Hint>}
+            {(codeKind === 'phone' || codeKind === 'email') && <Hint ok={false}>That is your {codeKind === 'phone' ? 'mobile number' : 'email'}. It goes in box 1. Here, type the ID that starts with EDC-.</Hint>}
+            {codeKind === 'unknown' && inviteCode.trim().length > 3 && <Hint ok={false}>An application ID looks like EDC-PHYS-A4K2.</Hint>}
           </div>
 
           <button

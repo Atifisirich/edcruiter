@@ -10,6 +10,7 @@ import { accessOf } from '@/lib/permissions';
 import { DEFAULT_SHORTLIST_BANDS, normalizeBands, type ShortlistBand } from '@/lib/shortlistBands';
 import { reportSettingsOf } from '@/lib/teachingProfile';
 import ScreeningCallSettingsCard from '@/components/admin/ScreeningCallSettingsCard';
+import GoogleMeetCard from '@/components/admin/GoogleMeetCard';
 
 const BAND_STYLE: Record<ShortlistBand['tone'], { box: string; name: string }> = {
   danger: { box: 'border-rose-200 bg-rose-50/60', name: 'Needs work' },
@@ -430,6 +431,8 @@ export default function SettingsPage() {
       <RolesCard />
 
       <RoundsCard />
+
+      <GoogleMeetCard />
 
       <Card>
         <CardHeader title="More" />

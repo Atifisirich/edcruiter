@@ -5,17 +5,9 @@ import { HIRING_TEAM } from '@/lib/permissions';
 import { canDecideRound, roundResultOf, roundsOf } from '@/lib/reviewRounds';
 import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchoolAccess, requireStaff, assertSchoolActive } from '@/lib/auth';
 import { generateMeetingLink } from '@/lib/meetingLink';
-import { sendTemplateMessage } from '@/lib/whatsappClient';
-import { sendEmail } from '@/lib/emailClient';
-import { escapeHtml } from '@/lib/escapeHtml';
-import { createCandidateMagicLinkToken } from '@/lib/session';
+import { createMeetEvent } from '@/lib/googleCalendar';
+import { formatWhen, notifyInterviewScheduled } from '@/lib/interviewNotify';
 import { checkRateLimit } from '@/lib/rateLimit';
-
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', {
-    weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
-  });
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -111,6 +103,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${assignedUser.name} does not review the ${theRound.name} round. Choose someone who does, or change the round in Settings.` }, { status: 400 });
     }
 
+    const when = scheduledDate.toISOString();
+    const duration = Number(duration_minutes) > 0 ? Math.min(240, Number(duration_minutes)) : 30;
+    const pasted = typeof meeting_link === 'string' ? meeting_link.trim() : '';
+    if (pasted && !/^https:\/\/\S+$/i.test(pasted)) {
+      return NextResponse.json({ error: 'The meeting link must start with https://' }, { status: 400 });
+    }
+
+    // A real Google Meet when the school connected Google and HR did not paste
+    // their own link. If Google fails, a Jitsi room, so the booking still goes through.
+    let meetingLink = pasted;
+    let provider: ScheduledInterview['meeting_provider'] = pasted ? 'pasted' : 'jitsi';
+    let calendarEventId: string | undefined;
+    let meetWarning: string | undefined;
+    if (!pasted && school?.google_calendar && body.use_google_meet !== false) {
+      try {
+        const made = await createMeetEvent(school.google_calendar, {
+          summary: `${theRound.name} interview: ${candidate.name} (${candidate.applied_subject}) - ${school.name}`,
+          description: [
+            `${theRound.name} interview for the ${candidate.applied_subject} post at ${school.name}.`,
+            `Candidate: ${candidate.name}`,
+            `Interviewer: ${assignedUser.name}`,
+            notes ? `Note: ${String(notes)}` : '',
+            'Booked with Edcruiter.',
+          ].filter(Boolean).join('\n'),
+          startIso: when,
+          durationMin: duration,
+          attendees: [
+            { email: candidate.email, name: candidate.name },
+            { email: assignedUser.email, name: assignedUser.name },
+          ],
+        });
+        meetingLink = made.meetLink;
+        calendarEventId = made.eventId;
+        provider = 'google_meet';
+      } catch (err) {
+        meetWarning = `Google Meet could not be made (${err instanceof Error ? err.message : 'unknown error'}), so a free Jitsi room was used instead.`;
+      }
+    }
+    if (!meetingLink) meetingLink = generateMeetingLink(candidate_id, round);
+
     const interview: ScheduledInterview = {
       id: `intv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       school_id: ctx.schoolId,
@@ -118,11 +150,13 @@ export async function POST(req: NextRequest) {
       round,
       assigned_user_id: assignedUser.id,
       assigned_user_name: assignedUser.name,
-      scheduled_at: scheduledDate.toISOString(),
-      duration_minutes: Number(duration_minutes) > 0 ? Number(duration_minutes) : 30,
-      meeting_link: (meeting_link && String(meeting_link).trim()) || generateMeetingLink(candidate_id, round),
+      scheduled_at: when,
+      duration_minutes: duration,
+      meeting_link: meetingLink,
+      meeting_provider: provider,
+      ...(calendarEventId ? { calendar_event_id: calendarEventId } : {}),
       status: 'scheduled',
-      notes: notes ? String(notes) : undefined,
+      notes: notes ? String(notes).slice(0, 1000) : undefined,
       scheduled_by_id: ctx.user.id,
       scheduled_by_name: ctx.user.name,
       created_at: new Date().toISOString(),
@@ -130,57 +164,24 @@ export async function POST(req: NextRequest) {
     };
     db.createScheduledInterview(interview);
 
+    // The candidate on WhatsApp and email, the interviewer, the rest of the round's reviewers, and HR.
+    const notified = school
+      ? await notifyInterviewScheduled({ school, candidate, interview, round: theRound, scheduledBy: ctx.user }).catch(() => ({ candidate_whatsapp: false, candidate_email: false, staff: [] }))
+      : { candidate_whatsapp: false, candidate_email: false, staff: [] };
+    db.updateScheduledInterview(interview.id, { notified });
+    interview.notified = notified;
+
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'INTERVIEW_SCHEDULED',
       resource: `Candidate: ${candidate.name} (${theRound.name})`,
-      details: `Assigned to ${assignedUser.name} at ${formatWhen(interview.scheduled_at)}.`
+      details: `Assigned to ${assignedUser.name} at ${formatWhen(interview.scheduled_at)} on ${provider === 'google_meet' ? 'Google Meet' : provider === 'pasted' ? 'a pasted link' : 'Jitsi'}. Told: ${[notified.candidate_whatsapp && 'candidate on WhatsApp', notified.candidate_email && 'candidate by email', ...notified.staff].filter(Boolean).join(', ') || 'nobody (no email or WhatsApp set up)'}.`
     });
-
-    // Best-effort candidate notification — scheduling itself always
-    // succeeds even if WhatsApp isn't connected or the candidate hasn't
-    // consented; the interview is still visible in their portal either way.
-    let whatsapp_notified = false;
-    if (candidate.phone) {
-      if (school?.whatsapp_hiring && school.whatsapp_hiring.status !== 'not_connected') {
-        // buttonParam is a magic-login token, not the bare candidate id —
-        // see the comment in /api/whatsapp/invite for why: it logs the
-        // candidate in on tap and lands them on their own portal, where the
-        // live meeting link and time are shown, rather than pointing at a
-        // page that would just bounce them to a manual login, or embedding
-        // the raw meeting URL inside the template body itself.
-        const result = await sendTemplateMessage({
-          school,
-          candidateId: candidate.id,
-          toRaw: candidate.phone,
-          template: 'round_scheduled',
-          bodyParams: [candidate.name, theRound.name, assignedUser.name, formatWhen(interview.scheduled_at)],
-          buttonParam: createCandidateMagicLinkToken(candidate.id, candidate.school_id)
-        }).catch(() => null);
-        whatsapp_notified = !!result?.ok;
-      }
-    }
-
-    // The assigned staff member (subject lead / principal / management)
-    // used to learn about this only by opening the app and happening to
-    // check — scheduling a slot here never told them anything. Best-effort
-    // like the candidate notification above: a missing RESEND_API_KEY
-    // never blocks scheduling, it just means nobody gets emailed.
-    const staffEmailResult = await sendEmail({
-      to: assignedUser.email,
-      subject: `Interview scheduled: ${candidate.name} (${theRound.name})`,
-      text: `Hi ${assignedUser.name},\n\nYou've been assigned to interview ${candidate.name} for the ${theRound.name} round.\n\nWhen: ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)\nMeeting link: ${interview.meeting_link}\n${interview.notes ? `\nNote from HR: ${interview.notes}\n` : ''}\nRecord your decision after the interview from your reviewer dashboard.\n\n— Edcruiter`,
-      // Names and notes are typed by people, so they are escaped before they go into HTML.
-      html: `<p>Hi ${escapeHtml(assignedUser.name)},</p><p>You've been assigned to interview <strong>${escapeHtml(candidate.name)}</strong> for the <strong>${escapeHtml(theRound.name)}</strong> round.</p><p><strong>When:</strong> ${formatWhen(interview.scheduled_at)} (${interview.duration_minutes} min)<br/><strong>Meeting link:</strong> <a href="${escapeHtml(interview.meeting_link)}">${escapeHtml(interview.meeting_link)}</a></p>${interview.notes ? `<p><strong>Note from HR:</strong> ${escapeHtml(interview.notes)}</p>` : ''}<p>Record your decision after the interview from your reviewer dashboard.</p><p>— Edcruiter</p>`,
-      kind: 'interview',
-      fromName: school?.name,
-      replyTo: ctx.user.email,
-    }).catch(() => null);
 
     return NextResponse.json({
       success: true,
       interview,
-      whatsapp_notified,
-      staff_notified: staffEmailResult?.ok === true
+      notified,
+      ...(meetWarning ? { warning: meetWarning } : {}),
     }, { status: 201 });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to schedule interview' }, { status: 500 });

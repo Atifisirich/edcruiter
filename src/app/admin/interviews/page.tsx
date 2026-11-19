@@ -3,12 +3,42 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/ui';
-import { Calendar, CheckCircle2, Clock, ExternalLink, Loader2, ThumbsDown, User, Video, XCircle } from 'lucide-react';
+import { ArrowRight, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, Mail, MessageCircle, ThumbsDown, User, Users, Video, XCircle } from 'lucide-react';
 import { Candidate, InterviewRound, ScheduledInterview, UserRole } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { canDecideRound, roundResultOf } from '@/lib/reviewRounds';
 import { isAdmin } from '@/lib/permissions';
 import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
+
+type Notified = NonNullable<ScheduledInterview['notified']>;
+type Booked = { candidateName: string; notified: Notified; warning?: string; provider?: ScheduledInterview['meeting_provider'] };
+type Cleared = { candidate: Candidate; roundName: string; next: { id: string; name: string } | null; told: string[] };
+
+const PROVIDER: Record<NonNullable<ScheduledInterview['meeting_provider']>, string> = {
+  google_meet: 'Google Meet',
+  pasted: 'Your own link',
+  jitsi: 'Jitsi (free room)',
+};
+
+/** Who was told about a booking, in plain words. */
+function NotifiedLine({ n, candidateName }: { n: Notified; candidateName: string }) {
+  const channels = [n.candidate_whatsapp && 'WhatsApp', n.candidate_email && 'email'].filter(Boolean).join(' and ');
+  return (
+    <ul className="space-y-1 text-[11px]">
+      <li className={`flex items-center gap-1.5 ${channels ? 'text-emerald-800' : 'text-amber-800'}`}>
+        <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+        {channels ? `${candidateName} was told on ${channels}.` : `${candidateName} could not be reached. Share the meeting link with them yourself.`}
+      </li>
+      {(n.problems ?? []).map((p) => (
+        <li key={p} className="pl-5 text-amber-800">{p}</li>
+      ))}
+      <li className={`flex items-center gap-1.5 ${n.staff.length ? 'text-emerald-800' : 'text-slate-500'}`}>
+        <Mail className="w-3.5 h-3.5 shrink-0" />
+        {n.staff.length ? `Emailed: ${n.staff.join(', ')}.` : 'No staff email went out (email is not set up, or nobody else is in this round).'}
+      </li>
+    </ul>
+  );
+}
 
 type StaffMember = { id: string; name: string; email: string; role: UserRole; role_id: string; department?: string };
 
@@ -45,6 +75,10 @@ export default function LeadershipInterviewsPage() {
 
   // Decision form
   const [reason, setReason] = useState('');
+  const [meetMode, setMeetMode] = useState<'google' | 'paste'>('google');
+  const [google, setGoogle] = useState<{ connected: boolean; email?: string } | null>(null);
+  const [booked, setBooked] = useState<Booked | null>(null);
+  const [cleared, setCleared] = useState<Cleared | null>(null);
 
   const load = async () => {
     const [candRes, staffRes, intvRes] = await Promise.all([
@@ -55,12 +89,28 @@ export default function LeadershipInterviewsPage() {
     const candData = await candRes.json();
     const staffData = await staffRes.json();
     const intvData = await intvRes.json();
-    setCandidates(candData.candidates || []);
+    const fresh: Candidate[] = candData.candidates || [];
+    setCandidates(fresh);
     setStaff(staffData.staff || []);
     setInterviews(intvData.interviews || []);
+    return fresh;
   };
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load().then((fresh) => {
+      // Opened from a "book the next round" email: go straight to that teacher and round.
+      const q = new URLSearchParams(window.location.search);
+      const r = q.get('round');
+      const c = fresh.find((x) => x.id === q.get('candidate'));
+      if (r) setRound(r);
+      if (c) setSelected(c);
+    });
+    fetch(`/api/integrations/google-calendar?school_id=${schoolId}`)
+      .then((r) => r.json())
+      .then((d) => setGoogle({ connected: !!d.connected, email: d.email }))
+      .catch(() => setGoogle({ connected: false }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Only people who review this round can record its outcome, so only they are offered.
   const roundStaff = useMemo(
@@ -85,6 +135,8 @@ export default function LeadershipInterviewsPage() {
 
   const list = candidates.filter(inRound);
   const selectedInterview = selected ? interviewFor(selected.id, round) : undefined;
+  // Once this round has a yes or no, there is nothing left to book or record here.
+  const decidedHere = !!selected && !!roundResultOf(selected, round);
 
   const selectCandidate = (c: Candidate) => {
     setSelected(c);
@@ -95,6 +147,8 @@ export default function LeadershipInterviewsPage() {
     setCustomLink('');
     setSchedNotes('');
     setError('');
+    setBooked(null);
+    setCleared(null);
   };
 
   const schedule = async () => {
@@ -116,12 +170,13 @@ export default function LeadershipInterviewsPage() {
           assigned_user_id: assignedUserId,
           scheduled_at: new Date(scheduledAt).toISOString(),
           duration_minutes: duration,
-          meeting_link: customLink || undefined,
+          meeting_link: !google?.connected || meetMode === 'paste' ? customLink.trim() || undefined : undefined,
           notes: schedNotes || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not schedule the interview.');
+      setBooked({ candidateName: selected.name, notified: data.notified, warning: data.warning, provider: data.interview?.meeting_provider });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not schedule the interview.');
@@ -162,9 +217,13 @@ export default function LeadershipInterviewsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not record the decision.');
       setReason('');
-      await load();
-      const refreshed = candidates.find((c) => c.id === selected.id);
-      if (refreshed) setSelected(refreshed);
+      const fresh = await load();
+      const refreshed = fresh.find((c) => c.id === selected.id) || selected;
+      setSelected(refreshed);
+      setBooked(null);
+      if (decision === 'accepted') {
+        setCleared({ candidate: refreshed, roundName: currentRoundDef?.name || 'this', next: data.next_round ?? null, told: data.next_round_told ?? [] });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not record the decision.');
     } finally {
@@ -226,6 +285,49 @@ export default function LeadershipInterviewsPage() {
           </ul>
 
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+            {cleared && (
+              <div className="p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 space-y-2" aria-live="polite">
+                <p className="text-sm font-black text-emerald-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" /> {cleared.candidate.name} cleared the {cleared.roundName} round.
+                </p>
+                {cleared.next ? (
+                  <>
+                    <p className="text-xs text-emerald-900">
+                      Next is the <strong>{cleared.next.name}</strong> round.{' '}
+                      {cleared.told.length ? `${cleared.told.join(', ')} ${cleared.told.length === 1 ? 'was' : 'were'} emailed to book it.` : ''}
+                    </p>
+                    {(isAdmin(access?.me.role) || access?.me.role === 'HR') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = cleared.next!;
+                          const c = cleared.candidate;
+                          setRound(next.id);
+                          setView('queue');
+                          selectCandidate(c);
+                        }}
+                        className="brand-primary-btn px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5"
+                      >
+                        Book the {cleared.next.name} round now <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-emerald-900">
+                    That was the final round: the teacher is selected.{' '}
+                    {cleared.told.length ? `${cleared.told.join(', ')} ${cleared.told.length === 1 ? 'was' : 'were'} emailed to send the offer.` : 'Send the offer from their profile.'}{' '}
+                    <Link href={`/admin/candidates/${cleared.candidate.id}`} className="font-bold underline">Open their profile</Link>
+                  </p>
+                )}
+              </div>
+            )}
+            {booked && selected?.name === booked.candidateName && (
+              <div className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 space-y-1.5" aria-live="polite">
+                <p className="text-xs font-black text-emerald-900">Booked on {booked.provider ? PROVIDER[booked.provider] : 'a video call'}.</p>
+                {booked.notified && <NotifiedLine n={booked.notified} candidateName={booked.candidateName} />}
+                {booked.warning && <p className="text-[11px] text-amber-800">{booked.warning}</p>}
+              </div>
+            )}
             {!selected ? (
               <p className="text-xs text-slate-500">Select a teacher to schedule or record their {currentRoundDef?.name} interview.</p>
             ) : (
@@ -261,7 +363,7 @@ export default function LeadershipInterviewsPage() {
                   )}
                 </div>
 
-                {view === 'queue' && !selectedInterview && (
+                {view === 'queue' && !decidedHere && !selectedInterview && (
                   <div className="space-y-3 pt-3 border-t border-slate-100">
                     <p className="text-xs font-black text-slate-800 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-indigo-600" /> Schedule this interview</p>
                     <label className="block text-xs font-bold">Who is taking it
@@ -283,9 +385,42 @@ export default function LeadershipInterviewsPage() {
                         <input type="number" min={10} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
                       </label>
                     </div>
-                    <label className="block text-xs font-bold">Meeting link (optional)
-                      <input value={customLink} onChange={(e) => setCustomLink(e.target.value)} placeholder="Paste your own Google Meet link, or leave blank to auto-generate one" className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
-                    </label>
+                    <fieldset className="space-y-1.5">
+                      <legend className="text-xs font-bold mb-1">Video call</legend>
+                      {google?.connected ? (
+                        <>
+                          <label className="flex items-start gap-2 text-xs p-2.5 rounded-xl border border-slate-200 cursor-pointer">
+                            <input type="radio" name="meet" checked={meetMode === 'google'} onChange={() => setMeetMode('google')} className="mt-0.5 accent-indigo-600" />
+                            <span>
+                              <strong>Make a Google Meet for me</strong>
+                              <span className="block text-slate-500">Made in the calendar of {google.email}. Google also sends the candidate and the interviewer a calendar invite.</span>
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2 text-xs p-2.5 rounded-xl border border-slate-200 cursor-pointer">
+                            <input type="radio" name="meet" checked={meetMode === 'paste'} onChange={() => setMeetMode('paste')} className="mt-0.5 accent-indigo-600" />
+                            <span>
+                              <strong>Use my own link</strong>
+                              <span className="block text-slate-500">Zoom, Teams, or a Meet link you already made.</span>
+                            </span>
+                          </label>
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          Paste your own link, or leave it blank for a free Jitsi room.{' '}
+                          {isAdmin(access?.me.role)
+                            ? <Link href="/admin/settings#interviews" className="font-bold text-indigo-600">Connect Google Meet in Settings</Link>
+                            : 'Your school admin can connect Google Meet in Settings'}{' '}
+                          to get real Meet links.
+                        </p>
+                      )}
+                      {(!google?.connected || meetMode === 'paste') && (
+                        <input value={customLink} onChange={(e) => setCustomLink(e.target.value)} placeholder="https://meet.google.com/abc-defg-hij" aria-label="Meeting link" className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs" />
+                      )}
+                    </fieldset>
+                    <p className="text-[11px] text-slate-500 flex items-start gap-1.5">
+                      <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>When you book, the candidate gets the link on WhatsApp and email. The interviewer, everyone else who reviews {currentRoundDef?.name ?? 'this round'}, and HR are emailed.</span>
+                    </p>
                     <label className="block text-xs font-bold">Notes for the reviewer (optional)
                       <textarea value={schedNotes} onChange={(e) => setSchedNotes(e.target.value)} rows={2} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" placeholder="Anything the reviewer should know beforehand" />
                     </label>
@@ -297,7 +432,7 @@ export default function LeadershipInterviewsPage() {
                   </div>
                 )}
 
-                {view === 'queue' && selectedInterview && (
+                {view === 'queue' && !decidedHere && selectedInterview && (
                   <div className="space-y-3 pt-3 border-t border-slate-100">
                     <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-xs space-y-1.5">
                       <p className="font-black text-indigo-900">Scheduled with {selectedInterview.assigned_user_name}</p>
@@ -306,9 +441,12 @@ export default function LeadershipInterviewsPage() {
                         {new Date(selectedInterview.scheduled_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                         {' '}· {selectedInterview.duration_minutes} min
                       </p>
-                      <a href={selectedInterview.meeting_link} target="_blank" rel="noreferrer" className="text-indigo-700 font-bold underline inline-flex items-center gap-1">
-                        <Video className="w-3.5 h-3.5" /> {selectedInterview.meeting_link} <ExternalLink className="w-3 h-3" />
+                      <a href={selectedInterview.meeting_link} target="_blank" rel="noreferrer" className="text-indigo-700 font-bold underline inline-flex items-center gap-1 break-all">
+                        <Video className="w-3.5 h-3.5 shrink-0" />
+                        {selectedInterview.meeting_provider ? `${PROVIDER[selectedInterview.meeting_provider]}: ` : ''}{selectedInterview.meeting_link}
+                        <ExternalLink className="w-3 h-3 shrink-0" />
                       </a>
+                      {selectedInterview.notified && !booked && <NotifiedLine n={selectedInterview.notified} candidateName={selected.name} />}
                       {selectedInterview.notes && <p className="text-indigo-700">Note: {selectedInterview.notes}</p>}
                       <button type="button" onClick={() => cancelInterview(selectedInterview)} className="text-rose-600 font-bold inline-flex items-center gap-1 pt-1">
                         <XCircle className="w-3.5 h-3.5" /> Cancel this slot

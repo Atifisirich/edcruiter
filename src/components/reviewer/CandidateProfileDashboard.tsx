@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { copyApplicationMessage } from '@/components/admin/copyApplication';
 import {
   ArrowLeft, Check, CheckCircle2, Clock, Copy, Download, ExternalLink,
   FileText, Loader2, ShieldAlert, Sparkles, Video, X
@@ -94,12 +95,14 @@ export default function CandidateProfileDashboard({
 
   if (!isOpen && layout !== 'page') return null;
 
-  const handleCopyTestLink = () => {
-    const testUrl = `${window.location.origin}/candidate/${candidateId}`;
-    const code = candidate?.invite_code || candidateId;
-    navigator.clipboard.writeText(`Code: ${code}\nLink: ${testUrl}`);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const handleCopyTestLink = async () => {
+    try {
+      await copyApplicationMessage(candidateId);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      /* the button simply does not change */
+    }
   };
 
   // Each point once: the summary, the mismatches and the red flags used to repeat one another.
@@ -140,11 +143,12 @@ export default function CandidateProfileDashboard({
             </span>
             <button
               type="button"
-              onClick={handleCopyTestLink}
+              onClick={() => void handleCopyTestLink()}
+              title="Copies a message for the candidate: their sign-in link, and their application ID for if the link stops working"
               className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
             >
               {copiedLink ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedLink ? 'Copied' : 'Copy test code'}
+              {copiedLink ? 'Message copied' : 'Copy sign-in message'}
             </button>
             <a
               href={`/candidate/${candidateId}`}

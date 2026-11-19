@@ -58,7 +58,9 @@ describe('AI screening call rules', () => {
 
   it('sends the agent the school, the candidate\'s first name, the role and the numbered questions', () => {
     const v = callVariables({ name: 'Mansi Bhosle', applied_subject: 'English', applied_segment: 'Primary (Grades 1–5)' }, { name: 'Sloka' }, ['Q one?', 'Q two?']);
-    expect(v).toEqual({ language: 'English', candidate_name: 'Mansi', school_name: 'Sloka', role: 'English teacher, Primary', question_count: '2', questions: '1. Q one?\n2. Q two?' });
+    expect(v).toMatchObject({ language: 'English', candidate_name: 'Mansi', school_name: 'Sloka', role: 'English teacher, Primary', question_count: '2', questions: '1. Q one?\n2. Q two?', agent_name: 'Priya', max_minutes: '4' });
+    expect(v.greeting).toContain('Hello Mansi, this is Priya');
+    expect(v.greeting).toContain('Sloka');
     expect(callVariables({ name: 'A B', applied_subject: 'Hindi', applied_segment: '' }, { name: 'S' }, ['Q?'], 'Telugu').language).toBe('Telugu');
   });
 
@@ -97,5 +99,38 @@ describe('AI screening call rules', () => {
     expect(questionSetFor(s, { applied_subject: 'Physics', applied_segment: 'Senior Secondary (Grades 11–12, 16–18 yrs)' })).toMatchObject({ group: 'senior_secondary', own: true, questions: ['Senior question?'] });
     expect(questionSetFor(s, { applied_subject: 'accountant', applied_segment: '' })).toMatchObject({ group: 'non_teaching', questions: ['Office question?'] });
     expect(questionSetFor(s, { applied_subject: 'English', applied_segment: '', applied_grades: ['2', '3'] })).toMatchObject({ group: 'primary', own: false, questions: ['Main question?'] });
+  });
+
+  it('fills the school\'s own script and variables into what the agent gets', () => {
+    const parsed = parseScreeningSettings({
+      questions: ['Is {{salary_range}} a month fine for you?'],
+      requirements: ['Accepts {{salary_range}}'],
+      importance: ['must'],
+      script: {
+        agent_name: 'Anika', tone: 'formal', max_minutes: 3,
+        greeting: 'Namaste {{candidate_name}}, {{agent_name}} from {{school_name}} at {{campus}}.',
+        closing: 'Thanks {{candidate_full_name}}.',
+        school_info: 'Bus from {{campus}}.',
+        variables: [{ key: 'salary_range', value: 'Rs 30,000' }, { key: 'campus', value: 'Tukkuguda' }],
+      },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const v = callVariables({ name: 'Mansi Bhosle', applied_subject: 'English', applied_segment: '' }, { name: 'Sloka' }, parsed.settings.questions, 'English', parsed.settings.script);
+    expect(v.greeting).toBe('Namaste Mansi, Anika from Sloka at Tukkuguda.');
+    expect(v.closing).toBe('Thanks Mansi Bhosle.');
+    expect(v.school_info).toBe('Bus from Tukkuguda.');
+    expect(v.questions).toBe('1. Is Rs 30,000 a month fine for you?');
+    expect(v.tone).toMatch(/to the point/);
+    expect(v.max_minutes).toBe('3');
+  });
+
+  it('refuses unknown or badly named variables, and keeps the standard script when none is set', () => {
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { greeting: 'Hi {{nope}}' } }).ok).toBe(false);
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'Bad Key', value: 'x' }] } }).ok).toBe(false);
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'school_name', value: 'x' }] } }).ok).toBe(false);
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'campus', value: '' }] } }).ok).toBe(false);
+    expect(parseScreeningSettings({ questions: ['A fine {question}?'] }).ok).toBe(false);
+    expect(screeningSettingsOf(undefined).script.agent_name).toBe('Priya');
   });
 });

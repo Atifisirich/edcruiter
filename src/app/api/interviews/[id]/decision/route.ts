@@ -6,6 +6,7 @@ import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { decide } from '@/lib/hiringDecision';
 import { isAdmin } from '@/lib/permissions';
 import { roundsOf } from '@/lib/reviewRounds';
+import { notifyRoundCleared } from '@/lib/interviewNotify';
 
 /**
  * Records the outcome of a scheduled interview: the reviewer's yes or no and
@@ -72,6 +73,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? await notifyCandidateDeclined(ctx.schoolId, candidate.id)
       : undefined;
 
+    // A yes moves the teacher on: whoever runs the next round (and HR) is told to book it.
+    let nextUp: { id: string; name: string } | null | undefined;
+    let toldNext: string[] = [];
+    const passedRound = rounds.find((r) => r.id === round?.id);
+    if (passedRound && decision === 'accepted') {
+      const at = rounds.findIndex((r) => r.id === passedRound.id);
+      nextUp = rounds[at + 1] ?? null;
+      const school = db.getSchoolById(ctx.schoolId);
+      if (school) {
+        toldNext = await notifyRoundCleared({ school, candidate: candidate, round: passedRound, next: rounds[at + 1] ?? null, decidedBy: ctx.user, note: String(reason).trim() }).catch(() => []);
+      }
+    }
+
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'INTERVIEW_DECISION_RECORDED',
       resource: `Candidate: ${candidate.name} (${round.name})`,
@@ -83,6 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       message: outcome.message,
       candidate: db.getCandidateById(ctx.schoolId, candidate.id) || updated,
       candidate_notified: candidateNotified,
+      ...(nextUp !== undefined ? { next_round: nextUp, next_round_told: toldNext } : {}),
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to record decision' }, { status: 500 });

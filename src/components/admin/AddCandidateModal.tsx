@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Copy, Send, UserPlus, X } from 'lucide-react';
 import Link from 'next/link';
 import { buttonClass, inputClass, selectClass } from './ui';
 import { useAdmin } from './adminContext';
+import { fetchApplicationMessage, type ApplicationMessage } from './copyApplication';
 import GradePicker from './GradePicker';
 import { segmentFromGrades } from '@/lib/grades';
 import {
@@ -160,11 +161,20 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState<ApplicationMessage | null>(null);
   // The school vouches that it may contact this person; only then can an invite be sent for them.
   const [attested, setAttested] = useState(false);
   const [sendInvite, setSendInvite] = useState(true);
   const whatsappConnected = !!school?.whatsapp_hiring && school.whatsapp_hiring.status !== 'not_connected';
   const willSend = attested && sendInvite && whatsappConnected;
+
+  // The candidate's own sign-in link and a ready message, made on the server.
+  useEffect(() => {
+    if (!created) return;
+    let live = true;
+    fetchApplicationMessage(created.id).then((m) => { if (live) setMsg(m); }).catch(() => {});
+    return () => { live = false; setMsg(null); };
+  }, [created]);
 
   if (!isOpen) return null;
 
@@ -254,17 +264,15 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
     }
   };
 
-  const link = created && typeof window !== 'undefined' ? `${window.location.origin}/candidate/${created.id}` : '';
-
-  const copy = async () => {
-    if (!created) return;
+  const copyText = async (text: string, what: string) => {
     try {
-      await navigator.clipboard.writeText(`Code: ${created.code}\nLink: ${link}`);
-      toast('Code and link copied.', 'success');
+      await navigator.clipboard.writeText(text);
+      toast(`${what} copied.`, 'success');
     } catch {
       toast('Could not copy. Select the text and copy it.', 'error');
     }
   };
+  const copy = () => msg && copyText(msg.message, 'Message with the link and application ID');
 
   const sendOnWhatsApp = async () => {
     if (!created) return;
@@ -309,7 +317,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
                   </>
                 ) : (
                   <>
-                    <strong>{created.name}</strong> is added. Send them this test code or link.
+                    <strong>{created.name}</strong> is added. Send them the message below on WhatsApp or email.
                     {created.invite && !created.invite.sent && (
                       <span className="block mt-1 text-amber-800">
                         {INVITE_PROBLEM[created.invite.reason || ''] || created.invite.detail || 'The WhatsApp invite could not be sent.'}
@@ -320,15 +328,29 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
               </p>
             </div>
             <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100 text-sm">
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="text-slate-500">Test code</dt>
-                <dd className="font-mono font-semibold text-slate-900">{created.code}</dd>
+              <div className="px-4 py-3 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="font-semibold text-slate-800">Sign-in link</dt>
+                  {msg && <button type="button" onClick={() => copyText(msg.link, 'Sign-in link')} className={buttonClass('ghost', 'sm')}><Copy className="w-3.5 h-3.5" /> Copy</button>}
+                </div>
+                <dd className="font-mono text-xs text-slate-600 break-all">{msg ? msg.link : 'Making the link…'}</dd>
+                <p className="text-xs text-slate-500">Opens their application straight away, no password. Works for {msg?.valid_days ?? 7} days. Only for {created.name}: do not share it.</p>
               </div>
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <dt className="text-slate-500">Link</dt>
-                <dd className="font-mono text-xs text-slate-700 truncate max-w-[16rem]">{link}</dd>
+              <div className="px-4 py-3 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="font-semibold text-slate-800">Application ID</dt>
+                  <button type="button" onClick={() => copyText(created.code, 'Application ID')} className={buttonClass('ghost', 'sm')}><Copy className="w-3.5 h-3.5" /> Copy</button>
+                </div>
+                <dd className="font-mono font-semibold text-slate-900">{created.code}</dd>
+                <p className="text-xs text-slate-500">If the link stops working, they open {msg?.login_url ?? 'the sign-in page'} and type this with the mobile number or email they applied with.</p>
               </div>
             </dl>
+            {msg && (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-semibold text-slate-700">See the message that will be copied</summary>
+                <pre className="mt-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap break-all font-sans">{msg.message}</pre>
+              </details>
+            )}
             {!whatsappReady && (
               <p className="text-sm text-slate-600">
                 Want to send it from your school’s number?{' '}
@@ -338,8 +360,8 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
               </p>
             )}
             <div className="flex flex-wrap gap-2 justify-end">
-              <button type="button" onClick={copy} className={buttonClass('secondary')}>
-                <Copy className="w-4 h-4" /> Copy code and link
+              <button type="button" onClick={copy} disabled={!msg} className={buttonClass('secondary')}>
+                <Copy className="w-4 h-4" /> Copy the message
               </button>
               {whatsappReady && (
                 <button type="button" onClick={sendOnWhatsApp} disabled={sending} className={buttonClass('primary')}>

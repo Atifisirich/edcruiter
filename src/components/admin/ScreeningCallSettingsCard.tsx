@@ -3,12 +3,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, Bell, CalendarClock, CheckCircle2, Clock, Copy, FlaskConical, Languages, ListChecks, Mail, PhoneCall,
-  PhoneMissed, RotateCcw, ShieldCheck, Wallet, X,
+  MessageSquareText, PhoneMissed, RotateCcw, ShieldCheck, Wallet, X,
 } from 'lucide-react';
 import { Card, CardHeader, SaveBar, buttonClass, inputClass } from './ui';
 import { useAdmin } from './adminContext';
 import ScreeningQuestionsEditor from './ScreeningQuestionsEditor';
 import ScreeningTrial from './ScreeningTrial';
+import ScreeningScriptEditor from './ScreeningScriptEditor';
 import { MAX_SCREENING_QUESTIONS } from '@/lib/screeningCall';
 import type { FullScreeningSettings } from '@/lib/screeningCall';
 import {
@@ -29,6 +30,7 @@ type Loaded = {
 
 const TABS = [
   { key: 'when', label: 'When to call', Icon: CalendarClock },
+  { key: 'script', label: 'Call script', Icon: MessageSquareText },
   { key: 'questions', label: 'Questions', Icon: ListChecks },
   { key: 'after', label: 'After the call', Icon: CheckCircle2 },
   { key: 'missed', label: 'Missed calls', Icon: PhoneMissed },
@@ -88,7 +90,7 @@ const copySet = (s: ScreeningQuestionSet): ScreeningQuestionSet => ({ questions:
 
 /** The school's AI screening call: who is called and when, what is asked for each kind of post, what happens after, and the limits. */
 export default function ScreeningCallSettingsCard() {
-  const { schoolId, toast } = useAdmin();
+  const { schoolId, school, toast } = useAdmin();
   const [data, setData] = useState<Loaded | null>(null);
   const [s, setS] = useState<FullScreeningSettings | null>(null);
   const [owner, setOwner] = useState({ price_per_min_inr: 0, owner_cap_inr: 0 });
@@ -535,6 +537,10 @@ export default function ScreeningCallSettingsCard() {
                 </Section>
               )}
             </>
+          )}
+
+          {tab === 'script' && (
+            <ScreeningScriptEditor value={s.script} onChange={(script) => patch((p) => ({ ...p, script }))} schoolName={school?.name || 'Your school'} firstQuestion={s.questions[0]} />
           )}
 
           {tab === 'try' && <ScreeningTrial rules={s.rules} setFor={setFor} />}

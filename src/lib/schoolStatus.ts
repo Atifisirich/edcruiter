@@ -44,8 +44,19 @@ export function stripProtectedSchoolFields(
   updates: Record<string, unknown>,
   isSuperAdmin: boolean
 ): Record<string, unknown> {
-  if (isSuperAdmin) return { ...updates };
-  const clean: Record<string, unknown> = { ...updates };
+  // The Google Calendar connection is only ever set by its own connect and disconnect routes.
+  const rest: Record<string, unknown> = { ...updates };
+  delete rest.google_calendar;
+  if (isSuperAdmin) return { ...rest };
+  const clean: Record<string, unknown> = { ...rest };
   for (const key of PROTECTED_SCHOOL_FIELDS) delete clean[key];
   return clean;
+}
+
+/** A school as it may be sent to a browser: the Google permission never leaves the server. */
+export function schoolForClient<T extends { google_calendar?: { refresh_token_encrypted?: string } }>(school: T): T {
+  if (!school.google_calendar) return school;
+  const safe: { refresh_token_encrypted?: string } = { ...school.google_calendar };
+  delete safe.refresh_token_encrypted;
+  return { ...school, google_calendar: safe };
 }

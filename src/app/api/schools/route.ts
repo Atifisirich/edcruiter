@@ -4,7 +4,7 @@ import { School } from '@/lib/types';
 import { SLOKA_DEFAULT_STAGES } from '@/lib/defaultData';
 import { formatWhatsAppDisplay, toWhatsAppE164 } from '@/lib/whatsapp';
 import { authErrorResponse, auditAsStaff, requireNewSignup, requireSchoolAccess, requireStaff } from '@/lib/auth';
-import { stripProtectedSchoolFields } from '@/lib/schoolStatus';
+import { schoolForClient, stripProtectedSchoolFields } from '@/lib/schoolStatus';
 import { parseSeatLimits, SEAT_TYPES } from '@/lib/seats';
 
 export async function GET(req: NextRequest) {
@@ -19,14 +19,14 @@ export async function GET(req: NextRequest) {
       }
       const school = db.getSchoolById(schoolId);
       if (!school) return NextResponse.json({ error: 'School not found' }, { status: 404 });
-      return NextResponse.json({ school });
+      return NextResponse.json({ school: schoolForClient(school) });
     }
 
     // Listing every tenant is a platform operation only.
     if (!ctx.isSuperAdmin) {
       return NextResponse.json({ error: 'Only platform administrators can list all schools.' }, { status: 403 });
     }
-    return NextResponse.json({ schools: db.getSchools() });
+    return NextResponse.json({ schools: db.getSchools().map(schoolForClient) });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch schools' }, { status: 500 });
   }
@@ -188,7 +188,7 @@ export async function PUT(req: NextRequest) {
       details: 'Updated school configuration settings (branches, stages, rubrics).'
     });
 
-    return NextResponse.json({ school: updated });
+    return NextResponse.json({ school: schoolForClient(updated) });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to update school' }, { status: 500 });
   }

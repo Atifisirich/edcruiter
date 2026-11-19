@@ -8,6 +8,7 @@ import { credentialsFromCandidate } from '@/lib/credentials';
 import { bandForScore, type ShortlistBand } from '@/lib/shortlistBands';
 import { candidateState, TEST_STAGE_COUNT } from '@/lib/candidateProgress';
 import { Badge, StepDots, buttonClass, type Tone } from './ui';
+import { copyApplicationMessage } from './copyApplication';
 import { useAdmin } from './adminContext';
 
 const BAND_TONE: Record<ShortlistBand['tone'], Tone> = { danger: 'rose', warning: 'amber', success: 'emerald' };
@@ -37,10 +38,9 @@ export default function CandidateTable({
   if (candidates.length === 0) return <>{emptyState}</>;
 
   const copyInvite = async (c: Candidate) => {
-    const url = `${window.location.origin}/candidate/${c.id}`;
     try {
-      await navigator.clipboard.writeText(`Code: ${c.invite_code || c.id}\nLink: ${url}`);
-      toast(`Test code and link for ${c.name} copied.`, 'success');
+      await copyApplicationMessage(c.id);
+      toast(`Message for ${c.name} copied: their sign-in link and application ID. Paste it into WhatsApp or email.`, 'success');
     } catch {
       toast('Could not copy. Open the candidate and copy it from there.', 'error');
     }
@@ -177,8 +177,8 @@ export default function CandidateTable({
                         type="button"
                         onClick={() => void copyInvite(c)}
                         className={`${buttonClass('ghost', 'sm')} px-2!`}
-                        title="Copy the test code and link"
-                        aria-label={`Copy test code and link for ${c.name}`}
+                        title="Copy a message for the candidate with their sign-in link and application ID"
+                        aria-label={`Copy sign-in message for ${c.name}`}
                       >
                         <Copy className="w-4 h-4" />
                       </button>
