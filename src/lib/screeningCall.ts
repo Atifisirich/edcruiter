@@ -24,7 +24,7 @@ import type {
   ScreeningLanguage, ScreeningQuestionSet,
 } from './types';
 import { cleanImportance, cleanRequirements, GROUP_KEYS, groupOf, normalizeRules } from './screeningFlow';
-import { checkTemplate, DEFAULT_SCRIPT, fillTemplate, knownKeys, parseScript, roleText, scriptOf, TONES, variableValues } from './callScript';
+import { checkTemplate, DEFAULT_SCRIPT, fillTemplate, knownKeys, parseScript, roleText, rulesText, schoolFactsText, scriptOf, TONES, variableValues } from './callScript';
 import type { CallScript } from './types';
 
 export const STARTER_SCREENING_QUESTIONS = [
@@ -255,8 +255,8 @@ export function callVariables(
     tone: TONES.find((t) => t.value === script.tone)!.help,
     greeting: fill(script.greeting),
     closing: fill(script.closing),
-    school_info: fill(script.school_info) || 'Nothing extra. If asked something you do not know, say the school team will answer it.',
-    instructions: fill(script.instructions) || 'None.',
+    school_info: schoolFactsText(script, values) || 'Nothing extra. If asked something you do not know, say the school team will answer it.',
+    instructions: rulesText(script, values) || 'None.',
     max_minutes: String(script.max_minutes),
   };
 }
@@ -407,7 +407,7 @@ export async function demoTranscript(
   const values = variableValues(script, candidate, school);
   const greeting = fillTemplate(script.greeting, values);
   const closing = fillTemplate(script.closing, values);
-  const info = fillTemplate(script.school_info, values);
+  const info = schoolFactsText(script, values);
   const tone = TONES.find((t) => t.value === script.tone)!.help;
   const known = [
     candidate.notice_period && `notice period ${candidate.notice_period}`,

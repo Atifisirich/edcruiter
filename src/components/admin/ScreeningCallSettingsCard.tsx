@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight, Bell, CalendarClock, CheckCircle2, Clock, Copy, FlaskConical, Languages, ListChecks, Mail, PhoneCall,
+  ArrowRight, Bell, CalendarClock, CheckCircle2, Clock, Copy, FlaskConical, ListChecks, Mail, PhoneCall,
   MessageSquareText, PhoneMissed, RotateCcw, ShieldCheck, Wallet, X,
 } from 'lucide-react';
 import { Card, CardHeader, SaveBar, buttonClass, inputClass } from './ui';
@@ -16,7 +16,7 @@ import {
   describeRules, GROUPS, HOLD_DAY_CHOICES, hourText, matchingPreset, MAX_CALLBACKS, MAX_RETRIES,
   RULE_PRESETS, STARTER_SETS,
 } from '@/lib/screeningFlow';
-import type { ScreeningAction, ScreeningGroup, ScreeningLanguage, ScreeningQuestionSet, ScreeningRules } from '@/lib/types';
+import type { ScreeningAction, ScreeningGroup, ScreeningQuestionSet, ScreeningRules } from '@/lib/types';
 
 type Loaded = {
   settings: FullScreeningSettings;
@@ -50,13 +50,6 @@ const CHOICES: { value: ScreeningAction; label: string }[] = [
   { value: 'hold', label: 'Wait for HR to approve the link' },
   { value: 'suggest_decline', label: 'Suggest a decline (HR approves)' },
   { value: 'flag', label: 'Send nothing, flag for HR' },
-];
-
-const LANGUAGES: { value: ScreeningLanguage; label: string }[] = [
-  { value: 'English', label: 'English' },
-  { value: 'Hindi', label: 'Hindi' },
-  { value: 'Telugu', label: 'Telugu' },
-  { value: 'auto', label: 'The candidate’s language (English, else Hindi, else Telugu)' },
 ];
 
 const field = 'flex flex-col gap-1 text-xs font-semibold text-slate-600';
@@ -278,13 +271,6 @@ export default function ScreeningCallSettingsCard() {
                 <p className="text-xs text-slate-500">Teachers are in class during the day. Many schools call from 3 pm to 8 pm; the AI also books a call-back when someone says “call me later”.</p>
               </Section>
 
-              <Section title="Language" Icon={Languages}>
-                <label className={`${field} sm:max-w-md`}>The AI speaks
-                  <select value={s.language} onChange={(e) => patch((p) => ({ ...p, language: e.target.value as ScreeningLanguage }))} className={select}>
-                    {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-                  </select>
-                </label>
-              </Section>
             </>
           )}
 
@@ -312,7 +298,7 @@ export default function ScreeningCallSettingsCard() {
 
               {qGroup === 'main' ? (
                 <Section title="Main questions" help="Asked for every post that has no list of its own.">
-                  <ScreeningQuestionsEditor value={mainSet} max={MAX_SCREENING_QUESTIONS} onChange={(v) => patch((p) => ({ ...p, ...v }))} />
+                  <ScreeningQuestionsEditor script={s.script} value={mainSet} max={MAX_SCREENING_QUESTIONS} onChange={(v) => patch((p) => ({ ...p, ...v }))} />
                 </Section>
               ) : (() => {
                 const g = GROUPS.find((x) => x.key === qGroup)!;
@@ -351,7 +337,7 @@ export default function ScreeningCallSettingsCard() {
                             <X className="w-3.5 h-3.5" /> Use the main questions instead
                           </button>
                         </div>
-                        <ScreeningQuestionsEditor value={own} max={MAX_SCREENING_QUESTIONS} onChange={(v) => patch((p) => ({ ...p, sets: { ...p.sets, [qGroup]: v } }))} />
+                        <ScreeningQuestionsEditor script={s.script} value={own} max={MAX_SCREENING_QUESTIONS} onChange={(v) => patch((p) => ({ ...p, sets: { ...p.sets, [qGroup]: v } }))} />
                       </>
                     ) : (
                       <div className="p-4 rounded-xl border border-dashed border-slate-300 text-sm text-slate-600 space-y-3">
@@ -540,7 +526,7 @@ export default function ScreeningCallSettingsCard() {
           )}
 
           {tab === 'script' && (
-            <ScreeningScriptEditor value={s.script} onChange={(script) => patch((p) => ({ ...p, script }))} schoolName={school?.name || 'Your school'} firstQuestion={s.questions[0]} />
+            <ScreeningScriptEditor value={s.script} onChange={(script) => patch((p) => ({ ...p, script }))} language={s.language} onLanguage={(language) => patch((p) => ({ ...p, language }))} schoolName={school?.name || 'Your school'} firstQuestion={s.questions[0]} />
           )}
 
           {tab === 'try' && <ScreeningTrial rules={s.rules} setFor={setFor} />}

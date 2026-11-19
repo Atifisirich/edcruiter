@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { buttonClass, inputClass } from './ui';
-import type { QuestionImportance, ScreeningQuestionSet } from '@/lib/types';
+import { blanksOf, fromDisplay, toDisplay } from '@/lib/callScript';
+import type { CallScript, QuestionImportance, ScreeningQuestionSet } from '@/lib/types';
 
 const IMPORTANCE: { value: QuestionImportance; label: string; help: string; cls: string }[] = [
   { value: 'must', label: 'Must have', help: 'Not met: the result is Not suitable', cls: 'border-rose-300 bg-rose-50 text-rose-800' },
@@ -12,8 +13,24 @@ const IMPORTANCE: { value: QuestionImportance; label: string; help: string; cls:
 ];
 
 /** One list of call questions: the wording, how much each matters, and what answer the school wants to hear. */
-export default function ScreeningQuestionsEditor({ value, onChange, max }: { value: ScreeningQuestionSet; onChange: (v: ScreeningQuestionSet) => void; max: number }) {
+export default function ScreeningQuestionsEditor({
+  value, onChange, max, script,
+}: { value: ScreeningQuestionSet; onChange: (v: ScreeningQuestionSet) => void; max: number; script?: CallScript }) {
   const { questions, requirements, importance } = value;
+  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  // With the school's script known, its blanks read as [Salary range] here, never as braces.
+  const shown = (t: string) => (script ? toDisplay(t, script) : t);
+  const stored = (t: string) => (script ? fromDisplay(t, script) : t);
+  const blanks = script ? blanksOf(script) : [];
+  const insertBlank = (i: number, label: string) => {
+    const el = inputs.current[i];
+    const text = shown(questions[i] ?? '');
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    const token = `[${label}]`;
+    update(i, { q: stored(text.slice(0, start) + token + text.slice(end)) });
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + token.length, start + token.length); });
+  };
   const update = (i: number, patch: Partial<{ q: string; r: string; imp: QuestionImportance }>) =>
     onChange({
       questions: questions.map((x, j) => (j === i && patch.q !== undefined ? patch.q : x)),
@@ -44,13 +61,25 @@ export default function ScreeningQuestionsEditor({ value, onChange, max }: { val
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-400 w-5 text-right shrink-0">{i + 1}.</span>
                 <input
-                  value={q}
-                  onChange={(e) => update(i, { q: e.target.value })}
+                  ref={(el) => { inputs.current[i] = el; }}
+                  value={shown(q)}
+                  onChange={(e) => update(i, { q: stored(e.target.value) })}
                   maxLength={200}
                   placeholder="Type the question the AI asks"
                   aria-label={`Question ${i + 1}`}
                   className={inputClass}
                 />
+                {script && (
+                  <select
+                    value=""
+                    aria-label={`Add a blank to question ${i + 1}`}
+                    onChange={(e) => { if (e.target.value) insertBlank(i, e.target.value); }}
+                    className="w-28 shrink-0 px-2 py-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-semibold cursor-pointer"
+                  >
+                    <option value="">＋ Blank</option>
+                    {blanks.map((b) => <option key={b.key} value={b.label}>{b.label}</option>)}
+                  </select>
+                )}
                 <button type="button" onClick={() => remove(i)} aria-label={`Remove question ${i + 1}`} className={buttonClass('ghost', 'sm')}>
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -72,8 +101,8 @@ export default function ScreeningQuestionsEditor({ value, onChange, max }: { val
                   <label className="text-[11px] font-semibold text-slate-500">
                     The answer you want to hear
                     <input
-                      value={requirements[i] ?? ''}
-                      onChange={(e) => update(i, { r: e.target.value })}
+                      value={shown(requirements[i] ?? '')}
+                      onChange={(e) => update(i, { r: stored(e.target.value) })}
                       maxLength={200}
                       placeholder="e.g. 60 days or less"
                       aria-label={`Answer wanted for question ${i + 1}`}

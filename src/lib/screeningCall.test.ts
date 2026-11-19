@@ -119,7 +119,7 @@ describe('AI screening call rules', () => {
     const v = callVariables({ name: 'Mansi Bhosle', applied_subject: 'English', applied_segment: '' }, { name: 'Sloka' }, parsed.settings.questions, 'English', parsed.settings.script);
     expect(v.greeting).toBe('Namaste Mansi, Anika from Sloka at Tukkuguda.');
     expect(v.closing).toBe('Thanks Mansi Bhosle.');
-    expect(v.school_info).toBe('Bus from Tukkuguda.');
+    expect(v.school_info).toBe('Salary range: Rs 30,000\nCampus: Tukkuguda\nBus from Tukkuguda.');
     expect(v.questions).toBe('1. Is Rs 30,000 a month fine for you?');
     expect(v.tone).toMatch(/to the point/);
     expect(v.max_minutes).toBe('3');
@@ -127,9 +127,10 @@ describe('AI screening call rules', () => {
 
   it('refuses unknown or badly named variables, and keeps the standard script when none is set', () => {
     expect(parseScreeningSettings({ questions: ['A fine question?'], script: { greeting: 'Hi {{nope}}' } }).ok).toBe(false);
-    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'Bad Key', value: 'x' }] } }).ok).toBe(false);
+    // A detail with a name and no value yet is dropped, not refused.
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'campus', value: '' }] } })).toMatchObject({ ok: true, settings: { script: { variables: [] } } });
     expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'school_name', value: 'x' }] } }).ok).toBe(false);
-    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'campus', value: '' }] } }).ok).toBe(false);
+    expect(parseScreeningSettings({ questions: ['A fine question?'], script: { variables: [{ key: 'Bad Key', value: 'x' }] } }).ok).toBe(false);
     expect(parseScreeningSettings({ questions: ['A fine {question}?'] }).ok).toBe(false);
     expect(screeningSettingsOf(undefined).script.agent_name).toBe('Priya');
   });

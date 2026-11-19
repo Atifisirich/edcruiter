@@ -305,8 +305,19 @@ export interface CallScript {
   instructions: string;
   /** The AI wraps up after about this many minutes. */
   max_minutes: number;
-  /** The school's own variables, used as {{key}}. */
-  variables: { key: string; value: string }[];
+  /** The school's own details (a "fact" the school fills in once), used in texts as {{key}}. */
+  variables: CallVariable[];
+  /** Ready-made rules the school ticked (see RULE_PRESETS in callScript.ts). */
+  rule_flags?: string[];
+}
+
+export interface CallVariable {
+  key: string;
+  /** The name the school sees, e.g. "Salary range". Absent: made from the key. */
+  label?: string;
+  value: string;
+  /** May the AI tell a candidate this if they ask? Absent: yes. */
+  share?: boolean;
 }
 
 /** A request for help sent to the Edcruiter team from the help bot. */
