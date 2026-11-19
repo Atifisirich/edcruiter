@@ -24,6 +24,12 @@ export default function CandidateReportPage() {
 
   return (
     <>
+      {candidate && (
+        <a href="#ai-interview" className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-sm text-indigo-900 hover:bg-indigo-100 transition-colors">
+          <span><strong>AI interview</strong>: invite {candidate.name.split(' ')[0]} to a spoken interview, try it yourself, or read the report.</span>
+          <span className="font-bold shrink-0">Go to it ↓</span>
+        </a>
+      )}
       <CandidateProfileModal
         layout="page"
         isOpen

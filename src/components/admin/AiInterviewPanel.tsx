@@ -65,7 +65,7 @@ export default function AiInterviewPanel({ candidateId, candidateName }: { candi
   const rec = r ? REC[r.recommendation] : null;
 
   return (
-    <section className="mt-8 bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4" aria-label="AI interview">
+    <section id="ai-interview" className="mt-8 scroll-mt-6 bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4" aria-label="AI interview">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-0.5">
           <h2 className="text-base font-black text-slate-900 flex items-center gap-2"><Mic className="w-4 h-4 text-indigo-600" /> AI interview</h2>
