@@ -5,6 +5,7 @@ import { warmPack } from '@/lib/ensurePack';
 import { sendApplicationLinks, sendAssessmentInvite } from '@/lib/assessmentInvite';
 import { db } from '@/lib/db';
 import { invitedInterview } from '@/lib/aiInterview';
+import { cleanMode } from '@/lib/interviewMode';
 import { Candidate } from '@/lib/types';
 import { makeInviteCode } from '@/lib/inviteCode';
 import { cleanGrades, segmentFromGrades } from '@/lib/grades';
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
 
       const createdList: Candidate[] = [];
       let skipped = 0;
+      const importMode = cleanMode(body.interview_mode);
       for (const item of rows) {
         // A lead needs a name and some way to reach them. An email is not
         // required: a teacher with only a phone number is a normal lead.
@@ -119,6 +121,11 @@ export async function POST(req: NextRequest) {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
+        const rowMode = cleanMode(item.interview_mode) ?? importMode;
+        if (rowMode && rowMode !== 'five_stage') {
+          newCand.interview_mode = rowMode;
+          newCand.ai_interview = invitedInterview(newCand);
+        }
         db.createCandidate(newCand);
         db.setConsent({
           candidate_id: newCand.id,
@@ -237,7 +244,8 @@ export async function POST(req: NextRequest) {
     const vacancy = typeof requestedJobId === 'string' ? db.getJobById(requestedJobId) : undefined;
     const job_id = vacancy && vacancy.school_id === school_id ? vacancy.id : undefined;
     // What this person goes through is whatever the vacancy they applied for says.
-    const interview_mode = job_id ? vacancy?.interview_mode : undefined;
+    // A school adding someone by hand picks it itself; an applicant gets their vacancy's choice.
+    const interview_mode = (staffCtx ? cleanMode(body.interview_mode) : undefined) ?? (job_id ? vacancy?.interview_mode : undefined);
     // Nobody new applies to a vacancy the school has closed (staff adding someone by hand still can).
     if (!staffCtx && vacancy && job_id && vacancy.status === 'closed') {
       return NextResponse.json({ error: 'This vacancy has been closed and is no longer taking applications.' }, { status: 410 });

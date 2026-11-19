@@ -198,3 +198,28 @@ describe('what an applicant goes through', () => {
     expect(createCandidate.mock.calls[0][0].interview_mode).toBeUndefined();
   });
 });
+
+describe('a school choosing the interview for someone it adds by hand', () => {
+  it('gives them the AI interview and invites them to it', async () => {
+    staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
+    await post({ ...lead, school_attested: true, interview_mode: 'ai' });
+    const made = createCandidate.mock.calls[0][0];
+    expect(made.interview_mode).toBe('ai');
+    expect(made.ai_interview.status).toBe('invited');
+  });
+  it('keeps the usual test when they choose it, or choose nothing', async () => {
+    staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
+    await post({ ...lead, school_attested: true, interview_mode: 'five_stage' });
+    await post({ ...lead, school_attested: true });
+    for (const call of createCandidate.mock.calls) {
+      expect(call[0].interview_mode).toBeUndefined();
+      expect(call[0].ai_interview).toBeUndefined();
+    }
+  });
+  it('their own choice wins over the vacancy they were added under', async () => {
+    vacancies = { job_1: { id: 'job_1', school_id: 's1', status: 'active', interview_mode: 'ai' } };
+    staff = { user: { id: 'u1', name: 'Admin' }, role: 'SCHOOL_ADMIN' };
+    await post({ ...lead, school_attested: true, job_id: 'job_1', interview_mode: 'both' });
+    expect(createCandidate.mock.calls[0][0].interview_mode).toBe('both');
+  });
+});

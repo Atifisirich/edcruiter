@@ -8,6 +8,8 @@ import {
 import * as XLSX from 'xlsx';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { flagDuplicateLeads, type CvLead } from '@/lib/cvLead';
+import InterviewModePicker from '@/components/admin/InterviewModePicker';
+import type { InterviewMode } from '@/lib/types';
 
 interface ParsedCandidate {
   name: string;
@@ -188,6 +190,7 @@ export default function ExcelCandidateUploaderModal({
   const [contactAttested, setContactAttested] = useState(false);
   // Send each teacher their WhatsApp test invite straight after the import.
   const [sendInvites, setSendInvites] = useState(true);
+  const [interviewMode, setInterviewMode] = useState<InterviewMode>('five_stage');
   const [inviteResult, setInviteResult] = useState<{
     summary?: { sent: number; already_invited: number; no_phone: number; no_consent: number; waiting_for_daily_limit: number; failed: number };
     firstFailure?: string;
@@ -349,6 +352,7 @@ export default function ExcelCandidateUploaderModal({
         body: JSON.stringify({
           school_id: schoolId,
           school_attested: true,
+          interview_mode: interviewMode,
           candidates: parsedRows.map((row) => ({
             school_id: schoolId,
             name: row.name,
@@ -603,6 +607,8 @@ export default function ExcelCandidateUploaderModal({
                 {incompleteCount} row{incompleteCount === 1 ? '' : 's'} need a name and a phone or email. Fix or remove {incompleteCount === 1 ? 'it' : 'them'} to import.
               </p>
             )}
+
+            <InterviewModePicker value={interviewMode} onChange={setInterviewMode} legend={`How should these ${parsedRows.length} candidates be assessed?`} note="Everyone in this import gets the same. You can invite any one of them to the AI interview later from their page." />
 
             <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-700 cursor-pointer">
               <input

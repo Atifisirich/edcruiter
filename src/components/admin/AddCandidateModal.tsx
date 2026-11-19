@@ -8,6 +8,8 @@ import { useAdmin } from './adminContext';
 import { fetchApplicationMessage, type ApplicationMessage } from './copyApplication';
 import GradePicker from './GradePicker';
 import { segmentFromGrades } from '@/lib/grades';
+import InterviewModePicker from '@/components/admin/InterviewModePicker';
+import type { InterviewMode } from '@/lib/types';
 import {
   BACHELOR_DEGREES,
   BOARDS,
@@ -164,6 +166,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
   const [msg, setMsg] = useState<ApplicationMessage | null>(null);
   // The school vouches that it may contact this person; only then can an invite be sent for them.
   const [attested, setAttested] = useState(false);
+  const [interviewMode, setInterviewMode] = useState<InterviewMode>('five_stage');
   const [sendInvite, setSendInvite] = useState(true);
   const whatsappConnected = !!school?.whatsapp_hiring && school.whatsapp_hiring.status !== 'not_connected';
   const willSend = attested && sendInvite && whatsappConnected;
@@ -245,6 +248,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
           status: 'in_progress',
           school_attested: attested,
           send_invite: willSend,
+          interview_mode: interviewMode,
         }),
       });
       const data = await res.json();
@@ -518,6 +522,8 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
                 </div>
               </fieldset>
             </div>
+
+            <InterviewModePicker value={interviewMode} onChange={setInterviewMode} legend="How should this person be assessed?" note="They will see what you pick here when they open their application link. You can also invite them to the AI interview later from their page." />
 
             <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <label className="flex items-start gap-3 cursor-pointer">

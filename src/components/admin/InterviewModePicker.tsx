@@ -6,10 +6,10 @@ import { INTERVIEW_MODES, MODE_HELP, MODE_LABEL } from '@/lib/interviewMode';
 import type { InterviewMode } from '@/lib/types';
 
 /** Three clear choices for how applicants to a vacancy are assessed. */
-export default function InterviewModePicker({ value, onChange }: { value: InterviewMode; onChange: (mode: InterviewMode) => void }) {
+export default function InterviewModePicker({ value, onChange, legend = 'How should applicants be assessed?', note = 'The link you share is the same either way. Applicants are taken through what you pick here.' }: { value: InterviewMode; onChange: (mode: InterviewMode) => void; legend?: string; note?: string }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-xs font-bold text-slate-700 mb-1.5">How should applicants be assessed?</legend>
+      <legend className="text-xs font-bold text-slate-700 mb-1.5">{legend}</legend>
       <div className="grid grid-cols-1 gap-2">
         {INTERVIEW_MODES.map((m) => {
           const on = value === m;
@@ -25,7 +25,7 @@ export default function InterviewModePicker({ value, onChange }: { value: Interv
           );
         })}
       </div>
-      <p className="text-[11px] text-slate-500">The link you share is the same either way. Applicants are taken through what you pick here.</p>
+      <p className="text-[11px] text-slate-500">{note}</p>
     </fieldset>
   );
 }
