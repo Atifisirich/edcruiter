@@ -48,13 +48,15 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               // 'wasm-unsafe-eval' lets WebAssembly run (the gaze model is WebAssembly). It does not allow eval().
-              `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
+              // blob: lets the voice interview's audio processor load (the Sarvam SDK builds it in the browser).
+              `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:${isDev ? " 'unsafe-eval'" : ""}`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
               "media-src 'self' blob:",
               "worker-src 'self' blob:",
-              `connect-src 'self'${isDev ? " ws: http://localhost:*" : ""}`,
+              // The spoken AI interview talks to Sarvam's voice service directly over a secure WebSocket.
+              `connect-src 'self' wss://apps.sarvam.ai${isDev ? " ws: http://localhost:*" : ""}`,
               "frame-ancestors 'self'",
               "form-action 'self' https://accounts.google.com",
               "base-uri 'self'",
