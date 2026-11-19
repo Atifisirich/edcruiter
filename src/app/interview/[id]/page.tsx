@@ -12,15 +12,17 @@ type Line = { role: 'agent' | 'user'; text: string };
 
 const LANGUAGES = ['English', 'Hindi', 'Telugu'] as const;
 const SPEAKS: Record<string, string> = { English: 'English', Hindi: 'हिन्दी', Telugu: 'తెలుగు' };
-const TOTAL_SECONDS = 12 * 60;
+const TOTAL_SECONDS = 18 * 60;
 
 const AGENDA = [
-  { icon: Users, name: 'About you', hint: 'Why you teach' },
-  { icon: BookOpen, name: 'Your subject', hint: 'A tricky idea, explained' },
-  { icon: Sparkles, name: 'A lesson', hint: 'How you plan and teach' },
+  { icon: Users, name: 'Your career', hint: 'Schools, dates, results' },
+  { icon: BookOpen, name: 'Your subject', hint: 'Concepts, explained simply' },
+  { icon: Sparkles, name: 'A real lesson', hint: 'Planning and teaching' },
+  { icon: BookOpen, name: 'Assessment', hint: 'How you check learning' },
   { icon: Users, name: 'Your classroom', hint: 'A real situation' },
-  { icon: ShieldCheck, name: 'Child safety', hint: 'What you would do' },
-  { icon: Headphones, name: 'Every learner', hint: 'Helping all students' },
+  { icon: ShieldCheck, name: 'Child safety', hint: 'Exactly what you would do' },
+  { icon: Headphones, name: 'Every learner', hint: 'Students who need more' },
+  { icon: Users, name: 'Professional conduct', hint: 'Disagreement and growth' },
 ];
 
 interface AgentLike {
@@ -252,7 +254,7 @@ export default function VoiceInterviewPage() {
   const lastAgent = [...lines].reverse().find((l) => l.role === 'agent')?.text;
   const lastUser = lines.length && lines[lines.length - 1].role === 'user' ? lines[lines.length - 1].text : '';
   const caption = lastAgent ?? 'Asha is getting ready…';
-  const stateLabel = agentSpeaking ? 'Asha is speaking' : listening ? 'Asha is listening. Take your time' : 'Asha is thinking…';
+  const stateLabel = agentSpeaking ? 'Asha is speaking' : listening ? 'Asha is listening' : 'Asha is thinking…';
   const live = phase === 'live';
 
   return (
@@ -288,12 +290,12 @@ export default function VoiceInterviewPage() {
             <section className="lg:col-span-3 space-y-5">
               <div className="space-y-1.5">
                 <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Before we begin</p>
-                <h1 className="text-3xl sm:text-4xl font-black leading-tight">Hello {first}, welcome to your interview</h1>
-                <p className="text-slate-600 leading-relaxed">You will have a relaxed 12-minute conversation with <strong>Asha</strong>, an AI interviewer. She asks six questions about your teaching, one at a time. There are no trick questions, and you can ask her to repeat or simplify anything.</p>
+                <h1 className="text-3xl sm:text-4xl font-black leading-tight">Hello {first}, your interview</h1>
+                <p className="text-slate-600 leading-relaxed">This is a structured interview of about 18 minutes with <strong>Asha</strong>, an AI interviewer. She asks about your career and your teaching, one question at a time, and follows up on your answers. Be specific: she will ask for real examples, and she may ask you to explain or justify what you say. You can ask her to repeat a question.</p>
               </div>
 
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-3">
-                <p className="text-sm font-black">What Asha will talk to you about</p>
+                <p className="text-sm font-black">What Asha will cover</p>
                 <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {AGENDA.map((a, i) => (
                     <li key={a.name} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
@@ -306,7 +308,7 @@ export default function VoiceInterviewPage() {
 
               <ul className="space-y-2 text-sm text-slate-700">
                 <li className="flex gap-2.5"><Headphones className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" /> Sit somewhere quiet. Headphones help Asha hear you clearly.</li>
-                <li className="flex gap-2.5"><MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" /> Answer like you would to a colleague. Examples from your real classes are best.</li>
+                <li className="flex gap-2.5"><MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" /> Answer directly, with examples from your real classes. General answers will be followed by more questions.</li>
                 <li className="flex gap-2.5"><ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" /> The conversation is saved as text. The school team reads it with a written report. A person makes every decision.</li>
               </ul>
             </section>
@@ -404,7 +406,7 @@ export default function VoiceInterviewPage() {
                 <PhoneOff className="w-4 h-4" /> Leave
               </button>
             </div>
-            <p className="text-center text-[11px] text-slate-500">Pauses are fine. If you need a question again, just say &ldquo;please repeat that&rdquo;.</p>
+            <p className="text-center text-[11px] text-slate-500">Take your time to think. If you need a question again, say &ldquo;please repeat that&rdquo;.</p>
           </div>
         )}
 

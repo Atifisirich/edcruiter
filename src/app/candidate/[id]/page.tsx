@@ -902,7 +902,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                 <div className="space-y-1">
                   <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-200">The school has invited you</p>
                   <p className="text-lg font-black">Your spoken AI interview</p>
-                  <p className="text-sm text-indigo-100">About 12 minutes, by voice, from this device. You need a quiet room and a microphone.</p>
+                  <p className="text-sm text-indigo-100">About 18 minutes, by voice, from this device. You need a quiet room and a microphone.</p>
                 </div>
                 <Link href={`/interview/${candidate.id}`} className="px-5 py-3 rounded-2xl bg-white text-indigo-700 text-sm font-black">Start the interview</Link>
               </div>

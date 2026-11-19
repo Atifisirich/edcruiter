@@ -264,9 +264,9 @@ export default function PublicJobApplicationPage() {
             <div className="bg-indigo-50 p-5 rounded-3xl border border-indigo-100 text-xs text-indigo-950 leading-relaxed">
               <strong className="block text-sm font-extrabold mb-1">How you will be assessed</strong>
               {job.interview_mode === 'ai'
-                ? 'You fill in your details and upload your CV, then have a 12-minute spoken interview with an AI interviewer from your own phone or laptop, then a short school policy step. About 30 minutes in all.'
+                ? 'You fill in your details and upload your CV, then have a structured spoken interview of about 18 minutes with an AI interviewer, from your own phone or laptop, then a short school policy step. About 40 minutes in all.'
                 : job.interview_mode === 'both'
-                  ? 'The online test, then a 12-minute spoken interview with an AI interviewer. About 90 minutes in all, and you can do it in more than one sitting.'
+                  ? 'The online test, then a structured spoken interview of about 18 minutes with an AI interviewer. About 90 minutes in all, and you can do it in more than one sitting.'
                   : 'A short profile with your CV, a subject test, a recorded teaching demo, a classroom scenario and a school policy step. About 60 to 75 minutes, and you can do it in more than one sitting.'}
             </div>
 

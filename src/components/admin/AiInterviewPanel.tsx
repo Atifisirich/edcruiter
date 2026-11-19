@@ -102,6 +102,7 @@ export default function AiInterviewPanel({ candidateId, candidateName }: { candi
             {interview.mode === 'sample' && <span className="px-2.5 py-1 rounded-full bg-slate-900 text-white">SAMPLE. Made-up conversation, not a real candidate</span>}
             {interview.by_staff && interview.mode !== 'sample' && <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">Demo run by your team</span>}
             {rec && r.scored && <span className={`px-2.5 py-1 rounded-full border ${rec.cls}`}>{rec.label}{r.overall ? ` · ${r.overall}/100` : ''}</span>}
+            {r.depth && <span className={'px-2.5 py-1 rounded-full border ' + (r.depth === 'deep' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r.depth === 'adequate' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-amber-50 text-amber-900 border-amber-200')}>{r.depth === 'deep' ? 'Went deep' : r.depth === 'adequate' ? 'Some depth' : 'Stayed shallow'}</span>}
             {interview.duration_sec ? <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">{Math.max(1, Math.round(interview.duration_sec / 60))} min</span> : null}
             {interview.transcript_source === 'browser' && <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200">Transcript from the candidate&apos;s browser, not checked</span>}
           </div>
@@ -139,6 +140,10 @@ export default function AiInterviewPanel({ candidateId, candidateName }: { candi
               <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-100"><p className="text-xs font-extrabold uppercase text-amber-900 mb-1">Concerns</p><ul className="list-disc pl-5 space-y-0.5 text-slate-800">{r.concerns.map((s) => <li key={s}>{s}</li>)}</ul></div>
             )}
           </div>
+
+          {r.cv_checks && r.cv_checks.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm"><p className="text-xs font-extrabold uppercase text-slate-700 mb-1">What the interview showed about the CV</p><ul className="list-disc pl-5 space-y-0.5 text-slate-800">{r.cv_checks.map((s) => <li key={s}>{s}</li>)}</ul></div>
+          )}
 
           {r.followups.length > 0 && (
             <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-sm"><p className="text-xs font-extrabold uppercase text-indigo-800 mb-1">Ask these in your own interview</p><ol className="list-decimal pl-5 space-y-0.5 text-slate-800">{r.followups.map((s) => <li key={s}>{s}</li>)}</ol></div>

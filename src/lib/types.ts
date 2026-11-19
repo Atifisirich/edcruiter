@@ -1045,6 +1045,10 @@ export interface InterviewTopic {
   name: string;
   question: string;
   looks_for: string;
+  /** Follow-up questions the interviewer can use to dig deeper. */
+  probes?: string[];
+  /** Answers that should worry an interviewer. */
+  watch_for?: string[];
 }
 
 export interface AiInterviewReport {
@@ -1059,6 +1063,10 @@ export interface AiInterviewReport {
   concerns: string[];
   flags: string[];
   followups: string[];
+  /** How far the interviewer got past rehearsed answers: shallow, adequate or deep. */
+  depth?: 'shallow' | 'adequate' | 'deep';
+  /** What the interview showed about claims on the CV and form: confirmed, contradicted or left unchecked. */
+  cv_checks?: string[];
 }
 
 export interface AiInterview {

@@ -16,7 +16,7 @@ export const MODE_LABEL: Record<InterviewMode, string> = {
 
 export const MODE_HELP: Record<InterviewMode, string> = {
   five_stage: 'Details and CV, a subject test, a recorded teaching demo, a classroom scenario and school policies. About 60 to 75 minutes, as today.',
-  ai: 'Details and CV, then a 12-minute spoken interview with an AI interviewer, then school policies. No written test or recorded videos.',
+  ai: 'Details and CV, then a structured 18-minute spoken interview with an AI interviewer, then school policies. No written test or recorded videos.',
   both: 'The full five-stage test, then the spoken AI interview. The most thorough, and the longest.',
 };
 
@@ -28,8 +28,8 @@ export const modeOf = (x: { interview_mode?: InterviewMode } | null | undefined)
 
 /** The two plain-text lines an invitation message uses for each mode. */
 export function inviteLength(mode: InterviewMode): string {
-  if (mode === 'ai') return 'It takes about 30 minutes: a short profile with your CV, then a 12-minute spoken interview, then a short school policy step.';
-  if (mode === 'both') return 'It takes about 90 minutes in all: the online test, then a 12-minute spoken interview. You can do it in more than one sitting.';
+  if (mode === 'ai') return 'It takes about 40 minutes: a short profile with your CV, then a structured 18-minute spoken interview, then a short school policy step.';
+  if (mode === 'both') return 'It takes about 90 minutes in all: the online test, then an 18-minute spoken interview. You can do it in more than one sitting.';
   return 'The online assessment takes about 60–75 minutes: a short profile, a written test, and two short videos.';
 }
 

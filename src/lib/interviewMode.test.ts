@@ -18,7 +18,7 @@ describe('the interview choice', () => {
   });
   it('says a different length in each invitation', () => {
     expect(inviteLength('five_stage')).toMatch(/60–75/);
-    expect(inviteLength('ai')).toMatch(/12-minute spoken/);
+    expect(inviteLength('ai')).toMatch(/18-minute spoken/);
     expect(inviteLength('both')).toMatch(/90 minutes/);
   });
   it('has the right steps in order', () => {

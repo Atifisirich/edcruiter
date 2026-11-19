@@ -10,8 +10,8 @@ import ApplicationIdCard from './ApplicationIdCard';
 
 const INTERVIEW_GUIDE = {
   title: 'Your spoken AI interview',
-  summary: 'A friendly 12-minute conversation with an AI interviewer about your teaching. No written answers.',
-  time: 'About 12 min',
+  summary: 'A structured spoken interview of about 18 minutes with an AI interviewer. Expect follow-up questions. No written answers.',
+  time: 'About 18 min',
   camera: false,
 };
 
@@ -92,7 +92,7 @@ export default function StageHub({
         {first && !allDone && (
           <ul className="space-y-2 text-sm text-slate-700">
             <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>
-              {mode === 'ai' ? <>About <strong>30 minutes</strong> in all.</> : mode === 'both' ? <>About <strong>90 minutes</strong> in all.</> : <>About <strong>60 to 75 minutes</strong> in all.</>} You can do one step today and the next one tomorrow.
+              {mode === 'ai' ? <>About <strong>40 minutes</strong> in all.</> : mode === 'both' ? <>About <strong>90 minutes</strong> in all.</> : <>About <strong>60 to 75 minutes</strong> in all.</>} You can do one step today and the next one tomorrow.
             </span></li>
             <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>Use a <strong>laptop or desktop</strong> with a microphone{hasTest ? ' and camera' : ''}, in a quiet room.</span></li>
             {hasTest && (
@@ -102,7 +102,7 @@ export default function StageHub({
               </>
             )}
             {mode !== 'five_stage' && (
-              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>The interview is a <strong>spoken conversation</strong>. There are no trick questions, and you can ask the interviewer to repeat anything.</span></li>
+              <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>The interview is <strong>spoken and structured</strong>. The interviewer asks for real examples and follows up on your answers. You can ask her to repeat anything.</span></li>
             )}
             <li className="flex gap-2.5"><span className="text-indigo-600 font-black">•</span><span>People at the school make every decision. AI only helps them review.</span></li>
           </ul>
