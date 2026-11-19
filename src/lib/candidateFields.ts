@@ -30,9 +30,11 @@ export function pickAllowed(updates: Record<string, unknown>, allowed: Set<keyof
 
 /** What a candidate's own browser is allowed to see: no face measurements, no question ids. */
 export function candidateView<T extends Partial<Candidate>>(candidate: T): T {
-  const { face_reference, test_set: _testSet, ...rest } = candidate;
+  const { face_reference, test_set: _testSet, ai_interview, ...rest } = candidate;
   return {
     ...rest,
+    // The browser learns only where the interview stands, never the plan, transcript or report.
+    ...(ai_interview ? { ai_interview: { id: ai_interview.id, status: ai_interview.status, mode: ai_interview.mode, language: ai_interview.language, plan: [], transcript: [] } } : {}),
     ...(face_reference ? { face_reference: { photo_url: face_reference.photo_url, descriptors: [], captured_at: face_reference.captured_at, measured: face_reference.descriptors.length > 0 } } : {}),
   } as T;
 }

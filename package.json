@@ -26,8 +26,10 @@
     "pdf-lib": "^1.17.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "sarvam-conv-ai-sdk": "^0.0.42",
     "tailwind-merge": "^3.6.0",
     "unpdf": "^2.1.0",
+    "ws": "^8.23.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.1"
   },
@@ -36,6 +38,7 @@
     "@types/node": "^22.20.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.2",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^9",
     "eslint-config-next": "^16.3.4",

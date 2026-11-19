@@ -656,6 +656,8 @@ export interface Candidate {
   resume_url?: string;
   resume_text?: string;
   resume_analysis?: ResumeAnalysisReport;
+  /** The optional spoken AI interview. See aiInterview.ts. */
+  ai_interview?: AiInterview;
   status: 'in_progress' | 'passed' | 'rejected' | 'hired';
   shortlist_status?: 'pending' | 'shortlisted' | 'rejected' | 'hold';
   total_ai_score?: number; // 0 - 100 aggregate score
@@ -1033,3 +1035,44 @@ export interface PublicVacancy {
   created_at: string;
 }
 
+/** One topic of the AI interview: the question asked and what a strong answer shows. */
+export interface InterviewTopic {
+  key: string;
+  name: string;
+  question: string;
+  looks_for: string;
+}
+
+export interface AiInterviewReport {
+  summary: string;
+  recommendation: 'strong' | 'good' | 'mixed' | 'weak';
+  /** 0 to 100, from the topic scores. Meaningless when scored is false. */
+  overall: number;
+  /** False when there was too little to score; no numbers are then shown. */
+  scored: boolean;
+  topics: { key: string; name: string; score: number; evidence: string[]; note: string }[];
+  strengths: string[];
+  concerns: string[];
+  flags: string[];
+  followups: string[];
+}
+
+export interface AiInterview {
+  id: string;
+  /** invited: the school sent it. in_progress: started. completed: report ready or being made. */
+  status: 'invited' | 'in_progress' | 'completed' | 'abandoned';
+  /** live: a real conversation. sample: a made-up conversation for showing the report, never a candidate's own words. */
+  mode: 'live' | 'sample';
+  /** True when a member of the school ran it (a demo), not the candidate. */
+  by_staff?: boolean;
+  language: string;
+  invited_at?: string;
+  started_at?: string;
+  ended_at?: string;
+  duration_sec?: number;
+  plan: InterviewTopic[];
+  transcript: { role: 'agent' | 'user'; text: string }[];
+  /** sarvam: read back from Sarvam. browser: what the candidate's browser reported, not verified. */
+  transcript_source?: 'sarvam' | 'browser' | 'sample';
+  report?: AiInterviewReport;
+}

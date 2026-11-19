@@ -887,16 +887,28 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             </div>
           </div>
         ) : view === 'hub' ? (
-          <StageHub
-            doneKeys={stageResults.map((r) => r.stage_key)}
-            candidateName={candidate.name || identityData.name}
-            schoolName={schoolName}
-            applicationId={candidate.invite_code}
-            testReady={packReady}
-            notice={hubNotice || undefined}
-            onStart={(key) => openStage(key as StageKey)}
-            onPractice={() => { setHubNotice(''); setView('practice'); window.scrollTo({ top: 0 }); }}
-          />
+          <>
+            {(candidate.ai_interview?.status === 'invited' || candidate.ai_interview?.status === 'in_progress') && (
+              <div className="max-w-3xl mx-auto mb-5 p-5 rounded-3xl bg-indigo-600 text-white flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-200">The school has invited you</p>
+                  <p className="text-lg font-black">Your spoken AI interview</p>
+                  <p className="text-sm text-indigo-100">About 12 minutes, by voice, from this device. You need a quiet room and a microphone.</p>
+                </div>
+                <Link href={`/interview/${candidate.id}`} className="px-5 py-3 rounded-2xl bg-white text-indigo-700 text-sm font-black">Start the interview</Link>
+              </div>
+            )}
+            <StageHub
+              doneKeys={stageResults.map((r) => r.stage_key)}
+              candidateName={candidate.name || identityData.name}
+              schoolName={schoolName}
+              applicationId={candidate.invite_code}
+              testReady={packReady}
+              notice={hubNotice || undefined}
+              onStart={(key) => openStage(key as StageKey)}
+              onPractice={() => { setHubNotice(''); setView('practice'); window.scrollTo({ top: 0 }); }}
+            />
+          </>
         ) : view === 'practice' ? (
           <PracticeTest onBack={() => { setView('hub'); window.scrollTo({ top: 0 }); }} />
         ) : view === 'briefing' ? (
