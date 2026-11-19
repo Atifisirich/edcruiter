@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
     if (!jpeg) return NextResponse.json({ error: 'The photo could not be read. Please take it again.' }, { status: 400 });
 
     // The measurements are optional: if the face model could not load on this device, the photo alone is kept for the reviewer.
-    const descriptors = body.descriptors === undefined ? [] : cleanReferences(body.descriptors);
+    const noMeasurements = body.descriptors === undefined || (Array.isArray(body.descriptors) && body.descriptors.length === 0);
+    const descriptors = noMeasurements ? [] : cleanReferences(body.descriptors);
     if (descriptors === null) return NextResponse.json({ error: 'The face measurements were not valid. Please take the photo again.' }, { status: 400 });
     if (descriptors.length > 1 && !referencesAgree(descriptors)) {
       return NextResponse.json({ error: 'The photos did not look like the same person. Please look straight at the camera and try again.', code: 'inconsistent' }, { status: 422 });

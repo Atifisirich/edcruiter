@@ -8,6 +8,14 @@ import { referencesAgree } from '@/lib/faceMatch';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Gives up on `p` after `ms`, so a slow phone can never leave the candidate staring at a spinner. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 /**
  * The photo taken at the start. Later stages are compared with it, so a different
  * person sitting down to answer is noticed. Three quick frames are measured so
@@ -39,6 +47,27 @@ export default function IdentityPhoto({
     return () => { cancelled = true; };
   }, []);
 
+  const [misses, setMisses] = useState(0);
+
+  const save = async (image: string, found: MeasuredFace[]) => {
+    setMessage('Saving…');
+    const res = await fetch('/api/identity/reference', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // No measurements at all is allowed (the photo alone is kept); an empty list is not sent.
+      body: JSON.stringify(found.length ? { image, descriptors: found.map((f) => f.descriptor) } : { image }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setProblem(data.error || 'The photo could not be saved. Try again.');
+      return;
+    }
+    setPhoto(data.photo_url);
+    setRetaking(false);
+    setMisses(0);
+    onSaved(data.photo_url, !!data.measured);
+  };
+
   const take = async () => {
     if (!device) return;
     setBusy(true);
@@ -46,46 +75,48 @@ export default function IdentityPhoto({
     setMessage('Hold still and look straight at the camera…');
     try {
       const found: MeasuredFace[] = [];
-      let image: string | undefined;
-      if (!modelFailed) {
-        for (let i = 0; i < 6 && found.length < 3; i++) {
-          await sleep(450);
-          const face = await describeFace(device.video).catch(() => null);
-          if (face && face.score >= 0.6 && face.size >= 0.15) {
-            found.push(face);
-            image = referencePhoto(device.video);
-          }
-        }
-        if (found.length < 2) {
-          setProblem('We could not see one clear face. Sit a little closer, face the light, make sure nobody else is in the picture, and look straight at the camera.');
-          return;
-        }
-        if (!referencesAgree(found.map((f) => f.descriptor))) {
-          setProblem('The pictures did not agree. Keep still, look straight at the camera, and try again.');
-          return;
-        }
-      } else {
-        image = referencePhoto(device.video);
-      }
-      if (!image) {
-        setProblem('The picture could not be taken. Try again.');
-        return;
+      let image: string | undefined = referencePhoto(device.video);
+
+      // Measuring a face needs the model, which is large on a slow connection or phone.
+      // Wait a limited time; never leave the candidate stuck here.
+      let canMeasure = !modelFailed;
+      if (canMeasure) {
+        canMeasure = await withTimeout(loadFaceModels(), 12_000).then(() => true).catch(() => false);
       }
 
-      setMessage('Saving…');
-      const res = await fetch('/api/identity/reference', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image, descriptors: found.map((f) => f.descriptor) }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setProblem(data.error || 'The photo could not be saved. Try again.');
+      if (canMeasure) {
+        const deadline = Date.now() + 10_000;
+        for (let i = 0; i < 6 && found.length < 3 && Date.now() < deadline; i++) {
+          await sleep(400);
+          const face = await withTimeout(describeFace(device.video), 4_000).catch(() => null);
+          if (face && face.score >= 0.5 && face.size >= 0.1) {
+            found.push(face);
+            image = referencePhoto(device.video) || image;
+          }
+        }
+        const agree = found.length > 0 && referencesAgree(found.map((f) => f.descriptor));
+        if (!agree) {
+          // Not seen clearly. The first time, say how to fix it. After that, do not block the
+          // candidate: keep the photo for the reviewer and let them carry on to the next stage.
+          if (misses < 1) {
+            setMisses((m) => m + 1);
+            setProblem(found.length === 0
+              ? 'We could not see one clear face. Sit a little closer, face the light, make sure nobody else is in the picture, and press the button again.'
+              : 'The pictures did not agree. Keep still, look straight at the camera, and press the button again.');
+            return;
+          }
+          found.length = 0;
+        }
+      }
+
+      if (!image) image = referencePhoto(device.video);
+      if (!image) {
+        setProblem('The picture could not be taken. Wait a moment for the camera to show you, then try again.');
         return;
       }
-      setPhoto(data.photo_url);
-      setRetaking(false);
-      onSaved(data.photo_url, !!data.measured);
+      await save(image, found);
+    } catch {
+      setProblem('Something went wrong. Press the button to try again.');
     } finally {
       setBusy(false);
       setMessage('');
