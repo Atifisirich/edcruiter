@@ -5,6 +5,7 @@ import { drawTest, resolveTest, type DrawnQuestion } from './testBank';
 import { cleanGrades, gradesFromSegment } from './grades';
 import { normalizeSubject } from './subjectMatch';
 import { freshTask, type TaskKind } from './freshTask';
+import { presentOwnTest, usesOwnQuestions } from './ownTest';
 import type { AssessmentPack, Candidate, StageAttempt, StageKey } from './types';
 
 /** What the candidate is shown for one go at a stage. Never includes an answer key. */
@@ -67,7 +68,10 @@ function seenAt(attempt: StageAttempt): string {
 function contentFor(candidate: Candidate, pack: AssessmentPack, attempt: StageAttempt): AttemptContent {
   const content: AttemptContent = {};
   if (attempt.stage_key === 'written_theory') {
-    if (attempt.test_ids?.length) {
+    if (attempt.own_questions?.length) {
+      // The school's own test, as it was when this go began.
+      content.mcqs = stripKey(attempt.own_questions);
+    } else if (attempt.test_ids?.length) {
       content.mcqs = stripKey(resolveTest(attempt.test_ids, candidate.id));
     } else {
       // The school's own written test: the same questions, in a different order each go.
@@ -125,9 +129,11 @@ export async function beginAttempt(candidate: Candidate, pack: AssessmentPack, s
 
   if (stage === 'written_theory') {
     const subject = normalizeSubject(candidate.applied_subject);
-    // A test already drawn for this candidate before goes were tracked is their first go.
-    const legacy = decision.number === 1 && candidate.test_set && candidate.test_set.subject === subject ? candidate.test_set.ids : null;
-    if (legacy) {
+    // A school that wrote its own questions: everyone takes those, saved with this go so marking never drifts.
+    const legacy = usesOwnQuestions(pack) ? null : decision.number === 1 && candidate.test_set && candidate.test_set.subject === subject ? candidate.test_set.ids : null;
+    if (usesOwnQuestions(pack)) {
+      attempt.own_questions = presentOwnTest(pack.mcqs, candidate.id, decision.number);
+    } else if (legacy) {
       attempt.test_ids = legacy;
     } else {
       const seen = all.flatMap((a) => a.test_ids ?? []);

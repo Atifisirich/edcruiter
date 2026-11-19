@@ -11,6 +11,7 @@ import { db } from './db';
 import { drawTest, resolveTest, type DrawnQuestion } from './testBank';
 import { cleanGrades, gradesFromSegment } from './grades';
 import { normalizeSubject } from './subjectMatch';
+import { usesOwnQuestions } from './ownTest';
 import type { AssessmentPack, Candidate } from './types';
 
 export interface CandidateTest {
@@ -35,6 +36,9 @@ function fromPack(pack: AssessmentPack): DrawnQuestion[] {
 }
 
 export function testFor(candidate: Candidate, pack: AssessmentPack): CandidateTest {
+  // A school that wrote its own questions gives those to everyone instead of drawing from the bank.
+  if (usesOwnQuestions(pack)) return { questions: fromPack(pack), source: 'school_test' };
+
   const subject = normalizeSubject(candidate.applied_subject);
 
   // A test already given to this candidate is always the one served and marked.

@@ -80,3 +80,24 @@ describe('a candidate\'s test', () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe('a school that wrote its own questions', () => {
+  const ownPack = {
+    id: 'p2',
+    use_own_questions: true,
+    mcqs: Array.from({ length: 6 }, (_, i) => ({ id: 'own' + i, question_text: 'Own ' + i + '?', options: ['r' + i, 'a', 'b', 'c'], correct_option: 'r' + i, category: 'subject' })),
+  } as unknown as AssessmentPack;
+
+  it('gives candidates the school test instead of drawing from the bank', () => {
+    const t = testFor(bio(), ownPack);
+    expect(t.source).toBe('school_test');
+    expect(t.questions.map((q) => q.id)).toEqual(['own0', 'own1', 'own2', 'own3', 'own4', 'own5']);
+    expect(updateCandidate).not.toHaveBeenCalled();
+    expect(recordBankUse).not.toHaveBeenCalled();
+  });
+
+  it('still uses the bank when the switch is off', () => {
+    const t = testFor(bio(), { ...ownPack, use_own_questions: false } as AssessmentPack);
+    expect(t.source).toBe('bank');
+  });
+});

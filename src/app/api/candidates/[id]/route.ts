@@ -67,7 +67,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const schoolSubjects = school?.subjects || [];
     const schoolSegments = school?.segments || [];
 
-    const stageAttempts = db.getStageAttempts(candidate.school_id, candidate.id);
+    // The questions of a school's own test carry their answer key, so they stay on the server.
+    const stageAttempts = db.getStageAttempts(candidate.school_id, candidate.id).map(({ own_questions: _own, ...rest }) => rest);
     return NextResponse.json({ candidate: candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidate profile' }, { status: 500 });

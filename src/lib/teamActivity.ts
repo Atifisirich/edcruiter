@@ -58,6 +58,7 @@ export function actionLabel(action: string): string {
     DECISION_CANDIDATE_DECLINED: 'Recorded the teacher declined',
     DECISION_ALLOW_RETRY: 'Allowed another go',
     ASSESSMENT_PACK_GENERATED: 'Wrote a test',
+    ASSESSMENT_PACK_EDITED: 'Edited a test',
     AI_SCORE_OVERRIDE: 'Changed an AI score',
     TEAM_MEMBER_ADDED: 'Added a team member',
     TEAM_MEMBER_REMOVED: 'Removed a team member',

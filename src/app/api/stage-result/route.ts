@@ -114,9 +114,11 @@ export async function POST(req: NextRequest) {
       // Must be exactly the test the candidate was shown in this go.
       const pack = findActivePack(school_id, candidate.applied_subject, candidate.applied_segment);
       // Marked against exactly the questions this candidate was given.
-      const given = attempt?.test_ids?.length
-        ? resolveTest(attempt.test_ids, candidate.id)
-        : pack ? testFor(candidate, pack).questions : [];
+      const given = attempt?.own_questions?.length
+        ? attempt.own_questions
+        : attempt?.test_ids?.length
+          ? resolveTest(attempt.test_ids, candidate.id)
+          : pack ? testFor(candidate, pack).questions : [];
       const questions: GradableMcq[] | null = given.length ? given : null;
       if (!questions) {
         return NextResponse.json(

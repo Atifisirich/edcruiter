@@ -71,11 +71,16 @@ export async function PATCH(req: NextRequest) {
     if (!existing) return NextResponse.json({ error: 'Pack not found' }, { status: 404 });
     const ctx = await requireSchoolAccess(existing.school_id, { minRole: 'SCHOOL_ADMIN' });
 
-    const updated = db.updateAssessmentPack(body.id, body.updates || { status: body.status });
+    // Only the status changes here. Edits to the questions and tasks go through /api/assessment-packs/[id].
+    const status = body.updates?.status ?? body.status;
+    if (status !== 'draft' && status !== 'active' && status !== 'archived') {
+      return NextResponse.json({ error: 'Choose draft, active or archived.' }, { status: 400 });
+    }
+    const updated = db.updateAssessmentPack(body.id, { status });
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'ASSESSMENT_PACK_UPDATED',
       resource: `Assessment pack: ${body.id}`,
-      details: 'Updated status/fields.'
+      details: `Set the test to ${status}.`
     });
     return NextResponse.json({ pack: updated });
   } catch (error) {

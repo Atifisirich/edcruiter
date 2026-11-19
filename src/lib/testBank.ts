@@ -95,7 +95,7 @@ function hash32(text: string): number {
   return h >>> 0;
 }
 
-function seededRandom(seed: string): () => number {
+export function seededRandom(seed: string): () => number {
   let a = hash32(seed) || 1;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -105,7 +105,7 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-function shuffle<T>(items: T[], random: () => number): T[] {
+export function shuffle<T>(items: T[], random: () => number): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));

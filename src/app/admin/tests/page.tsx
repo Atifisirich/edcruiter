@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { PageHeader, Badge } from '@/components/admin/ui';
-import { Archive, BookOpen, CheckCircle2, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Archive, BookOpen, CheckCircle2, Loader2, Pencil, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { AssessmentPack } from '@/lib/types';
 import { useAdmin } from '@/components/admin/adminContext';
-import { isAdmin } from '@/lib/permissions';
+import { isAdmin, isHiringTeam } from '@/lib/permissions';
 import { CURRICULA, testSubjects } from '@/lib/subjects';
 import QuestionBankPanel from '@/components/admin/QuestionBankPanel';
+import TestEditor from '@/components/admin/TestEditor';
 
 const SEGMENTS = [
   'Pre-primary (Ages 3–6)',
@@ -21,8 +22,9 @@ const OTHER = 'Other (type the subject)';
 
 export default function AssessmentLibraryPage() {
   // HR writes new tests; putting one in use, archiving or deleting it is the admin's.
-  const { user, school } = useAdmin();
+  const { user, school, toast } = useAdmin();
   const admin = isAdmin(user?.role);
+  const hiring = isHiringTeam(user?.role);
   // Every vacancy subject plus the school's own, so a test can be written for
   // any subject the school hires for (Psychology, Economics, Telugu, PET…).
   const subjects = testSubjects(school?.subjects || []);
@@ -37,6 +39,7 @@ export default function AssessmentLibraryPage() {
   const [tab, setTab] = useState<'mcqs' | 'lesson' | 'demo' | 'scenario'>('mcqs');
   const [filter, setFilter] = useState<'all' | 'active' | 'draft' | 'archived'>('all');
   const [view, setView] = useState<'tests' | 'bank'>('tests');
+  const [editing, setEditing] = useState(false);
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
@@ -103,6 +106,30 @@ export default function AssessmentLibraryPage() {
     if (!confirm('Remove this test from the school library?')) return;
     await fetch(`/api/assessment-packs?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (preview?.id === id) setPreview(null);
+    load();
+  };
+
+  // Edits are for the admin and HR. A test in use changes under candidates' feet, so only the admin edits one.
+  const canEditPreview = !!preview && hiring && (admin || preview.status !== 'active');
+
+  const savedEdit = async (saved: AssessmentPack, opts: { activate: boolean; switchedToOwn: boolean }) => {
+    setEditing(false);
+    setPreview(saved);
+    if (opts.activate) {
+      const res = await fetch('/api/assessment-packs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: saved.id, updates: { status: 'active' } })
+      });
+      if (res.ok) {
+        setPreview({ ...saved, status: 'active' });
+        toast('Saved. Candidates now take this test.', 'success');
+      } else {
+        toast('Saved, but it could not be put in use. Use the Activate button.', 'error');
+      }
+    } else {
+      toast(opts.switchedToOwn ? 'Saved. Candidates will get the questions on this page.' : 'Saved.', 'success');
+    }
     load();
   };
 
@@ -205,7 +232,7 @@ export default function AssessmentLibraryPage() {
                     <li key={p.id} className="flex items-stretch gap-2">
                       <button
                         type="button"
-                        onClick={() => setPreview(p)}
+                        onClick={() => { setPreview(p); setEditing(false); }}
                         className={`flex-1 text-left p-3 rounded-2xl border text-xs ${
                           preview?.id === p.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-slate-50'
                         }`}
@@ -214,6 +241,7 @@ export default function AssessmentLibraryPage() {
                         <span className="block text-slate-500 mt-0.5">
                           {p.board} · {p.subject} · {p.mcqs.length} MCQs ·{' '}
                           <span className={p.status === 'active' ? 'text-emerald-700 font-bold' : ''}>{p.status}</span>
+                          {p.edited_at && <span className="text-indigo-700"> · edited by your team</span>}
                         </span>
                       </button>
                       {admin && <div className="flex flex-col gap-1">
@@ -280,6 +308,24 @@ export default function AssessmentLibraryPage() {
                     )}
                   </div> : preview.status !== 'active' && <p className="text-[11px] text-slate-500">The school admin puts a new test in use.</p>}
                 </div>
+                {canEditPreview && !editing && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2.5">
+                    <p className="text-[11px] text-slate-600">
+                      {preview.use_own_questions
+                        ? 'Candidates get the questions on this test, as you wrote them.'
+                        : 'Used as the AI wrote it. Change any question or task if you want to.'}
+                    </p>
+                    <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-[11px] font-bold text-slate-800 hover:bg-indigo-50 hover:text-indigo-700">
+                      <Pencil className="w-3.5 h-3.5" /> Edit this test
+                    </button>
+                  </div>
+                )}
+                {hiring && !admin && preview.status === 'active' && (
+                  <p className="text-[11px] text-slate-500">This test is in use. The school admin changes a test that candidates are taking.</p>
+                )}
+                {editing ? (
+                  <TestEditor key={preview.id} pack={preview} canActivate={admin} onCancel={() => setEditing(false)} onSaved={savedEdit} />
+                ) : (<>
                 <div className="flex flex-wrap gap-2">
                   {(['mcqs', 'lesson', 'demo', 'scenario'] as const).map((t) => (
                     <button key={t} type="button" onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold border ${tab === t ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
@@ -323,6 +369,7 @@ export default function AssessmentLibraryPage() {
                     <p className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-slate-800">{preview.scenario_rubric}</p>
                   </div>
                 )}
+                </>)}
                 <p className="text-[11px] text-slate-500 flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> Stages 1 (profile) and 5 (school policies) stay the same for every test.</p>
               </div>
             )}

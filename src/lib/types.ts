@@ -801,6 +801,13 @@ export interface AssessmentPack {
   demo_rubric: string;
   scenario_prompt: string;
   scenario_rubric: string;
+  /**
+   * True when candidates take this test's own questions (in their own shuffled order)
+   * instead of a draw from Edcruiter's question bank. Set by a school that has edited the questions.
+   */
+  use_own_questions?: boolean;
+  /** When someone at the school last changed this test by hand. */
+  edited_at?: string;
   created_at: string;
 }
 
@@ -919,6 +926,18 @@ export interface StageAttempt {
   ended_at?: string;
   /** Bank question ids shown in this go (the subject test only). */
   test_ids?: string[];
+  /**
+   * The questions of a school's own test, exactly as shown in this go, with the answer key.
+   * Kept so a later edit to the test never changes how a go already given is marked. Never sent to a browser.
+   */
+  own_questions?: {
+    id: string;
+    question_text: string;
+    options: string[];
+    correct_option: string;
+    explanation?: string;
+    category: 'subject' | 'pedagogy';
+  }[];
   /** The task wording shown in this go (lesson plan, demo or scenario). */
   prompt?: string;
 }
