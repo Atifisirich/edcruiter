@@ -172,6 +172,8 @@ export interface School {
   policy_video?: PolicyVideo;
   /** The "Do you agree…?" questions asked after the policy video. Absent means the starter set. See policyVideo.ts. */
   policy_questions?: PolicyQuestion[];
+  /** The school admin has allowed HR to propose changes to the school policies. Each change still needs the admin's approval. */
+  hr_can_edit_policies?: boolean;
   /** The AI screening phone call: the school's questions and whether new applicants are called automatically. See screeningCall.ts. */
   screening_call?: ScreeningCallSettings;
   /** What the school pays per started minute of an answered AI screening call, in rupees. Set by the platform owner; absent means the standard rate. */
@@ -1091,3 +1093,25 @@ export interface AiInterview {
 
 /** five_stage: the five-stage test. ai: details and CV, a spoken AI interview, then the school policies. both: the five stages, then the AI interview. */
 export type InterviewMode = 'five_stage' | 'ai' | 'both';
+
+export type PolicyChangeKind = 'structured' | 'document_create' | 'document_update' | 'document_delete';
+
+/** A change to the school policies that HR has proposed and the school admin has yet to decide. */
+export interface PolicyChangeRequest {
+  id: string;
+  school_id: string;
+  kind: PolicyChangeKind;
+  /** One plain line saying what it is, such as "Edit the policy: Dress code". */
+  summary: string;
+  /** The change itself, checked on the way in. */
+  payload: Record<string, unknown>;
+  /** For an edit or removal: what the policy said when it was proposed, so the admin sees before and after. */
+  before?: { title: string; content: string; required: boolean };
+  requested_by: { id: string; name: string };
+  requested_at: string;
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  decided_by?: { id: string; name: string };
+  decided_at?: string;
+  /** The admin's reason, shown to HR. */
+  note?: string;
+}

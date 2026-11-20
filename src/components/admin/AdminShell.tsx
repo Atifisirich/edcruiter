@@ -28,6 +28,8 @@ interface NavItem {
   Icon: LucideIcon;
   /** Who sees it. The pages behind admin-only items refuse everyone else anyway. */
   for: Access[];
+  /** HR sees this only when the school admin has switched on policy editing for HR. */
+  hrNeedsPolicySwitch?: boolean;
 }
 
 const NAV: { title: string; items: NavItem[] }[] = [
@@ -45,7 +47,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: 'Set up',
     items: [
       { href: '/admin/tests', label: 'AI tests', Icon: FileCheck2, for: ['admin', 'hr'] },
-      { href: '/admin/policies', label: 'Policies', Icon: ShieldCheck, for: ['admin'] },
+      { href: '/admin/policies', label: 'Policies', Icon: ShieldCheck, for: ['admin', 'hr'], hrNeedsPolicySwitch: true },
       { href: '/admin/whatsapp', label: 'WhatsApp', Icon: MessageSquare, for: ['admin'] },
     ],
   },
@@ -164,7 +166,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // Until we know who is signed in, show only what everyone sees.
   const access = accessOf(user?.role);
   const nav = NAV
-    .map((g) => ({ ...g, items: g.items.filter((i) => (access ? i.for.includes(access) : i.for.length === 3)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => (access ? i.for.includes(access) && !(access === 'hr' && i.hrNeedsPolicySwitch && !school?.hr_can_edit_policies) : i.for.length === 3)) }))
     .filter((g) => g.items.length > 0);
 
   const Sidebar = (

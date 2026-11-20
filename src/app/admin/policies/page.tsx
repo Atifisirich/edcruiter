@@ -2,6 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/admin/ui';
+import { useAdmin } from '@/components/admin/adminContext';
+import PolicyChangesPanel, { type PolicyAccessState } from '@/components/admin/PolicyChangesPanel';
+import { accessOf } from '@/lib/permissions';
 import { Loader2, Plus, CheckCircle2, Pencil, Trash2, X, ShieldCheck, Info } from 'lucide-react';
 import { HRPolicyDocument } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
@@ -27,6 +30,27 @@ export default function SchoolPoliciesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  // HR, when the school admin allows it, sends changes for approval instead of saving them.
+  const { user } = useAdmin();
+  const isHr = accessOf(user?.role) === 'hr';
+  const [access, setAccess] = useState<PolicyAccessState>({ loaded: false, hrCanEdit: false, canReview: false, isHr: false });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const hrLocked = isHr && access.loaded && !access.hrCanEdit;
+
+  const propose = async (kind: string, payload: Record<string, unknown>): Promise<boolean> => {
+    const schoolId = localStorage.getItem('edcruiter_school_id') || SLOKA_SCHOOL_ID;
+    const res = await fetch('/api/policy-changes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'propose', school_id: schoolId, kind, payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMessage(data.error || 'Could not send this change.'); return false; }
+    setMessage('Sent to the school admin for approval. Candidates will see it once it is approved.');
+    setRefreshKey((k) => k + 1);
+    return true;
+  };
 
   const preview = useMemo(() => formatHrAnswersAsPolicyText(answers), [answers]);
   const missing = useMemo(() => missingRequiredHrFields(answers), [answers]);
@@ -60,6 +84,10 @@ export default function SchoolPoliciesPage() {
     }
     setSaving(true);
     setMessage(null);
+    if (isHr) {
+      try { await propose('structured', { answers }); } finally { setSaving(false); }
+      return;
+    }
     try {
       const schoolId = localStorage.getItem('edcruiter_school_id') || SLOKA_SCHOOL_ID;
       const content = formatHrAnswersAsPolicyText(answers);
@@ -119,6 +147,15 @@ export default function SchoolPoliciesPage() {
   const saveExtra = async () => {
     if (!extraTitle.trim() || !extraContent.trim()) return;
     setSaving(true);
+    if (isHr) {
+      try {
+        const ok = await propose(editingId ? 'document_update' : 'document_create', editingId
+          ? { id: editingId, title: extraTitle, content: extraContent, required: extraRequired }
+          : { title: extraTitle, content: extraContent, required: extraRequired });
+        if (ok) resetExtraForm();
+      } finally { setSaving(false); }
+      return;
+    }
     try {
       const schoolId = localStorage.getItem('edcruiter_school_id') || SLOKA_SCHOOL_ID;
       if (editingId) {
@@ -155,6 +192,7 @@ export default function SchoolPoliciesPage() {
   };
 
   const toggleRequired = async (p: HRPolicyDocument) => {
+    if (isHr) { await propose('document_update', { id: p.id, required: !(p.required !== false) }); return; }
     const schoolId = localStorage.getItem('edcruiter_school_id') || SLOKA_SCHOOL_ID;
     await fetch('/api/hr-policies', {
       method: 'PUT',
@@ -165,7 +203,8 @@ export default function SchoolPoliciesPage() {
   };
 
   const deletePolicy = async (p: HRPolicyDocument) => {
-    if (!confirm(`Remove "${p.title}"? Candidates will no longer see or need to acknowledge it.`)) return;
+    if (!confirm(isHr ? `Ask the school admin to remove "${p.title}"?` : `Remove "${p.title}"? Candidates will no longer see or need to acknowledge it.`)) return;
+    if (isHr) { await propose('document_delete', { id: p.id }); return; }
     const schoolId = localStorage.getItem('edcruiter_school_id') || SLOKA_SCHOOL_ID;
     await fetch(`/api/hr-policies?id=${encodeURIComponent(p.id)}&school_id=${encodeURIComponent(schoolId)}`, {
       method: 'DELETE',
@@ -182,9 +221,11 @@ export default function SchoolPoliciesPage() {
           description="Answer a few questions about leave, notice period and child safety. We turn them into the policy teachers read and accept in stage 5."
         />
 
-        <PolicyVideoCard schoolId={videoSchoolId} />
+        <PolicyChangesPanel schoolId={videoSchoolId} refreshKey={refreshKey} onState={setAccess} onApplied={() => { load().catch(() => {}); }} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {!isHr && <PolicyVideoCard schoolId={videoSchoolId} />}
+
+        {!hrLocked && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">
             {SECTIONS.map((section) => (
               <div key={section} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-3">
@@ -375,7 +416,7 @@ export default function SchoolPoliciesPage() {
               })}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

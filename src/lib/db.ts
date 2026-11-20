@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { PolicyChangeRequest, ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -33,6 +33,7 @@ interface DatabaseSchema {
   questionBank?: BankState;
   screeningCalls?: ScreeningCall[];
   supportMessages?: SupportMessage[];
+  policyChanges?: PolicyChangeRequest[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -707,6 +708,28 @@ class DB {
     Object.assign(m, updates);
     this.save();
     return m;
+  }
+
+  addPolicyChange(r: PolicyChangeRequest): PolicyChangeRequest {
+    (this.data.policyChanges ??= []).unshift(r);
+    this.save();
+    return r;
+  }
+
+  getPolicyChanges(schoolId: string): PolicyChangeRequest[] {
+    return (this.data.policyChanges ?? []).filter((r) => r.school_id === schoolId);
+  }
+
+  getPolicyChange(id: string): PolicyChangeRequest | undefined {
+    return (this.data.policyChanges ?? []).find((r) => r.id === id);
+  }
+
+  updatePolicyChange(id: string, patch: Partial<PolicyChangeRequest>): PolicyChangeRequest | undefined {
+    const r = (this.data.policyChanges ?? []).find((x) => x.id === id);
+    if (!r) return undefined;
+    Object.assign(r, patch, { id: r.id, school_id: r.school_id });
+    this.save();
+    return r;
   }
 
   getAllScreeningCalls(): ScreeningCall[] {

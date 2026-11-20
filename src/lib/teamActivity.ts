@@ -38,6 +38,10 @@ export function actionLabel(action: string): string {
   const named: Record<string, string> = {
     JOB_POSTED: 'Posted a vacancy',
     JOB_EDITED: 'Edited a vacancy',
+    POLICY_HR_ACCESS_CHANGED: 'Changed whether HR can edit policies',
+    POLICY_CHANGE_PROPOSED: 'Proposed a policy change',
+    POLICY_CHANGE_APPROVED: 'Approved a policy change',
+    POLICY_CHANGE_REJECTED: 'Rejected a policy change',
     JOB_DELETED: 'Deleted a vacancy',
     CANDIDATE_ADDED_BY_STAFF: 'Added a candidate',
     CANDIDATES_BULK_IMPORTED: 'Imported candidates',
