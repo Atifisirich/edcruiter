@@ -15,6 +15,54 @@ interface VideoRecorderUploadProps {
   maxRecordSeconds?: number;
 }
 
+const DIRECT_UPLOAD_MAX = 20 * 1024 * 1024;
+const PIECE_SIZE = 6 * 1024 * 1024;
+
+/** A server error page is not JSON; read it safely so the candidate sees a sentence, not a stack of angle brackets. */
+async function readJson(res: Response): Promise<{ url?: string; error?: string; done?: boolean } | null> {
+  const text = await res.text().catch(() => '');
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function explainStatus(status: number): string {
+  if (status === 413) return 'the recording is too large for one upload';
+  if (status === 401 || status === 403) return 'your session has ended. Open your application link again, then save';
+  if (status >= 500) return 'our server had a problem. Please try again in a moment';
+  return 'the upload did not go through';
+}
+
+/** Sends a large recording in pieces, retrying each one a couple of times, and returns the saved file's address. */
+async function uploadInPieces(blob: Blob): Promise<{ url?: string; error?: string }> {
+  const uploadId = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
+  const total = Math.ceil(blob.size / PIECE_SIZE);
+  const mime = blob.type || 'video/webm';
+  let last: { url?: string; error?: string; done?: boolean } | null = null;
+  for (let i = 0; i < total; i++) {
+    const piece = blob.slice(i * PIECE_SIZE, (i + 1) * PIECE_SIZE);
+    let ok = false;
+    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+      const form = new FormData();
+      form.append('chunk', piece, 'part');
+      form.append('upload_id', uploadId);
+      form.append('index', String(i));
+      form.append('total', String(total));
+      form.append('mime', mime);
+      try {
+        const res = await fetch('/api/upload/chunk', { method: 'POST', body: form });
+        last = await readJson(res);
+        if (res.ok && last) { ok = true; break; }
+        if (res.status === 401 || res.status === 403 || res.status === 413 || res.status === 415) throw new Error(last?.error || explainStatus(res.status));
+      } catch (e) {
+        if (attempt === 2) throw e instanceof Error ? e : new Error('the upload did not go through');
+      }
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+    if (!ok) throw new Error(last?.error || 'the upload did not go through');
+  }
+  if (!last?.url) throw new Error(last?.error || 'the upload did not finish');
+  return last;
+}
+
 export default function VideoRecorderUpload({
   label,
   onVideoSubmit,
@@ -213,18 +261,18 @@ export default function VideoRecorderUpload({
     lastRecordingRef.current = { blob: fileOrBlob, filename };
     setHasRetryableRecording(true);
     try {
-      const formData = new FormData();
-      formData.append('file', fileOrBlob, filename);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Upload failed');
+      let data: { url?: string; error?: string } | null = null;
+      if (fileOrBlob.size > DIRECT_UPLOAD_MAX) {
+        // Too big for one request (the host refuses anything over about 32 MB): send it in pieces.
+        data = await uploadInPieces(fileOrBlob);
+      } else {
+        const formData = new FormData();
+        formData.append('file', fileOrBlob, filename);
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        data = await readJson(res);
+        if (!res.ok || !data?.url) throw new Error(data?.error || explainStatus(res.status));
       }
+      if (!data?.url) throw new Error('Upload failed');
 
       setRecordedVideoUrl(data.url);
       onVideoSubmit(data.url);
@@ -290,7 +338,7 @@ export default function VideoRecorderUpload({
             options = {
               mimeType: mime,
               audioBitsPerSecond: 128000,
-              videoBitsPerSecond: 1500000
+              videoBitsPerSecond: 1000000
             };
             break;
           }
