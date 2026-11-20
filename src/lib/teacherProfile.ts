@@ -107,8 +107,8 @@ export const BOARDS = [
   'CBSE', 'ICSE', 'ISC', 'Cambridge IGCSE', 'Cambridge A-Levels', 'IB PYP', 'IB MYP', 'IB DP', 'State Board', 'NIOS',
 ] as const;
 
-export const BACHELOR_DEGREES = ['BA', 'B.Sc', 'B.Com', 'BBA', 'BCA', 'B.Tech / BE'] as const;
-export const MASTER_DEGREES = ['MA', 'M.Sc', 'M.Com', 'MBA', 'MCA', 'M.Tech'] as const;
+export const BACHELOR_DEGREES = ['BA', 'B.Sc', 'B.Com', 'BBA', 'BCA', 'B.Tech / BE', 'B.Arch', 'B.Pharm', 'B.Des / BFA', 'BSW', 'LLB'] as const;
+export const MASTER_DEGREES = ['MA', 'M.Sc', 'M.Com', 'MBA', 'MCA', 'M.Tech', 'ME', 'M.Arch', 'M.Pharm', 'MFA', 'MSW', 'LLM', 'M.Phil'] as const;
 
 export const TRAINING_KINDS = [
   { id: 'bed', label: 'B.Ed' },

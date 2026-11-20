@@ -5,6 +5,14 @@ import { subjectKind } from './subjects';
  * teacher is not asked for an M.Sc, a B.Ed and lab safety the way a physics
  * teacher is.
  */
+/** The degree a posting asks for. Computing roles name the engineering and computer degrees too, so those graduates know they qualify. */
+function degreeLine(subject: string): string {
+  if (/comput|\bict\b|\bit\b|\bai\b|coding|robot|informatics/i.test(subject)) {
+    return `Bachelor's or Master's degree (B.Tech / B.E, BCA, B.Sc, M.Tech, MCA, M.Sc or equivalent) in ${subject}, computer science or a closely related field from a recognised university.`;
+  }
+  return `Bachelor's or Master's degree (B.A, B.Sc, B.Com, B.Tech / B.E, BCA, M.A, M.Sc, M.Tech, MCA or equivalent) in ${subject} or a closely related field from a recognised university.`;
+}
+
 export function postingText(subject: string, campus: string, segment: string, board: string, exp: string) {
   const at = campus ? ` for our ${campus}` : '';
   switch (subjectKind(subject)) {
@@ -70,7 +78,7 @@ export function postingText(subject: string, campus: string, segment: string, bo
           `Participate in weekly Department Head (RM) curriculum pacing syncs and parent-teacher conferences.`
         ],
         requirements: [
-          `Bachelor's or Master's Degree in ${subject} or a closely related field from an accredited university.`,
+          degreeLine(subject),
           `B.Ed / M.Ed degree is mandatory; CTET / State TET certification preferred.`,
           `Minimum ${exp} of demonstrated teaching success in reputed ${board} schools.`,
           `Demonstrated expertise in Bloom's Taxonomy, SMART lesson objectives, and Danielson Domain 3.`,

@@ -43,14 +43,7 @@ import { MIN_LESSON_WORDS, countWords } from '@/lib/testRules';
 // agree on exact casing forever.
 const SUBJECT_OPTIONS = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English', 'Social Studies'];
 const SEGMENT_OPTIONS = ['Secondary (Grades 9-10)', 'Senior Secondary (Grades 11-12)', 'Middle School (Grades 6-8)', 'Primary (Grades 1-5)'];
-const QUALIFICATION_OPTIONS = [
-  'Graduation (B.Sc / B.A / B.Com)',
-  'Masters / Post Graduation (M.Sc / M.A / M.Ed)',
-  'B.Ed (Bachelor of Education)',
-  'D.El.Ed / NTT / Montessori Diploma',
-  'Ph.D / Doctorate'
-];
-const OTHER_QUALIFICATION = 'Others';
+import { OTHER_QUALIFICATION, QUALIFICATION_GROUPS, QUALIFICATION_OPTIONS } from '@/lib/qualifications';
 
 function canonicalOption(raw: string | undefined, options: string[]): string {
   if (!raw) return '';
@@ -1015,15 +1008,19 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="" disabled>Select your qualification…</option>
-                    {QUALIFICATION_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                    {QUALIFICATION_GROUPS.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.options.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </optgroup>
                     ))}
-                    <option value={OTHER_QUALIFICATION}>Others (type below)</option>
+                    <option value={OTHER_QUALIFICATION}>Other degree or qualification (type below)</option>
                   </select>
                   {identityData.qualification === OTHER_QUALIFICATION && (
                     <input
                       type="text"
-                      placeholder="Type your qualification (e.g. B.Tech Computer Science, MCA)"
+                      placeholder="Type your qualification (e.g. B.Tech Computer Science with B.Ed)"
                       value={otherQualification}
                       onChange={e => setOtherQualification(e.target.value)}
                       className="mt-2 w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"

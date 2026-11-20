@@ -8,6 +8,7 @@ import {
   ShieldCheck, Clock, Briefcase, GraduationCap, Video, Users, Loader2,
   ArrowLeft, Check, BookOpen, AlertCircle, Share2, DollarSign
 } from 'lucide-react';
+import { OTHER_QUALIFICATION, QUALIFICATION_GROUPS } from '@/lib/qualifications';
 
 // Only real vacancies a school published are shown; the page used to hold three
 // fake postings, so /jobs/job_001 showed a job that did not exist, with a form
@@ -19,6 +20,7 @@ export default function PublicJobApplicationPage() {
   const rawId = (params.id as string) || '';
   const [job, setJob] = useState<any>(null);
   const [jobLoading, setJobLoading] = useState(true);
+  const [otherQualification, setOtherQualification] = useState('');
 
   useEffect(() => {
     fetch(`/api/jobs/${rawId}`)
@@ -110,6 +112,10 @@ export default function PublicJobApplicationPage() {
       return;
     }
 
+    if (applicantData.qualification === OTHER_QUALIFICATION && !otherQualification.trim()) {
+      alert('Please type your qualification.');
+      return;
+    }
     if (!job) return;
     setSubmitting(true);
     try {
@@ -127,7 +133,7 @@ export default function PublicJobApplicationPage() {
           phone: applicantData.phone.trim(),
           dob: applicantData.dob,
           age: applicantData.age ? parseInt(applicantData.age) : undefined,
-          qualification: applicantData.qualification,
+          qualification: applicantData.qualification === OTHER_QUALIFICATION ? otherQualification.trim() : applicantData.qualification,
           experience_band: applicantData.experience_band,
           prior_org: applicantData.prior_org.trim(),
           current_location: applicantData.current_location,
@@ -454,13 +460,24 @@ export default function PublicJobApplicationPage() {
                       className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
                     >
                       <option value="" disabled>Select your qualification…</option>
-                      <option value="M.Sc + B.Ed (Post Graduate)">M.Sc + B.Ed (Post Graduate)</option>
-                      <option value="B.Sc + B.Ed (Graduate Teacher)">B.Sc + B.Ed (Graduate Teacher)</option>
-                      <option value="M.A + B.Ed (Literature / Social)">M.A + B.Ed (Literature / Social)</option>
-                      <option value="B.A + B.Ed">B.A + B.Ed</option>
-                      <option value="Ph.D / Doctorate">Ph.D / Doctorate in Subject</option>
-                      <option value="B.Tech + B.Ed">B.Tech + B.Ed (Computer Science)</option>
+                      {QUALIFICATION_GROUPS.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.options.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
+                        </optgroup>
+                      ))}
+                      <option value={OTHER_QUALIFICATION}>Other degree or qualification (type below)</option>
                     </select>
+                    {applicantData.qualification === OTHER_QUALIFICATION && (
+                      <input
+                        type="text"
+                        required
+                        value={otherQualification}
+                        onChange={(e) => setOtherQualification(e.target.value)}
+                        maxLength={120}
+                        placeholder="Type your qualification (e.g. B.Tech Computer Science with B.Ed)"
+                        className="mt-2 w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
+                      />
+                    )}
                   </div>
                 </div>
 
