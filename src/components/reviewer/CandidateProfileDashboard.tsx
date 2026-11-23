@@ -16,8 +16,10 @@ import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
 import HiringDecision from './HiringDecision';
 import { isScoredStage } from '@/lib/scoredStages';
 import { cleanResumeReport } from '@/lib/reportText';
-import TeachingProfilePanel from './TeachingProfilePanel';
+import TeachingProfilePanel, { type ProfileResponse } from './TeachingProfilePanel';
 import CvActions from './CvActions';
+import ReportAtAGlance from './ReportAtAGlance';
+import { scoreTone } from '@/lib/teachingProfile';
 
 interface CandidateProfileDashboardProps {
   isOpen: boolean;
@@ -57,6 +59,7 @@ export default function CandidateProfileDashboard({
   layout = 'modal'
 }: CandidateProfileDashboardProps) {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
   const [stageResults, setStageResults] = useState<StageResult[]>([]);
   const [proctoringEvents, setProctoringEvents] = useState<ProctoringEvent[]>([]);
   const [evaluations, setEvaluations] = useState<EvaluationRecord[]>([]);
@@ -108,7 +111,13 @@ export default function CandidateProfileDashboard({
 
   // Each point once: the summary, the mismatches and the red flags used to repeat one another.
   const resumeReport = candidate?.resume_analysis ? cleanResumeReport(candidate.resume_analysis, { crossList: true }) : undefined;
-  const overallScore = overallFromStages(stageResults, candidate?.total_ai_score);
+  // One headline number: the teaching profile's overall suitability, the same one the candidates list shows.
+  // Until the profile is written, the plain average of the test stages is shown and labelled as such.
+  const profileOverall = profileData?.profile && profileData.profile.status !== 'failed' ? profileData.profile.overall.score : null;
+  const stageAverage = overallFromStages(stageResults, candidate?.total_ai_score);
+  const overallScore = profileOverall ?? stageAverage;
+  const overallIsProfile = profileOverall !== null;
+  const overallTone = overallScore === null ? null : scoreTone(overallScore);
   const identityResult = stageResults.find(r => r.stage_key === 'identity_verification');
   const scoredWithoutAi = stageResults.filter(
     (r) => isScoredStage(r.stage_key) && !r.ai_scores?.scores?.length
@@ -173,14 +182,15 @@ export default function CandidateProfileDashboard({
           <>
             <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Overall AI score</p>
-                <p className="text-2xl font-black text-slate-900 font-mono">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{overallIsProfile ? 'Overall suitability' : 'Test average'}</p>
+                <p className={`text-2xl font-black font-mono ${overallTone === 'green' ? 'text-emerald-700' : overallTone === 'yellow' ? 'text-amber-700' : overallTone === 'red' ? 'text-rose-700' : 'text-slate-900'}`}>
                   {overallScore !== null ? overallScore : '—'}
                   <span className="text-xs font-medium text-slate-400"> / 100</span>
                 </p>
+                {!overallIsProfile && overallScore !== null && <p className="text-[10px] text-slate-400">Final score follows once the profile is written.</p>}
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">CV fitment</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">CV review</p>
                 <p className="text-2xl font-black text-slate-900 font-mono">
                   {resumeReport?.overall_fitment_score ?? '—'}
                   <span className="text-xs font-medium text-slate-400"> / 10</span>
@@ -196,7 +206,16 @@ export default function CandidateProfileDashboard({
               </div>
             </section>
 
-            <TeachingProfilePanel candidateId={candidateId} scoredStagesDone={completedScored >= 3} />
+            {profileData?.profile && profileData.profile.status !== 'failed' && (
+              <ReportAtAGlance
+                profile={profileData.profile}
+                bands={profileData.shortlist_bands}
+                resume={resumeReport}
+                integrityFlags={profileData.profile.measured.integrity_flags}
+              />
+            )}
+
+            <TeachingProfilePanel candidateId={candidateId} scoredStagesDone={completedScored >= 3} onData={setProfileData} hideOverall={!!profileData?.profile && profileData.profile.status !== 'failed'} />
 
             <HiringDecision
               candidate={candidate}

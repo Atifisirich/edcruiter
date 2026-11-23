@@ -12,6 +12,7 @@ const candidate = {
   interview_decisions: [],
 } as unknown as Candidate;
 
+const candidateUpdates: unknown[][] = [];
 vi.mock('./db', () => ({
   db: {
     getCandidateById: () => candidate,
@@ -20,6 +21,7 @@ vi.mock('./db', () => ({
     getProctoringEventsByCandidate: () => [],
     getTeachingProfile: () => existingProfile,
     saveTeachingProfile: (p: TeachingProfile) => { saved.push(p); return p; },
+    updateCandidate: (...a: unknown[]) => { candidateUpdates.push(a); return candidate; },
   },
 }));
 vi.mock('./ensurePack', () => ({ findActivePack: () => ({ lesson_prompt: 'Plan a lesson', demo_prompt: 'Record a demo', scenario_prompt: 'Handle a scenario' }) }));
@@ -84,6 +86,8 @@ describe('generateTeachingProfile', () => {
     expect(profile.measured).toMatchObject({ mcq_correct: 1, mcq_total: 1 });
     expect(profile.relevancy.map((r) => r.score)).toEqual([80, 70, 75]);
     expect(saved).toHaveLength(1);
+    // The candidates list shows this same number, so the two never disagree.
+    expect(candidateUpdates.at(-1)).toEqual(['s1', 'c1', { total_ai_score: 70 }]);
   });
 
   it('fails cleanly, with a message, when the AI is not configured', async () => {

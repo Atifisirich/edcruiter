@@ -233,7 +233,10 @@ async function writeProfile(schoolId: string, candidateId: string): Promise<Teac
       measured: measuredFrom(candidate, results, lessonPlan ? wordCount(lessonPlan) : null),
       observations: { delivery_enabled: settings.delivery, appearance_enabled: settings.appearance, video_analyzed: videoAnalyzed },
     };
-    return db.saveTeachingProfile(profile);
+    const saved = db.saveTeachingProfile(profile);
+    // The list of candidates shows this same number, so it never disagrees with the report.
+    if (profile.overall.score !== null) db.updateCandidate(schoolId, candidateId, { total_ai_score: profile.overall.score });
+    return saved;
   } catch (err) {
     console.error('Teaching profile failed:', err);
     const message = err instanceof Error ? err.message : 'The profile could not be written.';

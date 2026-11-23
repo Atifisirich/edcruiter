@@ -8,7 +8,7 @@ import {
 } from '@/lib/teachingProfile';
 import { bandBadgeClass, type ShortlistBand } from '@/lib/shortlistBands';
 
-interface ProfileResponse {
+export interface ProfileResponse {
   profile: TeachingProfile | null;
   generating: boolean;
   shortlist_bands: ShortlistBand[] | null;
@@ -86,7 +86,19 @@ function Group({ profile, group, mode, defaultOpen = true }: { profile: Teaching
   );
 }
 
-export default function TeachingProfilePanel({ candidateId, scoredStagesDone }: { candidateId: string; scoredStagesDone: boolean }) {
+export default function TeachingProfilePanel({
+  candidateId,
+  scoredStagesDone,
+  onData,
+  hideOverall = false,
+}: {
+  candidateId: string;
+  scoredStagesDone: boolean;
+  /** Told whenever the profile loads or changes, so the page's headline number can follow it. */
+  onData?: (data: ProfileResponse | null) => void;
+  /** The overall number is shown above already. */
+  hideOverall?: boolean;
+}) {
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -105,12 +117,13 @@ export default function TeachingProfilePanel({ candidateId, scoredStagesDone }: 
         }
         setLoadError('');
         setData(body);
+        onData?.(body);
       } catch {
         if (!cancelled) setLoadError('Could not load the teaching profile.');
       }
     })();
     return () => { cancelled = true; };
-  }, [candidateId, reloadKey]);
+  }, [candidateId, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generating = data?.generating ?? false;
   useEffect(() => {
@@ -204,7 +217,7 @@ export default function TeachingProfilePanel({ candidateId, scoredStagesDone }: 
 
       {profile && profile.status !== 'failed' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-5 rounded-2xl bg-slate-50 border border-slate-200 p-4">
+          <div className={`flex flex-wrap items-center gap-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 ${hideOverall ? 'hidden' : ''}`}>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Overall suitability</p>
               <p className="text-4xl font-black text-slate-900 font-mono leading-none mt-1">
