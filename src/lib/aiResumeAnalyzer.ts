@@ -2,6 +2,9 @@ import { GoogleGenAI } from '@google/genai';
 import { dedupeSimilar } from './reportText';
 import { ResumeAnalysisReport, CurriculumGuidelines } from './types';
 import { hasBEdCredential } from './credentials';
+import { hasMastersCredential, type Requirements } from './hiringRequirements';
+
+const NO_REQUIREMENTS: Requirements = { requireBed: false, requireMasters: false };
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
@@ -15,6 +18,8 @@ export interface ResumeAnalysisInput {
   claimedQualification?: string;
   claimedExperience?: string;
   claimedPriorOrg?: string;
+  /** What the school insists on. Absent means neither a B.Ed nor a master's degree is mandatory. */
+  requirements?: Requirements;
 }
 
 export async function analyzeResumeWithAIAsync(input: ResumeAnalysisInput): Promise<ResumeAnalysisReport> {
@@ -59,6 +64,14 @@ export async function analyzeResumeWithAIAsync(input: ResumeAnalysisInput): Prom
     };
   }
 
+  const req = input.requirements ?? NO_REQUIREMENTS;
+  const bedRule = req.requireBed
+    ? '- This school REQUIRES a B.Ed / D.El.Ed / equivalent teacher training. If it is missing \u2192 eligibility_verdict must be "not_eligible". overall_fitment_score must be 3 or below.\n'
+    : '- A B.Ed / D.El.Ed is NOT required by this school. If it is missing, mention it neutrally in the qualifications section only. Do not mark the teacher ineligible or lower the score for it, and do not list it as a red flag.\n';
+  const mastersRule = req.requireMasters
+    ? "- This school REQUIRES a master's degree. If none is listed \u2192 eligibility_verdict must be \"not_eligible\". overall_fitment_score must be 3 or below.\n"
+    : "- A master's degree is OPTIONAL. Candidates with or without one are equal on this point. Never treat a missing master's degree as a weakness.\n";
+
   if (ai) {
     try {
       const prompt = `
@@ -89,12 +102,11 @@ COMPARE THE FORM TO THE CV. Flag mismatches. Do not trust the form if the CV con
 ANALYSIS REQUIREMENTS — BE STRICT. Do not give a passing or “good fit” verdict unless the CV actually supports it.
 
 ELIGIBILITY RULES (Indian K-12 teaching):
-- Missing B.Ed / D.El.Ed / equivalent teacher training for a school teaching role → eligibility_verdict must be "not_eligible". overall_fitment_score must be 3 or below.
-- Degree or experience clearly in a different subject than ${input.appliedSubject} with no evidence they taught that subject → "not_eligible", score 3 or below.
+${bedRule}${mastersRule}- Degree or experience clearly in a different subject than ${input.appliedSubject} with no evidence they taught that subject → "not_eligible", score 3 or below.
 - No teaching experience listed for a PGT/TGT role that needs classroom years → "needs_review" or "not_eligible", score 4 or below.
 - Inventing B.Ed, CTET, or experience that is not in the resume is forbidden. If not stated, say "Not listed".
 - green_flags only for facts present in the resume. Do not compliment missing credentials.
-- overall_fitment_score is 0–10. A weak or ineligible CV is 1–4. Average is 5–6. Strong is 8+ only with B.Ed (or equivalent) AND subject match AND real teaching tenure.
+- overall_fitment_score is 0–10. A weak or ineligible CV is 1–4. Average is 5–6. Strong is 8+ only with subject match AND real teaching tenure${req.requireBed ? ' AND B.Ed (or equivalent)' : ''}. A B.Ed or a master's degree that is not listed is a note, not a reason to mark the teacher ineligible, unless the rules above say it is required.
 
 1. CAREER GAPS: Detect employment gaps >= 4 months.
 2. TRAJECTORY: promotions vs demotions vs job hopping.
@@ -107,7 +119,7 @@ Output ONLY valid JSON matching this exact schema:
 {
   "overall_fitment_score": 3,
   "eligibility_verdict": "not_eligible",
-  "eligibility_summary": "No B.Ed listed and subject does not match Physics.",
+  "eligibility_summary": "Subject does not match Physics and no teaching experience is listed.",
   "name_on_cv": "Name printed on the CV",
   "form_vs_cv_discrepancies": ["Name on form does not match CV", "Form claims 3 years but CV shows a current student"],
   "career_stability_index": "High" | "Moderate" | "Volatile",
@@ -203,10 +215,11 @@ Output ONLY valid JSON matching this exact schema:
     }
   }
 
-  return reconcileResumeWithClaims(fallbackDeterministicResumeAnalysis(input), claimsFromInput(input), input.resumeText);
+  return reconcileResumeWithClaims(fallbackDeterministicResumeAnalysis(input), claimsFromInput(input), input.resumeText, input.requirements);
 }
 
 function fallbackDeterministicResumeAnalysis(input: ResumeAnalysisInput): ResumeAnalysisReport {
+  const req = input.requirements ?? NO_REQUIREMENTS;
   const text = (input.resumeText || '').toLowerCase();
   const subject = (input.appliedSubject || '').toLowerCase();
 
@@ -233,7 +246,8 @@ function fallbackDeterministicResumeAnalysis(input: ResumeAnalysisInput): Resume
   const redFlags: string[] = [];
   const greenFlags: string[] = [];
 
-  if (!hasBEd) redFlags.push('No B.Ed or equivalent teacher-training qualification is listed. Most Indian schools require this to hire a classroom teacher.');
+  if (!hasBEd && req.requireBed) redFlags.push('No B.Ed or equivalent teacher-training qualification is listed. This school requires it.');
+  if (req.requireMasters && !hasMastersCredential(text)) redFlags.push("No master's degree is listed. This school requires one.");
   if (!mentionsSubject) redFlags.push(`The CV does not clearly show ${input.appliedSubject} as a taught subject or degree.`);
   if (!mentionsTeaching) redFlags.push('No classroom teaching role is clearly described.');
   if (totalExp < 1 && mentionsTeaching) redFlags.push('Very little dated teaching experience is shown.');
@@ -244,17 +258,18 @@ function fallbackDeterministicResumeAnalysis(input: ResumeAnalysisInput): Resume
   if (hasBEd) greenFlags.push('Teacher training (B.Ed / D.El.Ed) is listed.');
   if (hasCTET) greenFlags.push('CTET / TET is listed.');
   if (mentionsSubject && hasBEd) greenFlags.push(`Subject and training appear aligned with ${input.appliedSubject}.`);
-  if (totalExp >= 3 && hasBEd) greenFlags.push(`${totalExp}+ years of dated experience is shown.`);
+  if (totalExp >= 3) greenFlags.push(`${totalExp}+ years of dated experience is shown.`);
 
   let verdict: 'eligible' | 'not_eligible' | 'needs_review' = 'needs_review';
   let score = 5;
-  if (!hasBEd || !mentionsSubject) {
+  const missingRequired = (req.requireBed && !hasBEd) || (req.requireMasters && !hasMastersCredential(text));
+  if (missingRequired || !mentionsSubject) {
     verdict = 'not_eligible';
     score = Math.min(3, 2 + (hasCTET ? 1 : 0));
   } else if (totalExp < 1) {
     verdict = 'needs_review';
     score = 4;
-  } else if (hasBEd && mentionsSubject && totalExp >= 2) {
+  } else if (mentionsSubject && totalExp >= 2) {
     verdict = 'eligible';
     score = Math.min(8, 6 + (hasCTET ? 1 : 0) + (totalExp >= 4 ? 1 : 0));
   }
@@ -328,7 +343,8 @@ function normalizePersonName(name: string) {
 export function reconcileResumeWithClaims(
   report: ResumeAnalysisReport,
   claims: ResumeClaimContext,
-  extraText = ''
+  extraText = '',
+  requirements: Requirements = NO_REQUIREMENTS
 ): ResumeAnalysisReport {
   const discrepancies = [...(report.form_vs_cv_discrepancies || [])];
   const red = [...(report.red_flags || [])];
@@ -371,8 +387,12 @@ export function reconcileResumeWithClaims(
     discrepancies.push(msg);
     red.push(msg);
   }
-  if (!bedOnCv && !red.some((r) => r.toLowerCase().includes('b.ed'))) {
-    red.push('No B.Ed / D.El.Ed found on the CV. Most school teaching roles require this.');
+  if (requirements.requireBed && !bedOnCv && !red.some((r) => r.toLowerCase().includes('b.ed'))) {
+    red.push('No B.Ed / D.El.Ed found on the CV. This school requires it.');
+  }
+  const mastersOnCv = hasMastersCredential('', degrees);
+  if (requirements.requireMasters && !mastersOnCv) {
+    red.push("No master's degree found on the CV. This school requires one.");
   }
 
   let score = Number(report.overall_fitment_score) || 0;
@@ -386,7 +406,7 @@ export function reconcileResumeWithClaims(
   // downgrade fires even when nothing else about the report looked
   // inconsistent, which is exactly the shape a successful prompt injection
   // (or a confidently wrong model) would otherwise slip through as.
-  if (verdict === 'eligible' && !bedOnCv) {
+  if (verdict === 'eligible' && requirements.requireBed && !bedOnCv) {
     verdict = 'needs_review';
     score = Math.min(score, 5);
     const msg = 'eligibility_verdict was "eligible" but no B.Ed / D.El.Ed evidence was found in the CV\'s own extracted qualifications — downgraded for manual review.';
@@ -396,6 +416,7 @@ export function reconcileResumeWithClaims(
     verdict = 'not_eligible';
     score = Math.min(score, 3);
   }
+  if (requirements.requireMasters && !mastersOnCv) verdict = 'not_eligible';
   if (verdict === 'not_eligible') score = Math.min(score, 3);
 
   return {

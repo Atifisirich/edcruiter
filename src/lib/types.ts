@@ -184,6 +184,8 @@ export interface School {
   screening_call_state?: { digest_on?: string; cap_alert_month?: string };
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
+  /** Whether a B.Ed or a master's degree is mandatory when a CV is read. Absent means neither is. See hiringRequirements.ts. */
+  hiring_requirements?: { require_bed?: boolean; require_masters?: boolean };
 }
 
 /**

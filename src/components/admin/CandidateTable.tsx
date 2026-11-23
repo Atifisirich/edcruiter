@@ -146,7 +146,7 @@ export default function CandidateTable({
                   <td className="py-3.5 px-3 hidden xl:table-cell">
                     <span className="text-slate-800 line-clamp-2 leading-snug" title={creds.highestDegree}>{creds.highestDegree}</span>
                     <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                      B.Ed <Badge tone={creds.hasBEd ? 'emerald' : 'rose'}>{creds.bedLabel}</Badge>
+                      B.Ed <Badge tone={creds.hasBEd ? 'emerald' : 'slate'}>{creds.bedLabel}</Badge>
                     </span>
                   </td>
                 )}

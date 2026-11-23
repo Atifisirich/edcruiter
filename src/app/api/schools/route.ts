@@ -1,3 +1,4 @@
+import { parseRequirements } from '@/lib/hiringRequirements';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { School } from '@/lib/types';
@@ -159,6 +160,7 @@ export async function PUT(req: NextRequest) {
         appearance_observations: rs.appearance_observations === true,
       };
     }
+    if ('hiring_requirements' in cleaned) cleaned.hiring_requirements = parseRequirements(cleaned.hiring_requirements);
     // Team seats are the platform owner's to set (a school admin's attempt is
     // already stripped above). Whole numbers only, and at least one admin seat.
     let seatSummary = '';

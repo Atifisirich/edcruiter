@@ -9,7 +9,7 @@ import ScreeningCallPanel from '@/components/admin/ScreeningCallPanel';
 import AiInterviewPanel from '@/components/admin/AiInterviewPanel';
 import { useAdmin } from '@/components/admin/adminContext';
 import { buttonClass } from '@/components/admin/ui';
-import { isAdmin } from '@/lib/permissions';
+import { isHiringTeam } from '@/lib/permissions';
 
 export default function CandidateReportPage() {
   const params = useParams();
@@ -20,7 +20,7 @@ export default function CandidateReportPage() {
 
   const candidate = candidates.find((c) => c.id === id);
   // Only the school admin (or Edcruiter support) removes a candidate.
-  const canDelete = isAdmin(user?.role) && !!candidate;
+  const canDelete = isHiringTeam(user?.role) && !!candidate;
 
   return (
     <>

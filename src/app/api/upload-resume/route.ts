@@ -3,6 +3,7 @@ import { logAiUsage } from '@/lib/aiUsage';
 import fs from 'fs';
 import { db } from '@/lib/db';
 import { reconcileResumeWithClaims } from '@/lib/aiResumeAnalyzer';
+import { requirementsOf } from '@/lib/hiringRequirements';
 import { GoogleGenAI } from '@google/genai';
 import { Candidate, ResumeAnalysisReport } from '@/lib/types';
 import { authErrorResponse, requireCandidate, assertSchoolActive } from '@/lib/auth';
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
     }
     const candidate = await requireCandidate(candidateId);
     assertSchoolActive(candidate.schoolId);
+    const requirements = requirementsOf(db.getSchoolById(candidate.schoolId));
 
     const rl = checkRateLimit(req, 'resume-upload', { max: 10, windowMs: 60 * 60_000 });
     if (!rl.allowed) {
@@ -118,7 +120,8 @@ THE PDF IS GROUND TRUTH. Do not invent B.Ed, CTET, jobs, or years of experience 
 If the person is still studying, a student, or has no teaching job listed, say so.
 If the name printed on the CV differs from the form name, flag it.
 If the form claims years of experience but the CV has none, flag it.
-If B.Ed / D.El.Ed is missing on the CV, eligibility_verdict must be "not_eligible" and overall_fitment_score must be 3 or below.
+${requirements.requireBed ? 'This school REQUIRES a B.Ed / D.El.Ed. If it is missing on the CV, eligibility_verdict must be "not_eligible" and overall_fitment_score must be 3 or below.' : 'A B.Ed / D.El.Ed is NOT required by this school. If it is missing, do not mark the teacher ineligible or lower the score for it, and do not list it as a red flag.'}
+${requirements.requireMasters ? "This school REQUIRES a master's degree. If none is on the CV, eligibility_verdict must be 'not_eligible' and overall_fitment_score must be 3 or below." : "A master's degree is OPTIONAL. Never treat a missing one as a weakness."}
 Do not use a high example score. A weak CV is 1–4.
 
 Output ONLY valid JSON:
@@ -193,7 +196,9 @@ Output ONLY valid JSON:
             claimedExperience: formExp,
             claimedSubject: formSubject,
             claimedPriorOrg: formOrg
-          }
+          },
+          '',
+          requirements
         );
       } catch (pdfErr) {
         console.warn('Gemini multimodal PDF analysis fallback:', pdfErr);

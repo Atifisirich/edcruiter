@@ -44,9 +44,9 @@ beforeEach(() => {
 });
 
 describe('deleting candidates', () => {
-  it('asks for school-admin level access', async () => {
+  it('asks for hiring-team access (the school admin and HR)', async () => {
     await POST(req({ school_id: 's1', candidate_ids: ['a'] }));
-    expect(accessCalls[0]).toEqual(['s1', { minRole: 'SCHOOL_ADMIN' }]);
+    expect(accessCalls[0]).toEqual(['s1', { anyOf: ['SCHOOL_ADMIN', 'HR'] }]);
   });
 
   it('deletes only the ticked candidates and logs each one by name', async () => {
@@ -71,7 +71,7 @@ describe('deleting candidates', () => {
     expect(res.status).toBe(400);
   });
 
-  it('refuses someone without admin access, deleting nothing', async () => {
+  it('refuses a reviewer, deleting nothing', async () => {
     access = new AuthError('Your role does not have access to this resource.', 403);
     const res = await POST(req({ school_id: 's1', candidate_ids: ['a'] }));
     expect(res.status).toBe(403);

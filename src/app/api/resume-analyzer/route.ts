@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { analyzeResumeWithAIAsync } from '@/lib/aiResumeAnalyzer';
+import { requirementsOf } from '@/lib/hiringRequirements';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess, assertSchoolActive } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { HIRING_TEAM, isAdmin } from '@/lib/permissions';
@@ -52,7 +53,11 @@ Languages: ${candidate.languages?.join(', ')}
       appliedSubject: candidate.applied_subject,
       appliedSegment: candidate.applied_segment,
       resumeText: textToAnalyze,
-      curriculumGuidelines: school?.curriculum_guidelines
+      curriculumGuidelines: school?.curriculum_guidelines,
+      claimedQualification: candidate.qualification,
+      claimedExperience: candidate.experience_band,
+      claimedPriorOrg: candidate.prior_org,
+      requirements: requirementsOf(school)
     });
 
     // Save report on candidate

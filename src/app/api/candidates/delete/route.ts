@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, auditAsStaff, requireSchoolAccess } from '@/lib/auth';
+import { HIRING_TEAM } from '@/lib/permissions';
 
 const MAX_PER_REQUEST = 500;
 
@@ -8,14 +9,14 @@ const MAX_PER_REQUEST = 500;
  * Permanently deletes one or more candidates of a school, with everything
  * that belongs to them: stage results, recordings, CV, flags, messages.
  *
- * Only the school admin (or the platform owner in support mode) may do this;
- * HR and reviewers cannot. Each removed candidate gets its own line in the
+ * The school admin and HR may do this (and the platform owner in support
+ * mode); reviewers cannot. Each removed candidate gets its own line in the
  * school's activity log, with the name, so the school can see who was removed.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const ctx = await requireSchoolAccess(body.school_id, { minRole: 'SCHOOL_ADMIN' });
+    const ctx = await requireSchoolAccess(body.school_id, { anyOf: HIRING_TEAM });
 
     const ids: string[] = Array.isArray(body.candidate_ids)
       ? [...new Set<string>(body.candidate_ids.filter((x: unknown): x is string => typeof x === 'string' && x.length > 0))]

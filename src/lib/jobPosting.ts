@@ -79,7 +79,7 @@ export function postingText(subject: string, campus: string, segment: string, bo
         ],
         requirements: [
           degreeLine(subject),
-          `B.Ed / M.Ed degree is mandatory; CTET / State TET certification preferred.`,
+          `A B.Ed or M.Ed is welcome but not required; CTET / State TET certification preferred.`,
           `Minimum ${exp} of demonstrated teaching success in reputed ${board} schools.`,
           `Demonstrated expertise in Bloom's Taxonomy, SMART lesson objectives, and Danielson Domain 3.`,
           `Fluency in English communication with strong voice projection and classroom leadership.`

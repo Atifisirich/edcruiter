@@ -283,6 +283,7 @@ export default function SettingsPage() {
   const bands = draft ?? normalizeBands(school?.shortlist_bands);
   const [savingBands, setSavingBands] = useState(false);
   const [savingReport, setSavingReport] = useState(false);
+  const [savingReq, setSavingReq] = useState(false);
   const report = reportSettingsOf(school?.report_settings);
 
   const save = async (updates: Record<string, unknown>) => {
@@ -323,6 +324,18 @@ export default function SettingsPage() {
       toast(e instanceof Error ? e.message : 'Could not save.', 'error');
     } finally {
       setSavingReport(false);
+    }
+  };
+
+  const saveRequirements = async (next: { require_bed?: boolean; require_masters?: boolean }) => {
+    setSavingReq(true);
+    try {
+      await save({ hiring_requirements: next });
+      toast('CV requirements saved.', 'success');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not save.', 'error');
+    } finally {
+      setSavingReq(false);
     }
   };
 
@@ -396,6 +409,34 @@ export default function SettingsPage() {
           <button type="button" onClick={() => setDraft(DEFAULT_SHORTLIST_BANDS.map((b) => ({ ...b })))} className={buttonClass('secondary', 'sm')}>Use the standard</button>
           {dirty && <button type="button" onClick={() => setDraft(null)} className={buttonClass('ghost', 'sm')}>Undo</button>}
         </SaveBar>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="What a CV must show"
+          description="Choose whether a B.Ed or a master’s degree is mandatory. When it is not, a teacher without it is still read on their subject and experience, and the report only notes it."
+        />
+        <div className="space-y-4">
+          {([
+            ['require_bed', 'B.Ed (teacher training) is mandatory', 'A CV without a B.Ed, D.El.Ed or similar is marked not eligible. Off by default.'],
+            ['require_masters', 'A master’s degree is mandatory', 'A CV without a master’s degree is marked not eligible. Off by default: it is open to anyone, with or without one.'],
+          ] as const).map(([key, title, help]) => (
+            <label key={key} className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={school?.hiring_requirements?.[key] === true}
+                disabled={savingReq}
+                onChange={(e) => void saveRequirements({ ...school?.hiring_requirements, [key]: e.target.checked })}
+                className="mt-1 w-4 h-4 accent-indigo-600"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">{title}</span>
+                <span className="block text-sm text-slate-500">{help}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-4 text-sm text-slate-500">This applies to CVs read from now on. Open a candidate and press re-analyse to read an earlier CV again.</p>
       </Card>
 
       <Card>

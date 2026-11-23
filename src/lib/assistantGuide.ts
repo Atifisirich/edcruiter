@@ -12,8 +12,8 @@ export const PLATFORM_GUIDE = `
 Edcruiter is a teacher-hiring platform for Indian schools. A school posts a vacancy, teachers apply, an AI voice agent can phone them for a quick screening, they take a five-stage online assessment, and the school's reviewers read a generated report and decide. Website: edcruiter.com. Support contact: edcruiterofficial@gmail.com.
 
 # Who uses it (roles)
-- School admin: full control of the school's workspace. Only the admin can delete or change a candidate's details, manage the team, change settings, and set review rounds.
-- Recruiter (HR): the day-to-day hiring work: vacancies, adding and inviting candidates, creating tests, scheduling interviews, shortlisting, sending offers, running AI screening calls. Cannot delete or change candidate data.
+- School admin: full control of the school's workspace. Only the admin can change a candidate's details (HR can delete candidates), manage the team, change settings, and set review rounds.
+- Recruiter (HR): the day-to-day hiring work: vacancies, adding and inviting candidates, creating tests, scheduling interviews, shortlisting, sending offers, running AI screening calls. Can delete candidates. Cannot change a candidate's details.
 - Principal, Subject head / Coordinator, Management (final decision): reviewers. They read candidate reports and give a yes or no with their opinion in the review rounds their role is assigned to. They see "My reviews".
 - Candidates (teachers) sign in with their application ID or a link, never a staff login.
 - Platform owner (Edcruiter team): onboards and approves schools, sets plans and team seats, and can open a school's workspace in support mode.

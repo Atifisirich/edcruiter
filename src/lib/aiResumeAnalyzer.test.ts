@@ -38,11 +38,32 @@ describe('reconcileResumeWithClaims — deterministic B.Ed backstop', () => {
     // must catch this on the B.Ed check alone, not only when other
     // discrepancies already exist.
     const report = baseReport({ overall_fitment_score: 10, eligibility_verdict: 'eligible' });
-    const result = reconcileResumeWithClaims(report, { claimedName: 'Priya Nair' });
+    const result = reconcileResumeWithClaims(report, { claimedName: 'Priya Nair' }, '', { requireBed: true, requireMasters: false });
 
     expect(result.eligibility_verdict).toBe('needs_review');
     expect(result.overall_fitment_score).toBeLessThanOrEqual(5);
     expect(result.form_vs_cv_discrepancies?.some((d) => d.toLowerCase().includes('b.ed'))).toBe(true);
+  });
+
+  it('leaves an "eligible" verdict alone when the school does not require a B.Ed', () => {
+    const report = baseReport({ overall_fitment_score: 8, eligibility_verdict: 'eligible' });
+    const result = reconcileResumeWithClaims(report, { claimedName: 'Priya Nair' });
+
+    expect(result.eligibility_verdict).toBe('eligible');
+    expect(result.overall_fitment_score).toBe(8);
+    expect(result.red_flags.some((f) => f.toLowerCase().includes('b.ed'))).toBe(false);
+  });
+
+  it("marks a CV not eligible when the school requires a master's degree and none is listed", () => {
+    const report = baseReport({
+      overall_fitment_score: 8,
+      eligibility_verdict: 'eligible',
+      qualifications_match: { degrees_found: ['B.Sc Physics'], alignment_with_subject: 'Match', b_ed_status: 'Not listed', ctet_tet_status: 'Not listed' },
+    });
+    const result = reconcileResumeWithClaims(report, { claimedName: 'Priya Nair' }, '', { requireBed: false, requireMasters: true });
+
+    expect(result.eligibility_verdict).toBe('not_eligible');
+    expect(result.overall_fitment_score).toBeLessThanOrEqual(3);
   });
 
   it('leaves an "eligible" verdict alone when the model reports real B.Ed evidence', () => {

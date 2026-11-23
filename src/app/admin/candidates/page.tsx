@@ -8,7 +8,7 @@ import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
 import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
-import { isAdmin, isHiringTeam } from '@/lib/permissions';
+import { isHiringTeam } from '@/lib/permissions';
 import { candidateState, countByTab, TAB_LABEL, TAB_ORDER, type CandidateTab } from '@/lib/candidateProgress';
 import { normalizeBands } from '@/lib/shortlistBands';
 import { appliedTo } from '@/lib/vacancyCandidates';
@@ -21,7 +21,7 @@ function CandidatesList() {
   const params = useSearchParams();
   const { school, schoolId, user, candidates: allCandidates, loading, openAddCandidate, openBulkUpload, toast } = useAdmin();
   // Only the school admin (or Edcruiter support) removes candidates; admin and HR can call them.
-  const canDelete = isAdmin(user?.role);
+  const canDelete = isHiringTeam(user?.role);
   const canCall = isHiringTeam(user?.role);
   const [calling, setCalling] = useState(false);
   const [selecting, setSelecting] = useState(false);
