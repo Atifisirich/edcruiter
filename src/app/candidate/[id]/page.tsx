@@ -431,7 +431,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     }
   };
 
-  const logProctoringEvent = async (type: string, description: string) => {
+  const logProctoringEvent = async (type: string, description: string, metrics?: Record<string, number>) => {
     try {
       await fetch('/api/proctoring', {
         method: 'POST',
@@ -442,12 +442,19 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
           stage_key: stageKeyRef.current,
           event_type: type,
           details: description,
+          metrics,
         })
       });
     } catch (err) {}
   };
 
-  const handleProctoringAnomaly = (type: string, detail: string) => {
+  // A quiet note (a reading summary, a voice check) is recorded for the reviewer
+  // without telling the candidate, so they cannot learn what is noticed.
+  const handleProctoringAnomaly = (type: string, detail: string, extra?: { metrics?: Record<string, number>; quiet?: boolean }) => {
+    if (extra?.quiet) {
+      logProctoringEvent(type, detail, extra.metrics);
+      return;
+    }
     setProctoringWarnings(prev => prev + 1);
     setProctoringTrustScore(prev => Math.max(10, prev - 8));
     setProctoringStatus(detail);
@@ -1347,20 +1354,18 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
               {/* STAGE 4: Situational Scenario */}
               {activeStageKey === 'situational_scenario' && (
                 <div className="space-y-6">
-                  <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs space-y-2">
-                    <span className="text-indigo-600 font-bold uppercase text-[10px] tracking-wider block">
-                      The situation
-                    </span>
-                    <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">
-                      {attemptContent?.prompt || getDynamicQuestion('situational_scenario')?.question_text || 'Explain your 3-step de-escalation protocol when a student repeatedly disrupts class and refuses to engage.'}
-                    </p>
-                  </div>
-
+                  {/* The situation is shown inside the recorder and hidden while the candidate
+                      answers, with a short think time, so there is no time to look an answer
+                      up on a phone and read it out. */}
                   <VideoRecorderUpload
                     label="Classroom scenario (live)"
                     defaultVideoUrl={situationalVideoUrl}
-                    prepSeconds={60}
+                    prepSeconds={20}
                     maxRecordSeconds={120}
+                    question={attemptContent?.prompt || getDynamicQuestion('situational_scenario')?.question_text || 'Explain your 3-step de-escalation protocol when a student repeatedly disrupts class and refuses to engage.'}
+                    questionTitle="The situation"
+                    hideQuestionWhileRecording
+                    onQuestionReviewed={() => handleProctoringAnomaly('QUESTION_REVIEWED', 'Showed the hidden question again while answering.', { quiet: true })}
                     onVideoSubmit={(url: string) => setSituationalVideoUrl(url)}
                   />
 
@@ -1497,7 +1502,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   stageKey={activeStageKey}
                   schoolId={candidate.school_id}
                   candidateId={candidate.id}
-                  onViolation={(type, details) => handleProctoringAnomaly(type, details)}
+                  onViolation={(type, details, extra) => handleProctoringAnomaly(type, details, extra)}
                 />
                 <p className="text-xs text-slate-500 leading-relaxed px-1">
                   Your camera is checked while you take this test. The school sees short notes, such as leaving the page, next to your answers. A person reviews them.

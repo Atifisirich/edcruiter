@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { AIScoringContract, HRPolicyDocument, RubricTemplate, QuestionnaireItem, CurriculumGuidelines, StageResult } from './types';
 import { safeUploadPath, UPLOADS_URL_PREFIX } from './uploads';
+import { cleanDeliveryCheck } from './readingCheck';
 
 export interface ScoreInput {
   stage: string;
@@ -43,6 +44,43 @@ export class NamedModelEvalError extends Error {
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+/**
+ * Extra instructions for a recorded answer: was it spoken in the candidate's own
+ * words, or read out (often from a phone held near the camera)? The answer goes in
+ * delivery_check and never changes the scores. A sample of the candidate's own
+ * writing from earlier stages lets the model compare styles.
+ */
+export function deliveryCheckPrompt(input: Pick<ScoreInput, 'priorStageResults'>): string {
+  const written = (input.priorStageResults ?? [])
+    .map((r) => r.written_submission || '')
+    .filter((t) => t.trim().length > 40)
+    .join('\n')
+    .slice(0, 800);
+  return `
+DELIVERY CHECK (separate from the scores above; it must NOT change any score):
+Decide whether the candidate is speaking in their own words or reading a prepared answer aloud, for example from a phone held near the camera or off to one side. Listen and watch for:
+- Spontaneous speech: fillers ("um", "so", "matlab", "basically"), restarts and self-corrections, pauses in the middle of a sentence while thinking, an uneven pace, natural eye contact that wanders while thinking.
+- Read speech: almost no fillers, pauses at commas and full stops, a very even pace, a pitch reset at each sentence, long well-formed sentences, eyes repeatedly dropping or fixed to one side while fluent speech continues, a long silence at the start and then a fluent answer.
+- Textbook or AI wording: "Firstly… Furthermore… In conclusion", neat lists of three, vocabulary far above how the candidate speaks elsewhere in the video.
+- In the room: a phone or screen visible, light from a screen on the face, another person's voice or whispering.
+Many honest teachers are fluent: do not call fluent speech "read" without eye or pacing evidence. Hindi, Telugu and English mixing is normal. Do not judge accent.
+${written ? `The candidate's own writing from an earlier stage, to compare the style with:\n"""\n${written}\n"""` : 'No written sample is available: use "unknown" for matches_written_style.'}
+
+Add this field to the JSON you return:
+"delivery_check": {
+  "verdict": "spontaneous" | "possibly_read" | "likely_read" | "unclear",
+  "confidence": 0-100,
+  "reasons": ["short plain reason", "..."],
+  "moments": [{ "time": "m:ss", "note": "what happens here" }],
+  "fillers_per_minute": number,
+  "start_delay_seconds": number,
+  "pace": "natural" | "very_even",
+  "wording": "own_words" | "mixed" | "textbook_or_ai",
+  "matches_written_style": "yes" | "no" | "unknown",
+  "room_notes": ["only things actually seen or heard, else empty"]
+}`;
+}
 
 // Check if a submission is essentially empty, placeholder, or gibberish
 function checkContentQuality(text: string): { isGibberish: boolean; wordCount: number; reason?: string } {
@@ -475,7 +513,7 @@ Output ONLY valid JSON with this exact schema:
       if (prepared) {
         requestContents.push(prepared.part);
         requestContents.push({
-          text: `[MULTIMODAL VIDEO SUBMISSION ATTACHED]: Watch and listen to the candidate's recorded video. Judge their teaching: clarity of explanation, pacing, checking for understanding, and how they engage a class. Do NOT score or comment on appearance, accent, skin colour, gender, age, disability, or the room and equipment they record in — only on teaching.\n\n${cotPrompt}`
+          text: `[MULTIMODAL VIDEO SUBMISSION ATTACHED]: Watch and listen to the candidate's recorded video. Judge their teaching: clarity of explanation, pacing, checking for understanding, and how they engage a class. Do NOT score or comment on appearance, accent, skin colour, gender, age, disability, or the room and equipment they record in — only on teaching.\n\n${cotPrompt}\n\n${deliveryCheckPrompt(input)}`
         });
         multimodalAnalyzed = true;
       } else {
@@ -548,7 +586,8 @@ Output ONLY valid JSON with this exact schema:
           plagiarism_risk: plagiarismResult.risk,
           plagiarism_reason: plagiarismResult.reason,
           discrepancy_alert: crossStageDiscrepancy,
-          multimodal_video_analyzed: multimodalAnalyzed
+          multimodal_video_analyzed: multimodalAnalyzed,
+          delivery_check: multimodalAnalyzed ? cleanDeliveryCheck(parsed.delivery_check) : undefined,
         } as AIScoringContract;
       }
       if (input.skipModelFallback) {

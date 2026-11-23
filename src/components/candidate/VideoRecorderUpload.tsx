@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { trackStream } from '@/lib/mediaRegistry';
+import { announceAnswerPhase } from '@/lib/readingTracker';
 import {
   Video, Square, CheckCircle2,
-  Loader2, AlertCircle, Mic, MicOff, ShieldAlert
+  Loader2, AlertCircle, Mic, MicOff, ShieldAlert, Eye
 } from 'lucide-react';
 
 interface VideoRecorderUploadProps {
@@ -13,6 +14,16 @@ interface VideoRecorderUploadProps {
   defaultVideoUrl?: string;
   prepSeconds?: number;
   maxRecordSeconds?: number;
+  /** The question, shown inside the recorder. */
+  question?: string;
+  questionTitle?: string;
+  /**
+   * Hide the question once recording starts, so there is no time to look an
+   * answer up and read it out. The candidate can show it again for a few
+   * seconds; each time is noted for the reviewer.
+   */
+  hideQuestionWhileRecording?: boolean;
+  onQuestionReviewed?: () => void;
 }
 
 const DIRECT_UPLOAD_MAX = 20 * 1024 * 1024;
@@ -68,7 +79,11 @@ export default function VideoRecorderUpload({
   onVideoSubmit,
   defaultVideoUrl,
   prepSeconds = 60,
-  maxRecordSeconds = 300
+  maxRecordSeconds = 300,
+  question,
+  questionTitle = 'The question',
+  hideQuestionWhileRecording = false,
+  onQuestionReviewed,
 }: VideoRecorderUploadProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -96,6 +111,21 @@ export default function VideoRecorderUpload({
   const timerIntervalRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnimFrameRef = useRef<number | null>(null);
+
+  // The camera's proctoring listens for this to know when the question is up and when an answer is being given.
+  useEffect(() => { announceAnswerPhase(phase); }, [phase]);
+  useEffect(() => () => announceAnswerPhase('done'), []);
+
+  const [questionPeek, setQuestionPeek] = useState(false);
+  const peekTimerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (peekTimerRef.current) window.clearTimeout(peekTimerRef.current); }, []);
+  const showQuestionAgain = () => {
+    setQuestionPeek(true);
+    onQuestionReviewed?.();
+    if (peekTimerRef.current) window.clearTimeout(peekTimerRef.current);
+    peekTimerRef.current = window.setTimeout(() => setQuestionPeek(false), 8000);
+  };
+  const questionHidden = !!question && hideQuestionWhileRecording && isRecording && !questionPeek;
 
   // Clean up streams & audio context on unmount
   useEffect(() => {
@@ -438,6 +468,24 @@ export default function VideoRecorderUpload({
         <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Recorded live</span>
       </div>
 
+      {question && (
+        questionHidden ? (
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-slate-700 text-sm leading-relaxed">
+              The question is hidden while you answer. Speak in your own words, as you would to an interviewer.
+            </p>
+            <button type="button" onClick={showQuestionAgain} className="px-3 py-2 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+              <Eye className="w-3.5 h-3.5" /> Show the question again
+            </button>
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-2">
+            <span className="text-indigo-600 font-bold uppercase text-[10px] tracking-wider block">{questionTitle}</span>
+            <p className="text-slate-900 font-semibold text-[15px] leading-relaxed">{question}</p>
+          </div>
+        )
+      )}
+
       {errorMessage && (
         <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex items-start gap-2.5 text-xs">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -497,7 +545,9 @@ export default function VideoRecorderUpload({
           {phase === 'prep' && !isRecording && (
             <div className="space-y-3">
               <p className="text-sm text-slate-700 leading-relaxed">
-                Read the question above and face the camera. Recording starts by itself when the timer ends, or tap Start when you are ready.
+                {question && hideQuestionWhileRecording
+                  ? 'Read the question and take a moment to think. It is hidden once recording starts, so answer from your own experience. Recording starts by itself when the timer ends.'
+                  : 'Read the question above and face the camera. Recording starts by itself when the timer ends, or tap Start when you are ready.'}
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-xs font-bold text-slate-700">
                 {hasAudioTrack ? <Mic className="w-3.5 h-3.5 text-emerald-600" /> : <MicOff className="w-3.5 h-3.5 text-rose-500" />}

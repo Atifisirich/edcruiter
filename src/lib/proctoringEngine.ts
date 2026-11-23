@@ -49,6 +49,14 @@ const VIOLATION_WEIGHTS: Record<ProctoringEventType, number> = {
   IDENTITY_MISMATCH: 30,
   // A stage was left half done and started again with new questions. Noted, lightly: it is allowed.
   STAGE_RESTARTED: 4,
+  // Speaking while the question is on screen, before recording: often reading it to a phone.
+  SPEECH_DURING_PREP: 8,
+  // A per-answer summary. Weighed in the reading check (readingCheck.ts), not here.
+  READING_PATTERN: 0,
+  // Looking at the question again is allowed.
+  QUESTION_REVIEWED: 0,
+  MIC_OFF: 4,
+  AI_SNAPSHOT_FLAG: 15,
   // A large block of text appeared at once (autocomplete, dictation or an
   // extension). Paste and drop are blocked outright and count as COPY_PASTE_ATTEMPT.
   TYPING_ANOMALY: 6,

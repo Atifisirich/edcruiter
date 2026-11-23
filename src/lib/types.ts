@@ -871,6 +871,28 @@ export interface AIScoringContract {
   multimodal_video_analyzed?: boolean;
   /** gemini = live model; deterministic_fallback = offline/heuristic when Gemini unavailable */
   scoring_mode?: 'gemini' | 'deterministic_fallback';
+  /** Video stages: whether the answer sounded spoken in the candidate's own words or read out. Never changes a score. */
+  delivery_check?: DeliveryCheck;
+}
+
+/** The AI's view of how a recorded answer was delivered. A signal for the reviewer, not proof. */
+export interface DeliveryCheck {
+  verdict: 'spontaneous' | 'possibly_read' | 'likely_read' | 'unclear';
+  /** 0-100: how sure the AI is of the verdict. */
+  confidence: number;
+  /** Plain reasons, for example "almost no fillers or restarts". */
+  reasons: string[];
+  /** Moments in the video worth watching, with a time such as "1:05". */
+  moments: { time: string; note: string }[];
+  /** Estimates from listening, not measurements. */
+  fillers_per_minute?: number;
+  start_delay_seconds?: number;
+  pace?: 'natural' | 'very_even';
+  wording?: 'own_words' | 'mixed' | 'textbook_or_ai';
+  /** Whether the spoken wording matches how the candidate writes in their written answers. */
+  matches_written_style?: 'yes' | 'no' | 'unknown';
+  /** Things seen or heard in the room: a phone, another voice, light from a second screen. */
+  room_notes?: string[];
 }
 
 export interface HumanOverride {
@@ -934,7 +956,17 @@ export type ProctoringEventType =
   /** The face on camera did not match the photo taken at the start. */
   | 'IDENTITY_MISMATCH'
   /** A stage was left unfinished and started again, with new questions. */
-  | 'STAGE_RESTARTED';
+  | 'STAGE_RESTARTED'
+  /** The candidate spoke aloud while the question was on screen, before recording (for example reading it to a phone). */
+  | 'SPEECH_DURING_PREP'
+  /** A summary of one answer: how much of the speaking time the eyes were down, and how often a glance down led into speech. */
+  | 'READING_PATTERN'
+  /** The candidate opened the hidden question again while answering. Noted, not penalised. */
+  | 'QUESTION_REVIEWED'
+  /** The microphone was refused or unavailable, so the voice checks could not run. */
+  | 'MIC_OFF'
+  /** An AI look at a camera picture found something: a phone, another person, or light from a second screen. */
+  | 'AI_SNAPSHOT_FLAG';
 
 export interface ProctoringEvent {
   id: string;
@@ -945,6 +977,8 @@ export interface ProctoringEvent {
   details: string;
   /** A small picture kept as evidence for the reviewer (for example the face that did not match). */
   snapshot_url?: string;
+  /** Measured numbers behind the event, for example eyes_away_speaking_pct on a READING_PATTERN. */
+  metrics?: Record<string, number>;
   timestamp: string;
 }
 

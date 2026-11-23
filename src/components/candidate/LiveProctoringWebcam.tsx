@@ -8,12 +8,14 @@ import '@tensorflow/tfjs-backend-webgl';
 import '@tensorflow/tfjs-backend-cpu';
 import { trackStream, stopStream } from '@/lib/mediaRegistry';
 import { describeFace, faceSnapshot, loadFaceModels } from '@/lib/faceClient';
+import { ANSWER_PHASE_EVENT, ReadingTracker, VoiceActivity, currentAnswerPhase, type AnswerPhase } from '@/lib/readingTracker';
 
 interface LiveProctoringWebcamProps {
   stageKey: string;
   candidateId: string;
   schoolId: string;
-  onViolation?: (type: string, details: string) => void;
+  /** quiet: record for the reviewer without telling the candidate. */
+  onViolation?: (type: string, details: string, extra?: { metrics?: Record<string, number>; quiet?: boolean }) => void;
   /** Compare the face on camera with the photo taken at the start, every few seconds. */
   checkIdentity?: boolean;
 }
@@ -68,6 +70,14 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
   const missingFaceCounter = useRef<number>(0);
   const lastVoiceAlertTimeRef = useRef<number>(0);
 
+  // Voice and reading measurements (see readingTracker.ts).
+  const speakingRef = useRef<boolean>(false);
+  const eyesAwayRef = useRef<boolean>(false);
+  const phaseRef = useRef<AnswerPhase | null>(null);
+  const readingTrackerRef = useRef<ReadingTracker | null>(null);
+  const prepSpeechMsRef = useRef<number>(0);
+  const prepFlaggedRef = useRef<boolean>(false);
+
   // UI States
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -117,13 +127,15 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
   // alwaysLog: write the event even if a warning was spoken a moment ago (at most
   // once every 1.5 seconds per kind, so a held key does not flood the record).
   // silent: record it without a spoken or on-screen warning.
-  const triggerVoiceWarning = useCallback((spokenMessage: string, violationType: string, logDetails: string, opts: { alwaysLog?: boolean; silent?: boolean } = {}) => {
+  // quiet: no warning, and the candidate's notes count does not move, so they cannot learn what is noticed.
+  // gapMs: how often the same kind may be written while silent or quiet (default 1.5 seconds).
+  const triggerVoiceWarning = useCallback((spokenMessage: string, violationType: string, logDetails: string, opts: { alwaysLog?: boolean; silent?: boolean; quiet?: boolean; gapMs?: number } = {}) => {
     const now = Date.now();
-    if (opts.silent) {
+    if (opts.silent || opts.quiet) {
       const last = lastLoggedByTypeRef.current[violationType] ?? 0;
-      if (now - last > 1500) {
+      if (now - last > (opts.gapMs ?? 1500)) {
         lastLoggedByTypeRef.current[violationType] = now;
-        onViolation?.(violationType, logDetails);
+        onViolation?.(violationType, logDetails, opts.quiet ? { quiet: true } : undefined);
       }
       return;
     }
@@ -522,6 +534,126 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
     return () => { stopped = true; clearInterval(timer); };
   }, [checkIdentity, cameraActive, isCalibrating, stageKey]);
 
+  // The page's callback changes every render; the effects below read the latest one.
+  const onViolationRef = useRef(onViolation);
+  useEffect(() => { onViolationRef.current = onViolation; }, [onViolation]);
+  const quietNote = useCallback((type: string, details: string, metrics?: Record<string, number>) => {
+    onViolationRef.current?.(type, details, { quiet: true, metrics });
+  }, []);
+
+  // The microphone, used only to tell whether the candidate is speaking right now.
+  // Nothing is recorded or sent: only "speaking or not" feeds the reading check,
+  // and speaking while the question is on screen (often reading it to a phone).
+  useEffect(() => {
+    let stopped = false;
+    let ctx: AudioContext | null = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let mic: MediaStream | null = null;
+    (async () => {
+      try {
+        mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+        if (stopped) { stopStream(mic); return; }
+        trackStream(mic);
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        ctx = new AudioCtx();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        ctx.createMediaStreamSource(mic).connect(analyser);
+        const buf = new Float32Array(analyser.fftSize);
+        const vad = new VoiceActivity();
+        let last = performance.now();
+        timer = setInterval(() => {
+          if (ctx?.state === 'suspended') ctx.resume().catch(() => {});
+          analyser.getFloatTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+          const now = performance.now();
+          const speaking = vad.update(Math.sqrt(sum / buf.length), now);
+          speakingRef.current = speaking;
+          if (phaseRef.current === 'prep' && speaking) {
+            prepSpeechMsRef.current += Math.min(200, now - last);
+            if (!prepFlaggedRef.current && prepSpeechMsRef.current >= 3000) {
+              prepFlaggedRef.current = true;
+              quietNote('SPEECH_DURING_PREP', 'The candidate spoke aloud for 3 seconds or more while the question was on screen, before recording (for example reading it to a phone or a voice assistant).');
+            }
+          }
+          last = now;
+        }, 60);
+      } catch {
+        if (!stopped) quietNote('MIC_OFF', 'The microphone was refused or not available, so the voice checks could not run.');
+      }
+    })();
+    return () => {
+      stopped = true;
+      if (timer) clearInterval(timer);
+      ctx?.close().catch(() => {});
+      if (mic) stopStream(mic);
+    };
+  }, [quietNote]);
+
+  // An AI look at a camera picture now and then: it sees a phone at the edge of the
+  // frame, another person, or a second screen's light that the small on-device
+  // detector misses. The page is never told what was found.
+  const snapshotsSentRef = useRef(0);
+  const sendSnapshotForReview = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || document.hidden || snapshotsSentRef.current >= 30) return;
+    const image = faceSnapshot(video, 480);
+    if (!image) return;
+    snapshotsSentRef.current++;
+    fetch('/api/proctoring/snapshot-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage_key: stageKey, image, phase: phaseRef.current ?? undefined }),
+    }).catch(() => {});
+  }, [stageKey]);
+  useEffect(() => {
+    if (!cameraActive) return;
+    const first = setTimeout(sendSnapshotForReview, 20_000);
+    const timer = setInterval(sendSnapshotForReview, 60_000);
+    return () => { clearTimeout(first); clearInterval(timer); };
+  }, [cameraActive, sendSnapshotForReview]);
+
+  // Follow the answer recorder: question up, answering, finished.
+  useEffect(() => {
+    let prepShot: ReturnType<typeof setTimeout> | null = null;
+    const finishAnswer = () => {
+      const tracker = readingTrackerRef.current;
+      readingTrackerRef.current = null;
+      if (!tracker) return;
+      const summary = tracker.summary();
+      // Too little speech to say anything.
+      if (summary.speaking_seconds < 10) return;
+      quietNote('READING_PATTERN', tracker.describe(), { ...summary });
+    };
+    const applyPhase = (phase: AnswerPhase) => {
+      if (phaseRef.current === 'record' && phase !== 'record') finishAnswer();
+      phaseRef.current = phase;
+      if (prepShot) { clearTimeout(prepShot); prepShot = null; }
+      if (phase === 'prep') {
+        prepSpeechMsRef.current = 0;
+        prepFlaggedRef.current = false;
+        // Looking the question up on a phone happens now, so take a picture partway in.
+        prepShot = setTimeout(sendSnapshotForReview, 7000);
+      } else if (phase === 'record') {
+        readingTrackerRef.current = new ReadingTracker();
+      }
+    };
+    const onPhase = (e: Event) => {
+      const phase = (e as CustomEvent<{ phase: AnswerPhase }>).detail?.phase;
+      if (phase) applyPhase(phase);
+    };
+    window.addEventListener(ANSWER_PHASE_EVENT, onPhase);
+    const already = currentAnswerPhase();
+    if (already && already !== 'done') applyPhase(already);
+    return () => {
+      window.removeEventListener(ANSWER_PHASE_EVENT, onPhase);
+      if (prepShot) clearTimeout(prepShot);
+      if (phaseRef.current === 'record') finishAnswer();
+      phaseRef.current = null;
+    };
+  }, [quietNote, sendSnapshotForReview]);
+
   // Main High-Frequency Frame Processing Loop
   useEffect(() => {
     let animationFrameId: number;
@@ -700,6 +832,12 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
                   const isLookingLeft = deltaH > 0.14;
                   const isLookingRight = deltaH < -0.14;
 
+                  // Eyes away for the reading measurement: a milder look down than the
+                  // warning uses (a phone on the lap or desk), or off to either side.
+                  eyesAwayRef.current = isCalibratedRef.current && (
+                    deltaV > 0.06 || deltaPitch > 0.07 || isLookingLeft || isLookingRight || leftIris.x < 0.03 || rightIris.x > 0.97
+                  );
+
                   if (!isCalibratedRef.current) {
                     currentGaze = 'Center';
                   } else if (leftIris.x < 0.03 || rightIris.x > 0.97) {
@@ -777,6 +915,7 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
                   // No Face Detected
                   setFaceDetected(false);
                   missingFaceCounter.current++;
+                  eyesAwayRef.current = missingFaceCounter.current > 10;
                   if (missingFaceCounter.current > 45) {
                     currentGaze = 'Off-Screen';
                     triggerVoiceWarning(
@@ -792,62 +931,71 @@ export default function LiveProctoringWebcam({ stageKey, candidateId, schoolId, 
             }
 
             setGazeDirection(currentGaze);
+            if (phaseRef.current === 'record' && readingTrackerRef.current) {
+              readingTrackerRef.current.feed(performance.now(), eyesAwayRef.current, speakingRef.current);
+            }
 
-            // 9. INSTANT VOICE ALERT DISPATCHERS WITH SUSTAINED DWELL TIME
+            // 9. QUIET NOTES WITH SUSTAINED DWELL TIME
+            // Counters fall by one on a normal frame instead of resetting, so short
+            // repeated glances at a phone add up the way one long look does.
             if (isCalibratedRef.current) {
               if (currentGaze === 'Looking Down (Phone Alert)') {
                 downViolationCounter.current++;
-                upViolationCounter.current = 0;
-                gazeViolationCounter.current = 0;
-                readingViolationCounter.current = 0;
+                upViolationCounter.current = Math.max(0, upViolationCounter.current - 1);
+                gazeViolationCounter.current = Math.max(0, gazeViolationCounter.current - 1);
+                readingViolationCounter.current = Math.max(0, readingViolationCounter.current - 1);
 
                 if (downViolationCounter.current >= 35) { // ~1.2s looking down
                   triggerVoiceWarning(
-                    'Please look directly at the screen.',
+                    '',
                     'LOOKING_DOWN_AT_DEVICE',
-                    'Candidate eyes directed downward toward phone / secondary screen.'
+                    'Candidate eyes directed downward toward phone / secondary screen.',
+                    { quiet: true, gapMs: 15000 }
                   );
                 }
               } else if (currentGaze === 'Looking Up') {
                 upViolationCounter.current++;
-                downViolationCounter.current = 0;
-                gazeViolationCounter.current = 0;
-                readingViolationCounter.current = 0;
+                downViolationCounter.current = Math.max(0, downViolationCounter.current - 1);
+                gazeViolationCounter.current = Math.max(0, gazeViolationCounter.current - 1);
+                readingViolationCounter.current = Math.max(0, readingViolationCounter.current - 1);
 
                 if (upViolationCounter.current >= 35) {
                   triggerVoiceWarning(
-                    'Please look directly at the screen.',
+                    '',
                     'GAZE_OFF_SCREEN',
-                    'Candidate eyes directed upward away from the screen.'
+                    'Candidate eyes directed upward away from the screen.',
+                    { quiet: true, gapMs: 15000 }
                   );
                 }
               } else if (currentGaze === 'Reading Script') {
                 readingViolationCounter.current++;
                 if (readingViolationCounter.current >= 45) { // ~1.5s verified multi-line reading
                   triggerVoiceWarning(
-                    'Please look at the screen and speak naturally without reading.',
+                    '',
                     'READING_TELEPROMPTER_SUSPECTED',
-                    'Repeated multi-line return saccades detected.'
+                    'Repeated multi-line return saccades detected.',
+                    { quiet: true, gapMs: 15000 }
                   );
                 }
               } else if (currentGaze === 'Looking Left' || currentGaze === 'Looking Right' || currentGaze === 'Off-Screen') {
                 gazeViolationCounter.current++;
-                downViolationCounter.current = 0;
-                upViolationCounter.current = 0;
-                readingViolationCounter.current = 0;
+                downViolationCounter.current = Math.max(0, downViolationCounter.current - 1);
+                upViolationCounter.current = Math.max(0, upViolationCounter.current - 1);
+                readingViolationCounter.current = Math.max(0, readingViolationCounter.current - 1);
 
                 if (gazeViolationCounter.current >= 40) {
                   triggerVoiceWarning(
-                    'Please keep your eyes focused on the screen.',
+                    '',
                     'GAZE_OFF_SCREEN',
-                    `Candidate gaze redirected (${currentGaze}).`
+                    `Candidate gaze redirected (${currentGaze}).`,
+                    { quiet: true, gapMs: 15000 }
                   );
                 }
               } else {
-                downViolationCounter.current = 0;
-                upViolationCounter.current = 0;
-                gazeViolationCounter.current = 0;
-                readingViolationCounter.current = 0;
+                downViolationCounter.current = Math.max(0, downViolationCounter.current - 1);
+                upViolationCounter.current = Math.max(0, upViolationCounter.current - 1);
+                gazeViolationCounter.current = Math.max(0, gazeViolationCounter.current - 1);
+                readingViolationCounter.current = Math.max(0, readingViolationCounter.current - 1);
               }
             }
           }

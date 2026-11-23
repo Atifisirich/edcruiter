@@ -19,6 +19,7 @@ import { cleanResumeReport } from '@/lib/reportText';
 import TeachingProfilePanel, { type ProfileResponse } from './TeachingProfilePanel';
 import CvActions from './CvActions';
 import ReportAtAGlance from './ReportAtAGlance';
+import ReadingCheckPanel from './ReadingCheckPanel';
 import { scoreTone } from '@/lib/teachingProfile';
 
 interface CandidateProfileDashboardProps {
@@ -404,8 +405,19 @@ export default function CandidateProfileDashboard({
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
                               <Video className="w-3.5 h-3.5" /> Submitted video
                             </p>
-                            <video src={mediaUrl} controls className="w-full rounded-2xl border border-slate-200 bg-black max-h-80" />
+                            <video id={`stage-video-${stg.key}`} src={mediaUrl} controls className="w-full rounded-2xl border border-slate-200 bg-black max-h-80" />
                           </div>
+                        )}
+
+                        {mediaUrl && (
+                          <ReadingCheckPanel
+                            events={proctoringEvents.filter((e) => e.stage_key === stg.key)}
+                            delivery={result.ai_scores?.delivery_check}
+                            onSeek={(seconds) => {
+                              const v = document.getElementById(`stage-video-${stg.key}`) as HTMLVideoElement | null;
+                              if (v) { v.currentTime = seconds; v.play().catch(() => {}); v.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+                            }}
+                          />
                         )}
 
                         {isScoredStage(stg.key) && (
