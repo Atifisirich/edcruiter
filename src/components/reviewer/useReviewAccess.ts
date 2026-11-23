@@ -5,6 +5,8 @@ import type { ReviewRound, RoleDef, UserRole } from '@/lib/types';
 
 export interface ReviewAccess {
   rounds: ReviewRound[];
+  /** A campus's own review flow, by branch id. See reviewRounds.ts. */
+  branch_rounds?: Record<string, ReviewRound[]>;
   roles: RoleDef[];
   me: { id: string; name: string; role: UserRole; role_id: string; role_name: string };
 }

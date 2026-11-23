@@ -41,6 +41,34 @@ export function roundsOf(school: Pick<School, 'review_rounds' | 'roles'> | null 
   });
 }
 
+/** A teacher's own rounds: their campus's flow when the school set one, else the school's. */
+export function roundsForCandidate(
+  base: ReviewRound[],
+  branchRounds: Record<string, ReviewRound[]> | undefined,
+  c: Pick<Candidate, 'target_branch_id'> | null | undefined
+): ReviewRound[] {
+  const own = c?.target_branch_id ? branchRounds?.[c.target_branch_id] : undefined;
+  return own?.length ? own : base;
+}
+
+/** The rounds that apply to this candidate, for use on the server. */
+export function roundsFor(
+  school: Pick<School, 'review_rounds' | 'roles' | 'branch_review_rounds'> | null | undefined,
+  c: Pick<Candidate, 'target_branch_id'> | null | undefined
+): ReviewRound[] {
+  return roundsForCandidate(roundsOf(school), school?.branch_review_rounds, c);
+}
+
+/** Every round any flow uses, once each (by id), the school's own order first. For tabs and name lookups. */
+export function allRoundsOf(base: ReviewRound[], branchRounds: Record<string, ReviewRound[]> | undefined): ReviewRound[] {
+  const seen = new Set(base.map((r) => r.id));
+  const extra: ReviewRound[] = [];
+  for (const list of Object.values(branchRounds ?? {})) {
+    for (const r of list) if (!seen.has(r.id)) { seen.add(r.id); extra.push(r); }
+  }
+  return [...base, ...extra];
+}
+
 type WithResults = Pick<Candidate, 'round_results' | 'rm_clearance' | 'ih_clearance' | 'coo_clearance'>;
 
 /** What was decided at this round, or undefined while it is still open. */

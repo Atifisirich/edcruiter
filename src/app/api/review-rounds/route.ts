@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
     const def = roleDefFor(school, ctx.user);
     return NextResponse.json({
       rounds: roundsOf(school),
+      branch_rounds: school?.branch_review_rounds ?? {},
+      branches: (school?.branches ?? []).map((b) => ({ id: b.id, name: b.name })),
       roles: rolesOf(school),
       max: MAX_ROUNDS,
       me: { id: ctx.user.id, name: ctx.user.name, role: ctx.role, role_id: def.id, role_name: def.name },
@@ -36,18 +38,41 @@ export async function PUT(req: NextRequest) {
     if (!school) return NextResponse.json({ error: 'School not found.' }, { status: 404 });
 
     const body = await req.json().catch(() => null);
+
+    // "Use the school's standard flow" for one campus: drop its own flow.
+    if (body?.reset === true && typeof body?.branch_id === 'string') {
+      const rest = { ...(school.branch_review_rounds ?? {}) };
+      delete rest[body.branch_id];
+      const cleared = db.updateSchool(ctx.schoolId, { branch_review_rounds: rest });
+      if (!cleared) return NextResponse.json({ error: 'School not found.' }, { status: 404 });
+      auditAsStaff(ctx, ctx.schoolId, {
+        action: 'REVIEW_ROUNDS_UPDATED',
+        resource: `School: ${cleared.name}`,
+        details: `${school.branches?.find((b) => b.id === body.branch_id)?.name ?? 'A campus'} now follows the school's standard review rounds.`,
+      });
+      return NextResponse.json({ rounds: roundsOf(cleared), branch_rounds: rest });
+    }
+
     const parsed = parseRounds(body?.rounds, rolesOf(school));
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    const updated = db.updateSchool(ctx.schoolId, { review_rounds: parsed.rounds });
+    // One campus's own flow, or the school's standard flow.
+    const branchId = typeof body?.branch_id === 'string' ? body.branch_id : '';
+    if (branchId && !school.branches?.some((b) => b.id === branchId)) {
+      return NextResponse.json({ error: 'That campus was not found.' }, { status: 400 });
+    }
+    const branchName = school.branches?.find((b) => b.id === branchId)?.name;
+    const updated = branchId
+      ? db.updateSchool(ctx.schoolId, { branch_review_rounds: { ...(school.branch_review_rounds ?? {}), [branchId]: parsed.rounds } })
+      : db.updateSchool(ctx.schoolId, { review_rounds: parsed.rounds });
     if (!updated) return NextResponse.json({ error: 'School not found.' }, { status: 404 });
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'REVIEW_ROUNDS_UPDATED',
       resource: `School: ${updated.name}`,
-      details: `Review rounds are now: ${parsed.rounds.map((r) => r.name).join(', ')}.`,
+      details: `Review rounds${branchName ? ` for ${branchName}` : ''} are now: ${parsed.rounds.map((r) => r.name).join(', ')}.`,
     });
-    return NextResponse.json({ rounds: parsed.rounds });
+    return NextResponse.json({ rounds: parsed.rounds, branch_rounds: updated.branch_review_rounds ?? {} });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not save the review rounds.' }, { status: 500 });
   }

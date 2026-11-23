@@ -876,6 +876,14 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   </li>
                 ))}
               </ol>
+              {(candidate.ai_interview?.status === 'invited' || candidate.ai_interview?.status === 'in_progress') && (
+                <div className="p-5 rounded-3xl bg-indigo-600 text-white text-left space-y-2">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-200">The school has invited you</p>
+                  <p className="text-lg font-black">Your spoken AI interview</p>
+                  <p className="text-sm text-indigo-100">About 18 minutes, by voice, from this device. You need a quiet room and a microphone.</p>
+                  <Link href={`/interview/${candidate.id}`} className="inline-block px-5 py-3 rounded-2xl bg-white text-indigo-700 text-sm font-black">Start the interview</Link>
+                </div>
+              )}
               {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
               <div className="pt-2">
                 <Link

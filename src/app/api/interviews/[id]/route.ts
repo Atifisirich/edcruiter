@@ -53,6 +53,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = db.updateScheduledInterview(id, updates);
 
+    // A cancelled or moved interview gives the reviewer's free time back.
+    if (updates.status === 'cancelled' || updates.scheduled_at) {
+      const slot = db.getAvailabilitySlots(existing.school_id, { userId: existing.assigned_user_id }).find((s) => s.interview_id === id);
+      if (slot) db.updateAvailabilitySlot(slot.id, { status: 'open', interview_id: undefined });
+    }
+    if (updates.status === 'cancelled') {
+      db.addNotification({
+        id: `ntf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+        school_id: existing.school_id,
+        user_id: existing.assigned_user_id,
+        kind: 'interview_cancelled',
+        title: 'An interview was cancelled',
+        body: `${db.getCandidateById(existing.school_id, existing.candidate_id)?.name ?? 'A candidate'}'s interview on ${new Date(existing.scheduled_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} was cancelled by ${ctx.user.name}.`,
+        href: '/reviewer/home',
+        created_at: new Date().toISOString(),
+      });
+    }
+
     auditAsStaff(ctx, ctx.schoolId, {
       action: body.status === 'cancelled' ? 'INTERVIEW_CANCELLED' : 'INTERVIEW_RESCHEDULED',
       resource: `Interview: ${id}`,

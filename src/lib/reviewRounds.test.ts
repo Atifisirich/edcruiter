@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ROUNDS, canDecideRound, currentRound, isSelected, parseRounds, roundResultOf, roundsOf } from './reviewRounds';
+import { DEFAULT_ROUNDS, canDecideRound, currentRound, isSelected, parseRounds, roundResultOf, roundsOf, roundsFor, roundsForCandidate, allRoundsOf } from './reviewRounds';
 import { decide, mayTake } from './hiringDecision';
 import { DEFAULT_ROLES, parseRoles, rolesOf } from './roles';
 import type { Candidate, ReviewRound, RoleDef } from './types';
@@ -118,5 +118,30 @@ describe('the HR role', () => {
     expect(parseRoles(list, members).ok).toBe(true);
     const toHr = DEFAULT_ROLES.map((r) => (r.id === 'INSTITUTE_HEAD' ? { ...r, level: 'HR' as const } : r));
     expect(parseRoles(toHr, members).ok).toBe(false);
+  });
+});
+
+describe('a campus with its own review flow', () => {
+  const direct: ReviewRound[] = [{ id: 'principal', name: 'Principal', role_ids: ['INSTITUTE_HEAD'] }, { id: 'management', name: 'Management', role_ids: ['FINAL_DECISION_MAKER'] }];
+  const school = { roles: undefined, review_rounds: undefined, branch_review_rounds: { b2: direct } };
+
+  it('follows the campus flow for a teacher who applied there', () => {
+    expect(roundsFor(school, { target_branch_id: 'b2' }).map((r) => r.id)).toEqual(['principal', 'management']);
+  });
+
+  it('follows the school flow for any other campus, and when the campus is unknown', () => {
+    expect(roundsFor(school, { target_branch_id: 'b1' }).map((r) => r.id)).toEqual(['subject_lead', 'principal', 'management']);
+    expect(roundsFor(school, { target_branch_id: '' }).map((r) => r.id)).toEqual(['subject_lead', 'principal', 'management']);
+    expect(roundsFor(school, undefined)).toHaveLength(3);
+  });
+
+  it('skips the round the campus removed: a teacher goes straight to the principal', () => {
+    const rounds = roundsForCandidate(DEFAULT_ROUNDS, { b2: direct }, { target_branch_id: 'b2' });
+    expect(currentRound({} as Candidate, rounds)?.id).toBe('principal');
+  });
+
+  it('lists every round once for tabs and names', () => {
+    const extra: ReviewRound[] = [{ id: 'hod', name: 'HOD', role_ids: [] }, ...direct];
+    expect(allRoundsOf(DEFAULT_ROUNDS, { b2: extra }).map((r) => r.id)).toEqual(['subject_lead', 'principal', 'management', 'hod']);
   });
 });

@@ -151,6 +151,11 @@ function RolesCard() {
 function RoundsCard() {
   const { schoolId, toast } = useAdmin();
   const [rounds, setRounds] = useState<ReviewRound[] | null>(null);
+  // The school's standard flow, each campus's own flow, and which one is open for editing ('' is the standard flow).
+  const [baseRounds, setBaseRounds] = useState<ReviewRound[]>([]);
+  const [branchRounds, setBranchRounds] = useState<Record<string, ReviewRound[]>>({});
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [scope, setScope] = useState('');
   const [roles, setRoles] = useState<RoleDef[]>([]);
   const [max, setMax] = useState(6);
   const [dirty, setDirty] = useState(false);
@@ -164,6 +169,9 @@ function RoundsCard() {
         const data = await res.json();
         if (cancelled || !res.ok) return;
         setRounds(data.rounds);
+        setBaseRounds(data.rounds);
+        setBranchRounds(data.branch_rounds ?? {});
+        setBranches(data.branches ?? []);
         setRoles(data.roles);
         setMax(data.max);
       } catch { /* the card stays empty */ }
@@ -185,6 +193,36 @@ function RoundsCard() {
     change(next);
   };
 
+  const campusName = branches.find((b) => b.id === scope)?.name;
+  const ownFlow = !!scope && !!branchRounds[scope]?.length;
+
+  const pickScope = (next: string) => {
+    if (dirty && !window.confirm('You have unsaved changes to these rounds. Switch anyway?')) return;
+    setScope(next);
+    setRounds((next ? branchRounds[next] : undefined)?.map((r) => ({ ...r })) ?? baseRounds.map((r) => ({ ...r })));
+    setDirty(false);
+  };
+
+  const followStandard = async () => {
+    if (!scope || !window.confirm(`${campusName} will follow the school's standard review rounds. Teachers already part-way through keep the rounds they have cleared.`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/review-rounds?school_id=${schoolId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch_id: scope, reset: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Could not save.', 'error'); return; }
+      setBranchRounds(data.branch_rounds ?? {});
+      setRounds(baseRounds.map((r) => ({ ...r })));
+      setDirty(false);
+      toast(`${campusName} follows the standard rounds.`, 'success');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
     if (!rounds) return;
     setSaving(true);
@@ -193,7 +231,7 @@ function RoundsCard() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         // A round added here has a temporary id; the server gives it a real one.
-        body: JSON.stringify({ rounds: rounds.map((r) => (r.id.startsWith('new_') ? { name: r.name, role_ids: r.role_ids } : r)) }),
+        body: JSON.stringify({ ...(scope ? { branch_id: scope } : {}), rounds: rounds.map((r) => (r.id.startsWith('new_') ? { name: r.name, role_ids: r.role_ids } : r)) }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -201,8 +239,10 @@ function RoundsCard() {
         return;
       }
       setRounds(data.rounds);
+      if (scope) setBranchRounds(data.branch_rounds ?? {});
+      else setBaseRounds(data.rounds);
       setDirty(false);
-      toast('Review rounds saved.', 'success');
+      toast(scope ? `Review rounds for ${campusName} saved.` : 'Review rounds saved.', 'success');
     } finally {
       setSaving(false);
     }
@@ -212,8 +252,27 @@ function RoundsCard() {
     <Card>
       <CardHeader
         title="Review rounds"
-        description="After HR shortlists a teacher, they go through these rounds in order. In each round, the roles you tick give their yes or no with their opinion. The last round is the final decision."
+        description="After HR shortlists a teacher, they go through these rounds in order. Add, remove or reorder rounds, and tick who gives the yes or no in each. Skip a round by removing it. The last round is the final decision."
       />
+      {branches.length > 1 && (
+        <div className="mb-4 space-y-1.5">
+          <label className="text-sm font-medium text-slate-700" htmlFor="rounds-scope">These rounds apply to</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select id="rounds-scope" value={scope} onChange={(e) => pickScope(e.target.value)} className={selectClass}>
+              <option value="">Every campus (the standard flow)</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}{branchRounds[b.id]?.length ? ' (own flow)' : ''}</option>)}
+            </select>
+            {ownFlow && <button type="button" onClick={() => void followStandard()} disabled={saving} className={buttonClass('ghost', 'sm')}>Use the standard flow here</button>}
+          </div>
+          <p className="text-sm text-slate-500">
+            {scope
+              ? ownFlow
+                ? `Teachers who applied to ${campusName} follow this flow.`
+                : `${campusName} follows the standard flow. Change and save here to give it its own.`
+              : 'Campuses without their own flow follow this one.'}
+          </p>
+        </div>
+      )}
       {!rounds ? (
         <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
       ) : (

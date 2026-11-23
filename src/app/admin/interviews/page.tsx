@@ -3,10 +3,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/ui';
-import { ArrowRight, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, Mail, MessageCircle, ThumbsDown, User, Users, Video, XCircle } from 'lucide-react';
-import { Candidate, InterviewRound, ScheduledInterview, UserRole } from '@/lib/types';
+import { ArrowRight, Bell, Calendar, CheckCircle2, Clock, ExternalLink, Loader2, MessageCircle, ThumbsDown, User, Users, Video, XCircle } from 'lucide-react';
+import { AvailabilitySlot, Candidate, InterviewRound, ScheduledInterview, UserRole } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
-import { canDecideRound, roundResultOf } from '@/lib/reviewRounds';
+import { allRoundsOf, canDecideRound, roundResultOf, roundsForCandidate } from '@/lib/reviewRounds';
 import { isAdmin } from '@/lib/permissions';
 import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
 
@@ -33,8 +33,8 @@ function NotifiedLine({ n, candidateName }: { n: Notified; candidateName: string
         <li key={p} className="pl-5 text-amber-800">{p}</li>
       ))}
       <li className={`flex items-center gap-1.5 ${n.staff.length ? 'text-emerald-800' : 'text-slate-500'}`}>
-        <Mail className="w-3.5 h-3.5 shrink-0" />
-        {n.staff.length ? `Emailed: ${n.staff.join(', ')}.` : 'No staff email went out (email is not set up, or nobody else is in this round).'}
+        <Bell className="w-3.5 h-3.5 shrink-0" />
+        {n.staff.length ? `Told in the app: ${n.staff.join(', ')}.` : 'Nobody on the team was told in the app (nobody else reviews this round).'}
       </li>
     </ul>
   );
@@ -55,7 +55,9 @@ export default function LeadershipInterviewsPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [interviews, setInterviews] = useState<ScheduledInterview[]>([]);
   const access = useReviewAccess();
-  const rounds = useMemo(() => access?.rounds ?? [], [access]);
+  const baseRounds = useMemo(() => access?.rounds ?? [], [access]);
+  // Every round any campus uses, once each. A teacher only appears in the rounds of their own campus's flow.
+  const rounds = useMemo(() => allRoundsOf(baseRounds, access?.branch_rounds), [baseRounds, access]);
   const [pickedRound, setRound] = useState<InterviewRound>('');
   const round = pickedRound || rounds[0]?.id || '';
   const currentRoundDef = rounds.find((r) => r.id === round);
@@ -72,6 +74,9 @@ export default function LeadershipInterviewsPage() {
   const [duration, setDuration] = useState(30);
   const [customLink, setCustomLink] = useState('');
   const [schedNotes, setSchedNotes] = useState('');
+  // The reviewer's own free times, and the one HR picked (empty means a time typed by hand).
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [slotId, setSlotId] = useState('');
 
   // Decision form
   const [reason, setReason] = useState('');
@@ -118,6 +123,17 @@ export default function LeadershipInterviewsPage() {
     [staff, currentRoundDef]
   );
 
+  // The free times of the chosen reviewer, so HR books into one instead of guessing.
+  useEffect(() => {
+    let cancelled = false;
+    if (!assignedUserId) return;
+    fetch(`/api/availability?school_id=${schoolId}&user_id=${assignedUserId}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setSlots(d.slots || []); })
+      .catch(() => { if (!cancelled) setSlots([]); });
+    return () => { cancelled = true; };
+  }, [assignedUserId, schoolId]);
+
   const interviewFor = (candidateId: string, r: InterviewRound) =>
     interviews.find((i) => i.candidate_id === candidateId && i.round === r && i.status !== 'cancelled');
 
@@ -128,7 +144,10 @@ export default function LeadershipInterviewsPage() {
     if (view === 'declined') return result?.status === 'rejected';
     if (result) return false;
     // Only shortlisted teachers who cleared the previous round are waiting for this one.
-    const previous = roundIndex > 0 ? rounds[roundIndex - 1] : null;
+    const own = roundsForCandidate(baseRounds, access?.branch_rounds, c);
+    const at = own.findIndex((r) => r.id === round);
+    if (at < 0) return false;
+    const previous = at > 0 ? own[at - 1] : null;
     if (previous && roundResultOf(c, previous.id)?.status !== 'cleared') return false;
     return c.status !== 'rejected' && (c.shortlist_status === 'shortlisted' || c.status === 'passed');
   };
@@ -142,6 +161,7 @@ export default function LeadershipInterviewsPage() {
     setSelected(c);
     setReason('');
     setAssignedUserId('');
+    setSlotId('');
     setScheduledAt(toDatetimeLocalValue());
     setDuration(30);
     setCustomLink('');
@@ -168,6 +188,7 @@ export default function LeadershipInterviewsPage() {
           candidate_id: selected.id,
           round,
           assigned_user_id: assignedUserId,
+          ...(slotId ? { slot_id: slotId } : {}),
           scheduled_at: new Date(scheduledAt).toISOString(),
           duration_minutes: duration,
           meeting_link: !google?.connected || meetMode === 'paste' ? customLink.trim() || undefined : undefined,
@@ -367,7 +388,7 @@ export default function LeadershipInterviewsPage() {
                   <div className="space-y-3 pt-3 border-t border-slate-100">
                     <p className="text-xs font-black text-slate-800 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-indigo-600" /> Schedule this interview</p>
                     <label className="block text-xs font-bold">Who is taking it
-                      <select value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                      <select value={assignedUserId} onChange={(e) => { setAssignedUserId(e.target.value); setSlotId(''); setSlots([]); }} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50">
                         <option value="">Select reviewer…</option>
                         {roundStaff.map((s) => (
                           <option key={s.id} value={s.id}>{s.name} — {roleName(s.role_id)}{s.department ? ` · ${s.department}` : ''}</option>
@@ -377,12 +398,47 @@ export default function LeadershipInterviewsPage() {
                     {roundStaff.length === 0 && (
                       <p className="text-[11px] text-amber-700">Nobody on your team reviews this round yet. Add a reviewer in Team, or change who reviews it in Settings.</p>
                     )}
+                    {assignedUserId && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-bold">Times {roundStaff.find((x) => x.id === assignedUserId)?.name.split(' ')[0] ?? 'they'} said they are free</p>
+                        {slots.length === 0 ? (
+                          <p className="text-[11px] text-slate-500">No free times yet. Ask them to add some on their page, or pick a time yourself below.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Free times">
+                            {slots.map((sl) => {
+                              const on = slotId === sl.id;
+                              const day = new Date(sl.start).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+                              const from = new Date(sl.start).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+                              const to = new Date(sl.end).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+                              return (
+                                <button
+                                  key={sl.id}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={on}
+                                  onClick={() => {
+                                    if (on) { setSlotId(''); return; }
+                                    setSlotId(sl.id);
+                                    setScheduledAt(toDatetimeLocalValue(new Date(sl.start)));
+                                    setDuration(Math.round((new Date(sl.end).getTime() - new Date(sl.start).getTime()) / 60_000));
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer ${on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}
+                                >
+                                  {day} · {from} to {to}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {slotId && <p className="text-[11px] text-emerald-700">Booking into their free time. The date and length below follow it.</p>}
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-xs font-bold">Date & time
-                        <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
+                        <input type="datetime-local" value={scheduledAt} disabled={!!slotId} onChange={(e) => setScheduledAt(e.target.value)} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
                       </label>
                       <label className="block text-xs font-bold">Duration (minutes)
-                        <input type="number" min={10} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
+                        <input type="number" min={10} step={5} value={duration} disabled={!!slotId} onChange={(e) => setDuration(Number(e.target.value))} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" />
                       </label>
                     </div>
                     <fieldset className="space-y-1.5">
@@ -419,7 +475,7 @@ export default function LeadershipInterviewsPage() {
                     </fieldset>
                     <p className="text-[11px] text-slate-500 flex items-start gap-1.5">
                       <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>When you book, the candidate gets the link on WhatsApp and email. The interviewer, everyone else who reviews {currentRoundDef?.name ?? 'this round'}, and HR are emailed.</span>
+                      <span>When you book, the candidate gets the link on WhatsApp and email. The interviewer and the others who review {currentRoundDef?.name ?? 'this round'} see it in the app, not on WhatsApp.</span>
                     </p>
                     <label className="block text-xs font-bold">Notes for the reviewer (optional)
                       <textarea value={schedNotes} onChange={(e) => setSchedNotes(e.target.value)} rows={2} className="mt-1 w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50" placeholder="Anything the reviewer should know beforehand" />

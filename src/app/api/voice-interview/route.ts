@@ -6,6 +6,7 @@ import {
   analyseInterview, cleanTurns, defaultPlan, fetchSarvamTranscript, interviewRuntime, interviewVariables,
   INTERVIEW_LANGUAGES, sampleTranscript, type TranscriptTurn,
 } from '@/lib/aiInterview';
+import { notifyAiInterviewInvite } from '@/lib/interviewNotify';
 import type { AiInterview, Candidate } from '@/lib/types';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -62,8 +63,10 @@ export async function POST(req: NextRequest) {
       if (prev && (prev.status === 'invited' || prev.status === 'in_progress')) return NextResponse.json({ interview: prev });
       const interview = { ...newInterview(candidate, 'invited'), invited_at: new Date().toISOString() };
       db.updateCandidate(candidate.school_id, candidate.id, { ai_interview: interview });
-      audit('AI_INTERVIEW_INVITED', 'Invited to the AI interview.');
-      return NextResponse.json({ interview });
+      audit('AI_INTERVIEW_INVITED', prev?.status === 'completed' ? 'Invited to take the AI interview again.' : 'Invited to the AI interview.');
+      // The candidate is told right away, whichever way they were added to the school.
+      const notified = school ? await notifyAiInterviewInvite({ school, candidate }).catch(() => ({ whatsapp: false, email: false })) : { whatsapp: false, email: false };
+      return NextResponse.json({ interview, notified });
     }
 
     // A report made from a made-up conversation, for showing how it looks. No microphone needed.

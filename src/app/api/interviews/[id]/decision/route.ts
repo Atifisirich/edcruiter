@@ -5,7 +5,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { decide } from '@/lib/hiringDecision';
 import { isAdmin } from '@/lib/permissions';
-import { roundsOf } from '@/lib/reviewRounds';
+import { roundsFor } from '@/lib/reviewRounds';
 import { notifyRoundCleared } from '@/lib/interviewNotify';
 
 /**
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const candidate = db.getCandidateById(ctx.schoolId, interview.candidate_id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
-    const rounds = roundsOf(db.getSchoolById(ctx.schoolId));
+    const rounds = roundsFor(db.getSchoolById(ctx.schoolId), candidate);
     const round = rounds.find((r) => r.id === interview.round);
     if (!round) return NextResponse.json({ error: 'This round is no longer one of your school’s review rounds.' }, { status: 409 });
 

@@ -4,7 +4,7 @@ import { assertSchoolActive, auditAsStaff, authErrorResponse, requireSchoolAcces
 import { decide, mayTake, type DecisionAction, type DecisionInput } from '@/lib/hiringDecision';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { roundsOf } from '@/lib/reviewRounds';
+import { roundsFor } from '@/lib/reviewRounds';
 import { notifyRoundCleared } from '@/lib/interviewNotify';
 import { ATTEMPT_STAGES } from '@/lib/stageAttempts';
 import type { StageKey } from '@/lib/types';
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!rl.allowed) return NextResponse.json({ error: 'Too many decisions this hour. Try again shortly.' }, { status: 429 });
 
     const body = await req.json().catch(() => ({}));
-    const rounds = roundsOf(db.getSchoolById(ctx.schoolId));
+    const rounds = roundsFor(db.getSchoolById(ctx.schoolId), db.getCandidateById(ctx.schoolId, id));
     const round = rounds.find((r) => r.id === body.round);
     const me = { role: ctx.role, role_id: ctx.user.role_id };
     if (!mayTake(body.action, me, round)) {

@@ -1,5 +1,6 @@
 'use client';
 
+import NotificationBell from '@/components/shared/NotificationBell';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -270,6 +271,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   </button>
                 </>
               )}
+
+              <NotificationBell schoolId={schoolId} />
 
               <div className="relative" ref={accountRef}>
                 <button

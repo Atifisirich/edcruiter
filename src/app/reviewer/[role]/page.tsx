@@ -8,10 +8,12 @@ import {
 } from 'lucide-react';
 import { Candidate, ScheduledInterview } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
-import { canDecideRound, currentRound } from '@/lib/reviewRounds';
+import { allRoundsOf, canDecideRound, currentRound, roundsForCandidate } from '@/lib/reviewRounds';
 import CandidateProfileModal from '@/components/reviewer/CandidateProfileModal';
 import { useReviewAccess } from '@/components/reviewer/useReviewAccess';
 import BrandMark from '@/components/shared/BrandMark';
+import NotificationBell from '@/components/shared/NotificationBell';
+import AvailabilityCard from '@/components/reviewer/AvailabilityCard';
 import { Badge, Card, CardHeader, EmptyState, PageHeader, StatCard, buttonClass, inputClass } from '@/components/admin/ui';
 
 /**
@@ -95,15 +97,16 @@ export default function ReviewerHomePage() {
 
   const me = access?.me;
   const rounds = useMemo(() => access?.rounds ?? [], [access]);
-  const myRounds = me ? rounds.filter((r) => canDecideRound(me, r)) : [];
+  const everyRound = useMemo(() => allRoundsOf(rounds, access?.branch_rounds), [rounds, access]);
+  const myRounds = me ? everyRound.filter((r) => canDecideRound(me, r)) : [];
 
   const waiting = useMemo(() => {
     if (!me) return [];
     return candidates
       .filter((c) => c.status !== 'rejected' && !c.rejected_by_school_at && !c.selected_at && (c.shortlist_status === 'shortlisted' || c.status === 'passed'))
-      .map((c) => ({ c, round: currentRound(c, rounds) }))
+      .map((c) => ({ c, round: currentRound(c, roundsForCandidate(rounds, access?.branch_rounds, c)) }))
       .filter((x) => x.round && canDecideRound(me, x.round));
-  }, [candidates, rounds, me]);
+  }, [candidates, rounds, access, me]);
 
   const filteredWaiting = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -124,7 +127,7 @@ export default function ReviewerHomePage() {
   );
 
   const candidateFor = (id: string) => candidates.find((c) => c.id === id);
-  const roundName = (id: string) => rounds.find((r) => r.id === id)?.name ?? id;
+  const roundName = (id: string) => everyRound.find((r) => r.id === id)?.name ?? id;
 
   const recordInterview = async (interview: ScheduledInterview, decision: 'accepted' | 'rejected') => {
     const reason = (opinions[interview.id] || '').trim();
@@ -165,6 +168,7 @@ export default function ReviewerHomePage() {
           <button type="button" onClick={refresh} disabled={loading} className={buttonClass('ghost', 'sm')} aria-label="Refresh">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Refresh</span>
           </button>
+          <NotificationBell schoolId={schoolId} />
           <div className="relative" ref={accountRef}>
             <button
               type="button"
@@ -372,6 +376,9 @@ export default function ReviewerHomePage() {
           </div>
         )}
       </Card>
+
+      {/* When this reviewer is free: HR books into these times */}
+      <AvailabilityCard schoolId={schoolId} />
 
       {/* What this reviewer has decided */}
       <Card>

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { PolicyChangeRequest, ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview } from './types';
+import { PolicyChangeRequest, ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview, AvailabilitySlot, AppNotification } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -28,6 +28,8 @@ interface DatabaseSchema {
   uploadOwners?: UploadOwner[];
   deletionRequests?: DeletionRequest[];
   scheduledInterviews?: ScheduledInterview[];
+  availabilitySlots?: AvailabilitySlot[];
+  notifications?: AppNotification[];
   teachingProfiles?: TeachingProfile[];
   stageAttempts?: StageAttempt[];
   questionBank?: BankState;
@@ -136,6 +138,8 @@ class DB {
         if (!this.data.uploadOwners) this.data.uploadOwners = [];
         if (!this.data.deletionRequests) this.data.deletionRequests = [];
         if (!this.data.scheduledInterviews) this.data.scheduledInterviews = [];
+        if (!this.data.availabilitySlots) this.data.availabilitySlots = [];
+        if (!this.data.notifications) this.data.notifications = [];
         if (!this.data.teachingProfiles) this.data.teachingProfiles = [];
         if (!this.data.stageAttempts) this.data.stageAttempts = [];
         if (!this.data.screeningCalls) this.data.screeningCalls = [];
@@ -1060,6 +1064,74 @@ class DB {
     };
     this.save();
     return this.data.scheduledInterviews[idx];
+  }
+
+  // --- Reviewer availability: the times a reviewer is free for an interview ---
+
+  addAvailabilitySlots(slots: AvailabilitySlot[]): AvailabilitySlot[] {
+    if (!this.data.availabilitySlots) this.data.availabilitySlots = [];
+    this.data.availabilitySlots.push(...slots);
+    this.save();
+    return slots;
+  }
+
+  getAvailabilitySlot(id: string): AvailabilitySlot | undefined {
+    return this.data.availabilitySlots?.find((s) => s.id === id);
+  }
+
+  /** Slots of a school, earliest first. Past ones are dropped when `from` is given. */
+  getAvailabilitySlots(schoolId: string, opts: { userId?: string; from?: string } = {}): AvailabilitySlot[] {
+    return (this.data.availabilitySlots || [])
+      .filter((s) => s.school_id === schoolId && (!opts.userId || s.user_id === opts.userId) && (!opts.from || s.end > opts.from))
+      .sort((a, b) => a.start.localeCompare(b.start));
+  }
+
+  updateAvailabilitySlot(id: string, updates: Partial<AvailabilitySlot>): AvailabilitySlot | undefined {
+    const idx = (this.data.availabilitySlots || []).findIndex((s) => s.id === id);
+    if (idx === -1) return undefined;
+    this.data.availabilitySlots![idx] = { ...this.data.availabilitySlots![idx], ...updates };
+    this.save();
+    return this.data.availabilitySlots![idx];
+  }
+
+  deleteAvailabilitySlot(id: string): boolean {
+    const before = this.data.availabilitySlots?.length ?? 0;
+    this.data.availabilitySlots = (this.data.availabilitySlots || []).filter((s) => s.id !== id);
+    const removed = (this.data.availabilitySlots.length ?? 0) !== before;
+    if (removed) this.save();
+    return removed;
+  }
+
+  // --- In-app notices (the bell) ---
+
+  addNotification(n: AppNotification): AppNotification {
+    if (!this.data.notifications) this.data.notifications = [];
+    this.data.notifications.push(n);
+    // Keep the file small: a person's notices older than the latest 200 are dropped.
+    const mine = this.data.notifications.filter((x) => x.user_id === n.user_id);
+    if (mine.length > 200) {
+      const drop = new Set(mine.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(0, mine.length - 200).map((x) => x.id));
+      this.data.notifications = this.data.notifications.filter((x) => !drop.has(x.id));
+    }
+    this.save();
+    return n;
+  }
+
+  getNotificationsForUser(schoolId: string, userId: string, limit = 30): AppNotification[] {
+    return (this.data.notifications || [])
+      .filter((n) => n.school_id === schoolId && n.user_id === userId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit);
+  }
+
+  /** Marks some of a person's notices (or all of them) as read. */
+  markNotificationsRead(userId: string, ids: string[] | 'all'): void {
+    const now = new Date().toISOString();
+    let changed = false;
+    for (const n of this.data.notifications || []) {
+      if (n.user_id === userId && !n.read_at && (ids === 'all' || ids.includes(n.id))) { n.read_at = now; changed = true; }
+    }
+    if (changed) this.save();
   }
 }
 

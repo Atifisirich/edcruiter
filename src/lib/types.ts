@@ -186,6 +186,8 @@ export interface School {
   review_rounds?: ReviewRound[];
   /** Whether a B.Ed or a master's degree is mandatory when a CV is read. Absent means neither is. See hiringRequirements.ts. */
   hiring_requirements?: { require_bed?: boolean; require_masters?: boolean };
+  /** A campus's own review rounds, by branch id. A teacher who applied to that campus follows these instead of review_rounds. See reviewRounds.ts. */
+  branch_review_rounds?: Record<string, ReviewRound[]>;
 }
 
 /**
@@ -752,6 +754,33 @@ export interface GoogleCalendarConnection {
   refresh_token_encrypted: string;
   connected_at: string;
   connected_by_name: string;
+}
+
+/** A time a reviewer says they are free for an interview. HR books a candidate into it. */
+export interface AvailabilitySlot {
+  id: string;
+  school_id: string;
+  user_id: string;
+  user_name: string;
+  start: string; // ISO
+  end: string; // ISO
+  status: 'open' | 'booked';
+  interview_id?: string;
+  created_at: string;
+}
+
+/** A notice shown inside the app (the bell), never sent on WhatsApp or by email. */
+export interface AppNotification {
+  id: string;
+  school_id: string;
+  user_id: string;
+  kind: 'interview_scheduled' | 'interview_cancelled';
+  title: string;
+  body: string;
+  /** Where the notice takes them. */
+  href?: string;
+  created_at: string;
+  read_at?: string;
 }
 
 export interface ScheduledInterview {

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Check, CheckCircle2, Loader2, Pause, RotateCcw, ThumbsUp, X, XCircle, CalendarClock } from 'lucide-react';
 import type { Candidate } from '@/lib/types';
 import { mayTake, type DecisionAction } from '@/lib/hiringDecision';
-import { currentRound, isSelected, roundResultOf } from '@/lib/reviewRounds';
+import { currentRound, isSelected, roundResultOf, roundsForCandidate } from '@/lib/reviewRounds';
 import { isHiringTeam } from '@/lib/permissions';
 import { useReviewAccess } from './useReviewAccess';
 import OfferDispatch from './OfferDispatch';
@@ -34,7 +34,7 @@ export default function HiringDecision({
   const [note, setNote] = useState('');
   const [notify, setNotify] = useState(true);
 
-  const rounds = access?.rounds ?? [];
+  const rounds = roundsForCandidate(access?.rounds ?? [], access?.branch_rounds, candidate);
   const me = access?.me;
   const roleName = (id: string) => access?.roles.find((r) => r.id === id)?.name ?? id;
   const can = (action: DecisionAction) => !!me && mayTake(action, me);

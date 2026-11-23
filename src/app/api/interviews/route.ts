@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ScheduledInterview } from '@/lib/types';
 import { HIRING_TEAM } from '@/lib/permissions';
-import { canDecideRound, roundResultOf, roundsOf } from '@/lib/reviewRounds';
+import { canDecideRound, roundResultOf, roundsFor } from '@/lib/reviewRounds';
 import { authErrorResponse, auditAsStaff, requireCandidateOrStaff, requireSchoolAccess, requireStaff, assertSchoolActive } from '@/lib/auth';
 import { generateMeetingLink } from '@/lib/meetingLink';
 import { createMeetEvent } from '@/lib/googleCalendar';
@@ -62,19 +62,19 @@ export async function POST(req: NextRequest) {
       );
     }
     const school = db.getSchoolById(ctx.schoolId);
-    const rounds = roundsOf(school);
+    const candidate = db.getCandidateById(ctx.schoolId, candidate_id);
+    if (!candidate) return NextResponse.json({ error: 'Candidate not found at this school.' }, { status: 404 });
+    // The rounds this teacher follows: their campus's own flow when the school set one.
+    const rounds = roundsFor(school, candidate);
     const roundIndex = rounds.findIndex((r) => r.id === round);
     if (roundIndex < 0) {
-      return NextResponse.json({ error: 'Invalid round.' }, { status: 400 });
+      return NextResponse.json({ error: 'That round is not part of this teacher’s review flow.' }, { status: 400 });
     }
     const theRound = rounds[roundIndex];
     const scheduledDate = new Date(scheduled_at);
     if (Number.isNaN(scheduledDate.getTime())) {
       return NextResponse.json({ error: 'scheduled_at must be a valid date/time.' }, { status: 400 });
     }
-
-    const candidate = db.getCandidateById(ctx.schoolId, candidate_id);
-    if (!candidate) return NextResponse.json({ error: 'Candidate not found at this school.' }, { status: 404 });
 
     // Rounds run in the school's order. A later round may only be scheduled
     // once the one before it was cleared.
@@ -103,8 +103,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `${assignedUser.name} does not review the ${theRound.name} round. Choose someone who does, or change the round in Settings.` }, { status: 400 });
     }
 
-    const when = scheduledDate.toISOString();
-    const duration = Number(duration_minutes) > 0 ? Math.min(240, Number(duration_minutes)) : 30;
+    // Booked into a time the reviewer said they are free: that time decides when and for how long.
+    let slot: ReturnType<typeof db.getAvailabilitySlot>;
+    if (typeof body.slot_id === 'string' && body.slot_id) {
+      slot = db.getAvailabilitySlot(body.slot_id);
+      if (!slot || slot.school_id !== ctx.schoolId || slot.user_id !== assignedUser.id) {
+        return NextResponse.json({ error: 'That free time was not found for this reviewer.' }, { status: 400 });
+      }
+      if (slot.status !== 'open') {
+        return NextResponse.json({ error: 'Someone has already booked that free time. Pick another.' }, { status: 409 });
+      }
+      if (new Date(slot.start).getTime() <= Date.now()) {
+        return NextResponse.json({ error: 'That free time has already started. Pick another.' }, { status: 409 });
+      }
+    }
+    const when = slot ? slot.start : scheduledDate.toISOString();
+    const duration = slot
+      ? Math.max(10, Math.min(240, Math.round((new Date(slot.end).getTime() - new Date(slot.start).getTime()) / 60_000)))
+      : Number(duration_minutes) > 0 ? Math.min(240, Number(duration_minutes)) : 30;
     const pasted = typeof meeting_link === 'string' ? meeting_link.trim() : '';
     if (pasted && !/^https:\/\/\S+$/i.test(pasted)) {
       return NextResponse.json({ error: 'The meeting link must start with https://' }, { status: 400 });
@@ -163,6 +179,7 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString()
     };
     db.createScheduledInterview(interview);
+    if (slot) db.updateAvailabilitySlot(slot.id, { status: 'booked', interview_id: interview.id });
 
     // The candidate on WhatsApp and email, the interviewer, the rest of the round's reviewers, and HR.
     const notified = school

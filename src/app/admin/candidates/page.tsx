@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users, Mic } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
@@ -108,6 +108,30 @@ function CandidatesList() {
       if (started) { setSelected(new Set()); setSelecting(false); }
     } finally {
       setCalling(false);
+    }
+  };
+
+  const [inviting, setInviting] = useState(false);
+  const inviteSelected = async () => {
+    const n = selectedList.length;
+    if (!window.confirm(`Invite ${n} ${n === 1 ? 'candidate' : 'candidates'} to the spoken AI interview? They are told by email and, where possible, WhatsApp. This works for candidates added before this was available, too.`)) return;
+    setInviting(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const c of selectedList) {
+        const r = await fetch('/api/voice-interview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'invite', candidate_id: c.id }),
+        }).catch(() => null);
+        if (r?.ok) ok++; else failed++;
+      }
+      if (ok) toast(`${ok} ${ok === 1 ? 'candidate' : 'candidates'} invited to the AI interview. It shows on their application page.`, 'success');
+      if (failed) toast(`${failed} could not be invited. Try those again.`, 'error');
+      if (ok) { setSelected(new Set()); setSelecting(false); }
+    } finally {
+      setInviting(false);
     }
   };
 
@@ -244,6 +268,16 @@ function CandidatesList() {
               <button type="button" onClick={() => setSelected(new Set())} className={buttonClass('ghost', 'sm')}>Clear</button>
             )}
             <span className="flex-1" />
+            {canCall && (
+              <button
+                type="button"
+                disabled={selectedList.length === 0 || inviting}
+                onClick={() => void inviteSelected()}
+                className={buttonClass('secondary', 'sm')}
+              >
+                <Mic className="w-4 h-4" /> {inviting ? 'Inviting…' : 'Invite to AI interview'}
+              </button>
+            )}
             {canCall && (
               <button
                 type="button"

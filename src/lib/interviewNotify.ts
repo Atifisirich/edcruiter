@@ -137,46 +137,32 @@ export async function notifyInterviewScheduled(input: {
     if (!candidate_email) problems.push('Email: the email could not be sent (check the email service).');
   }
 
-  // --- The school's people ---
-  const { assigned, team, hr } = roundAudience(db.getUsersBySchool(school.id), round, { assignedId: interview.assigned_user_id, skipId: scheduledBy.id });
-  const page = `${appOrigin()}/admin/interviews`;
-  const profile = `${appOrigin()}/admin/candidates/${candidate.id}`;
-  const details = `When: ${when} (${interview.duration_minutes} min)\nInterviewer: ${interview.assigned_user_name}\nMeeting link: ${link}`;
-  const detailsHtml = `<p><strong>When:</strong> ${escapeHtml(when)} (${interview.duration_minutes} min)<br/><strong>Interviewer:</strong> ${escapeHtml(interview.assigned_user_name)}<br/><strong>Meeting link:</strong> <a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>`;
-  const noteHtml = interview.notes ? `<p><strong>Note from ${escapeHtml(scheduledBy.name)}:</strong> ${escapeHtml(interview.notes)}</p>` : '';
+  // --- The school's people: in the app only (the bell), never WhatsApp or email ---
+  const { assigned, team } = roundAudience(db.getUsersBySchool(school.id), round, { assignedId: interview.assigned_user_id, skipId: scheduledBy.id });
   const staff: string[] = [];
-
+  const notice = (person: User, title: string, body: string) => {
+    db.addNotification({
+      id: `ntf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      school_id: school.id,
+      user_id: person.id,
+      kind: 'interview_scheduled',
+      title,
+      body,
+      href: accessOf(person.role) === 'reviewer' ? '/reviewer/home' : '/admin/interviews',
+      created_at: new Date().toISOString(),
+    });
+    staff.push(person.name);
+  };
+  const details = `${when} (${interview.duration_minutes} min). Meeting link: ${link}`;
   if (assigned) {
-    const ok = await mail(assigned, `You are interviewing ${candidate.name} (${round.name}) on ${when}`, [
-      `Hi ${assigned.name},`,
-      `${scheduledBy.name} has assigned you the ${round.name} interview with ${candidate.name} (${candidate.applied_subject}).`,
-      details,
-      interview.notes ? `Note: ${interview.notes}` : '',
-      `Read their report before the call: ${profile}`,
-      `After the interview, give your yes or no here: ${page}`,
-    ].filter(Boolean), [
-      `<p>Hi ${escapeHtml(assigned.name)},</p>`,
-      `<p>${escapeHtml(scheduledBy.name)} has assigned you the <strong>${escapeHtml(round.name)}</strong> interview with <strong>${escapeHtml(candidate.name)}</strong> (${escapeHtml(candidate.applied_subject)}).</p>`,
-      detailsHtml, noteHtml,
-      button(link, 'Join the meeting'),
-      `<p><a href="${escapeHtml(profile)}">Read their report</a> before the call. Afterwards, <a href="${escapeHtml(page)}">give your yes or no</a>.</p>`,
-    ].join(''), school, scheduledBy.email);
-    if (ok) staff.push(assigned.name);
+    notice(
+      assigned,
+      `Interview booked: ${candidate.name} (${round.name})`,
+      `${scheduledBy.name} booked you for the ${round.name} interview with ${candidate.name} (${candidate.applied_subject}). ${details}${interview.notes ? ` Note: ${interview.notes}` : ''}`
+    );
   }
-
-  for (const person of [...team, ...hr]) {
-    const ok = await mail(person, `Interview booked: ${candidate.name} (${round.name}), ${when}`, [
-      `Hi ${person.name},`,
-      `${candidate.name}'s ${round.name} interview is booked by ${scheduledBy.name}.`,
-      details,
-      `Their report: ${profile}`,
-    ], [
-      `<p>Hi ${escapeHtml(person.name)},</p>`,
-      `<p><strong>${escapeHtml(candidate.name)}</strong>'s ${escapeHtml(round.name)} interview is booked by ${escapeHtml(scheduledBy.name)}.</p>`,
-      detailsHtml, noteHtml,
-      `<p><a href="${escapeHtml(profile)}">Open their report</a></p>`,
-    ].join(''), school, scheduledBy.email);
-    if (ok) staff.push(person.name);
+  for (const person of team) {
+    notice(person, `Interview booked: ${candidate.name} (${round.name})`, `${candidate.name}'s ${round.name} interview is booked with ${interview.assigned_user_name}. ${details}`);
   }
 
   return { candidate_whatsapp, candidate_email, staff, ...(problems.length ? { problems } : {}) };
@@ -219,4 +205,48 @@ export async function notifyRoundCleared(input: {
     if (ok) told.push(person.name);
   }
   return told;
+}
+
+/**
+ * The school invited a candidate to the spoken AI interview. The candidate is
+ * told by email and, when their WhatsApp chat with the school is open, on
+ * WhatsApp. Best effort: it never stops the invitation itself.
+ */
+export async function notifyAiInterviewInvite(input: { school: School; candidate: Candidate }): Promise<{ whatsapp: boolean; email: boolean }> {
+  const { school, candidate } = input;
+  const link = `${appOrigin()}/interview/${candidate.id}`;
+  const portal = signInLinkFor(candidate);
+  const first = candidate.name.split(' ')[0] || candidate.name;
+
+  let whatsapp = false;
+  if (candidate.phone && school.whatsapp_hiring && school.whatsapp_hiring.status !== 'not_connected' && db.isWindowOpen(school.id, candidate.id)) {
+    const text = [
+      `Hello ${first}, ${school.name} has invited you to a short spoken interview.`,
+      'It is about 18 minutes, by voice, with an AI interviewer. You need a quiet room and a microphone.',
+      `Open your application to start it: ${portal}`,
+    ].join('\n');
+    const sent = await sendFreeformMessage({ school, candidateId: candidate.id, toRaw: candidate.phone, text }).catch(() => null);
+    whatsapp = sent?.ok === true;
+  }
+
+  let email = false;
+  if (realEmail(candidate.email)) {
+    const lines = [
+      `Hello ${first},`,
+      `${school.name} has invited you to a short spoken interview for the ${candidate.applied_subject} post.`,
+      'It takes about 18 minutes, by voice, with an AI interviewer. Find a quiet room and use a device with a microphone.',
+      `Open your application and start it here: ${portal}`,
+      `— ${school.name}`,
+    ];
+    const html = [
+      `<p>Hello ${escapeHtml(first)},</p>`,
+      `<p>${escapeHtml(school.name)} has invited you to a short spoken interview for the ${escapeHtml(candidate.applied_subject)} post.</p>`,
+      '<p>It takes about 18 minutes, by voice, with an AI interviewer. Find a quiet room and use a device with a microphone.</p>',
+      button(portal, 'Start your interview'),
+      `<p style="color:#64748b;font-size:13px">Or open: <a href="${escapeHtml(link)}">${escapeHtml(link)}</a> (you will be asked to sign in)</p>`,
+      `<p>— ${escapeHtml(school.name)}</p>`,
+    ].join('');
+    email = await mail({ email: candidate.email, name: candidate.name }, `${school.name} has invited you to a spoken interview`, lines, html, school, school.primary_contact?.email);
+  }
+  return { whatsapp, email };
 }

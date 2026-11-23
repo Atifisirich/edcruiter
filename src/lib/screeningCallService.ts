@@ -21,7 +21,7 @@ import {
 import { sendAssessmentInvite, sendInviteEmail } from './assessmentInvite';
 import { notifyCandidateDeclined } from './candidateOutcome';
 import { decide as hiringDecide } from './hiringDecision';
-import { roundsOf } from './reviewRounds';
+import { roundsFor } from './reviewRounds';
 import {
   emailCapReached, emailDigest, emailGoodFit, emailWaiting, markSchoolState, sendHeadsUp, sendMissedCall, whenText,
 } from './screeningMessages';
@@ -357,7 +357,7 @@ export async function approveDecline(callId: string, schoolId: string, actor: { 
   if (!candidate) return { ok: false, error: 'Candidate not found.' };
   const failed = (call.checks ?? []).filter((c) => c.result === 'not_met').map((c) => c.requirement);
   const note = `Not suitable after the AI screening call${failed.length ? `: ${failed.join('; ')}` : ''}.`;
-  const outcome = hiringDecide(candidate, { action: 'reject', note }, actor, undefined, roundsOf(db.getSchoolById(schoolId)));
+  const outcome = hiringDecide(candidate, { action: 'reject', note }, actor, undefined, roundsFor(db.getSchoolById(schoolId), candidate));
   if (!outcome.ok) return { ok: false, error: outcome.error };
   db.updateCandidate(schoolId, candidate.id, outcome.updates);
   const told = await notifyCandidateDeclined(schoolId, candidate.id).catch(() => undefined);

@@ -54,7 +54,10 @@ export default function AiInterviewPanel({ candidateId, candidateName }: { candi
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'That did not work. Try again.', 'error'); return; }
       setInterview(data.interview);
-      toast(action === 'invite' ? `${candidateName} is invited. They will see the interview when they open their application.` : 'Sample report ready.', 'success');
+      const via = [data.notified?.whatsapp && 'WhatsApp', data.notified?.email && 'email'].filter(Boolean).join(' and ');
+      toast(action === 'invite'
+        ? `${candidateName} is invited${via ? ` and was told on ${via}` : '. We could not message them, so ask them to open their application'}. The interview shows on their application page.`
+        : 'Sample report ready.', 'success');
     } finally {
       setBusy('');
     }
@@ -75,7 +78,7 @@ export default function AiInterviewPanel({ candidateId, candidateName }: { candi
           <div className="flex flex-wrap gap-2">
             {(!interview || interview.status === 'completed' || interview.status === 'abandoned') && (
               <button type="button" disabled={!!busy} onClick={() => act('invite', 'invite')} className={buttonClass('primary', 'sm')}>
-                {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Invite {candidateName.split(' ')[0]}
+                {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {interview ? 'Invite again' : 'Invite'} {candidateName.split(' ')[0]}
               </button>
             )}
             <a href={link} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'sm')}><Mic className="w-4 h-4" /> Try it yourself <ExternalLink className="w-3 h-3" /></a>
