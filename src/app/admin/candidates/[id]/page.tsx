@@ -24,25 +24,19 @@ export default function CandidateReportPage() {
 
   return (
     <>
-      {candidate && (
-        <a href="#ai-interview" className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-sm text-indigo-900 hover:bg-indigo-100 transition-colors">
-          <span><strong>AI interview</strong>: invite {candidate.name.split(' ')[0]} to a spoken interview, try it yourself, or read the report.</span>
-          <span className="font-bold shrink-0">Go to it ↓</span>
-        </a>
-      )}
       <CandidateProfileModal
         layout="page"
         isOpen
         candidateId={id}
         onClose={() => router.push('/admin/candidates')}
+        renderInterview={candidate ? (onChange) => <AiInterviewPanel candidateId={candidate.id} candidateName={candidate.name} onChange={onChange} /> : undefined}
       />
 
       {candidate && <ScreeningCallPanel candidateId={candidate.id} candidateName={candidate.name} />}
 
-      {candidate && <AiInterviewPanel candidateId={candidate.id} candidateName={candidate.name} />}
 
       {canDelete && (
-        <section className="mt-8 rounded-2xl border border-rose-200 bg-rose-50/50 p-5 flex flex-wrap items-center justify-between gap-3">
+        <section className="mt-8 rounded-2xl border border-rose-200 print:hidden bg-rose-50/50 p-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-rose-900">Delete this candidate</h2>
             <p className="text-sm text-rose-800/80">Removes {candidate.name} and everything they submitted, for good.</p>

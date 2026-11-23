@@ -439,3 +439,26 @@ h1, h2, h3, h4, h5, h6 {
     font: 16px sans-serif;
   }
 }
+
+/* Candidate report: printing or "Save as PDF" gives the report alone, every
+   section open (the page opens them on beforeprint), colours kept, and cards
+   never split across pages. */
+@media print {
+  @page { margin: 12mm; }
+  body:has(.report-root) { background: #fff !important; }
+  body:has(.report-root) * { visibility: hidden; }
+  .report-root, .report-root * { visibility: visible; }
+  .report-root {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .report-root .shadow-sm, .report-root .shadow-md { box-shadow: none !important; }
+  .report-card, .report-hero > div:first-child { break-inside: avoid; }
+  .report-section > summary { break-after: avoid; }
+}

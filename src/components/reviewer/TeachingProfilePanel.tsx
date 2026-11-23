@@ -7,6 +7,7 @@ import {
   type FactorGroup, type ProfileFactor, type ScoreTone, type TeachingProfile,
 } from '@/lib/teachingProfile';
 import { bandBadgeClass, type ShortlistBand } from '@/lib/shortlistBands';
+import { summariseFactors } from '@/lib/reportVerdict';
 
 export interface ProfileResponse {
   profile: TeachingProfile | null;
@@ -40,45 +41,92 @@ function FactorRow({ f, mode }: { f: ProfileFactor; mode: 'number' | 'band' }) {
   const noData = f.score === null || f.confidence === 'none';
   const tone = noData ? 'none' : scoreTone(f.score as number);
   return (
-    <li className="py-3 grid grid-cols-1 sm:grid-cols-[11rem_1fr] gap-x-4 gap-y-1.5">
-      <div>
-        <p className="text-xs font-bold text-slate-900">{f.label}</p>
-        <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{f.definition}</p>
+    <li className="py-3.5 grid grid-cols-1 sm:grid-cols-[13rem_1fr] gap-x-5 gap-y-2">
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2 sm:block">
+          <p className="text-sm font-semibold text-slate-900">{f.label}</p>
+          <span className={`sm:hidden shrink-0 px-2.5 py-0.5 rounded-lg border text-sm font-bold tabular-nums ${TONE_BADGE[tone]}`}>
+            {mode === 'band' ? observationLabel(f) : noData ? 'No data' : f.score}
+          </span>
+        </div>
+        <p className="text-xs text-slate-400 leading-snug mt-0.5">{f.definition}</p>
       </div>
       <div className="min-w-0 space-y-1.5">
-        <div className="flex items-center gap-2.5">
-          <span className={`shrink-0 px-2.5 py-0.5 rounded-lg border text-[11px] font-black ${TONE_BADGE[tone]}`}>
+        <div className="hidden sm:flex items-center gap-3">
+          <span className={`shrink-0 min-w-[2.75rem] text-center px-2.5 py-0.5 rounded-lg border text-sm font-bold tabular-nums ${TONE_BADGE[tone]}`}>
             {mode === 'band' ? observationLabel(f) : noData ? 'No data' : f.score}
           </span>
           {mode === 'number' && !noData && (
-            <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden max-w-[12rem]">
+            <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden max-w-[14rem]">
               <div className={`h-full rounded-full ${TONE_BAR[tone as ScoreTone]}`} style={{ width: `${f.score}%` }} />
             </div>
           )}
           {mode === 'number' && !noData && <Stars score={f.score as number} />}
         </div>
-        <p className="text-xs text-slate-700 leading-relaxed">{f.reason}</p>
-        {f.quote && <p className="text-[11px] italic text-slate-500 border-l-2 border-slate-200 pl-2">&ldquo;{f.quote}&rdquo;</p>}
+        <p className="text-sm text-slate-700 leading-relaxed">{f.reason}</p>
+        {f.quote && <p className="text-xs italic text-slate-500 border-l-2 border-indigo-200 pl-2.5">&ldquo;{f.quote}&rdquo;</p>}
         {f.confidence === 'low' && (
-          <p className="text-[10px] text-slate-400 italic">No matching quote was found in their answer, so this is for information only and is not counted in the overall score.</p>
+          <p className="text-xs text-slate-400 italic">No matching quote was found in their answer, so this is for information only and is not counted in the overall score.</p>
         )}
       </div>
     </li>
   );
 }
 
+/**
+ * One group of factors. Closed, it already says how the group went: its average,
+ * a small bar per factor, and the best and weakest factor. Open, every reason and quote.
+ */
 function Group({ profile, group, mode, defaultOpen = true }: { profile: TeachingProfile; group: FactorGroup; mode: 'number' | 'band'; defaultOpen?: boolean }) {
   const rows = profile.factors.filter((f) => f.group === group);
   if (!rows.length) return null;
+  const sum = summariseFactors(rows);
+  const avgTone = sum.average === null ? 'none' : scoreTone(sum.average);
+  const bands = mode === 'band'
+    ? Object.entries(rows.reduce<Record<string, number>>((m, f) => { const l = observationLabel(f); m[l] = (m[l] || 0) + 1; return m; }, {}))
+    : [];
   return (
-    <details open={defaultOpen} className="group rounded-2xl border border-slate-200 bg-white">
-      <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3">
-        <span>
-          <span className="block text-sm font-black text-slate-900">{GROUP_LABEL[group]}</span>
-          <span className="block text-[11px] text-slate-500">{GROUP_NOTE[group]}</span>
+    <details open={defaultOpen} className="group/fg rounded-2xl border border-slate-200 bg-white">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden px-4 py-3.5 flex items-center gap-3 sm:gap-4 rounded-2xl hover:bg-slate-50/70">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-slate-900">{GROUP_LABEL[group]}</span>
+            <span className="text-xs text-slate-400">{rows.length} {rows.length === 1 ? 'factor' : 'factors'}</span>
+          </span>
+          {mode === 'number' && sum.best && (!sum.weakest || sum.weakest.score === sum.best.score) ? (
+            <span className="mt-1 block text-xs text-slate-600">{sum.scored > 1 ? `All ${sum.scored} factors at ${sum.best.score}` : `${sum.best.label} ${sum.best.score}`}</span>
+          ) : mode === 'number' && sum.best ? (
+            <span className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600">
+              <span><span className="text-emerald-700 font-semibold">▲ Best</span> {sum.best.label} <span className="font-semibold tabular-nums">{sum.best.score}</span></span>
+              {sum.weakest && <span><span className="text-rose-700 font-semibold">▼ Lowest</span> {sum.weakest.label} <span className="font-semibold tabular-nums">{sum.weakest.score}</span></span>}
+            </span>
+          ) : mode === 'band' ? (
+            <span className="mt-1 block text-xs text-slate-600">{bands.map(([l, n]) => `${n} ${l.toLowerCase()}`).join(' · ')}</span>
+          ) : (
+            <span className="mt-1 block text-xs text-slate-500">{GROUP_NOTE[group]}</span>
+          )}
         </span>
-        <span className="text-slate-400 text-xs group-open:rotate-180 transition-transform">▼</span>
+        {mode === 'number' && sum.scored > 0 && (
+          <span className="hidden sm:flex items-end gap-1 h-8" aria-hidden="true">
+            {rows.map((f) => {
+              const has = typeof f.score === 'number' && f.confidence !== 'none';
+              return (
+                <span key={f.key} title={`${f.label}: ${has ? f.score : 'no data'}`} className="relative w-1.5 h-full rounded-full bg-slate-100 overflow-hidden">
+                  {has && <span className={`absolute bottom-0 inset-x-0 rounded-full ${TONE_BAR[scoreTone(f.score as number)]}`} style={{ height: `${Math.max(6, f.score as number)}%` }} />}
+                </span>
+              );
+            })}
+          </span>
+        )}
+        {mode === 'number' && (
+          <span className={`shrink-0 min-w-[3.5rem] text-center rounded-xl border px-2.5 py-1 ${TONE_BADGE[avgTone]}`}>
+            <span className="block text-lg font-bold leading-none tabular-nums">{sum.average ?? '—'}</span>
+            <span className="block text-[10px] font-medium opacity-70 mt-0.5">average</span>
+          </span>
+        )}
+        <span className="text-slate-400 text-xs transition-transform group-open/fg:rotate-180 print:hidden" aria-hidden="true">▼</span>
       </summary>
+      <p className="px-4 -mt-1 pb-1 text-xs text-slate-500">{GROUP_NOTE[group]}</p>
       <ul className="px-4 pb-2 divide-y divide-slate-100">
         {rows.map((f) => <FactorRow key={f.key} f={f} mode={mode} />)}
       </ul>
@@ -91,6 +139,7 @@ export default function TeachingProfilePanel({
   scoredStagesDone,
   onData,
   hideOverall = false,
+  embedded = false,
 }: {
   candidateId: string;
   scoredStagesDone: boolean;
@@ -98,6 +147,8 @@ export default function TeachingProfilePanel({
   onData?: (data: ProfileResponse | null) => void;
   /** The overall number is shown above already. */
   hideOverall?: boolean;
+  /** Inside the report's own section: no card, no title, and the summary, strengths and concerns are left to the verdict above. */
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -154,9 +205,9 @@ export default function TeachingProfilePanel({
   const overall = profile?.overall.score ?? null;
 
   return (
-    <section className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4" style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <section className={embedded ? 'space-y-4' : 'bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4'} style={{ WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}>
+      <div className={`flex flex-wrap items-start gap-3 ${embedded ? 'justify-end print:hidden' : 'justify-between'}`}>
+        <div className={embedded ? 'hidden' : ''}>
           <h2 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-indigo-600" /> Teaching profile
           </h2>
@@ -230,7 +281,7 @@ export default function TeachingProfilePanel({
             {overall !== null && <span className="text-xs text-slate-500">{scoreLabel(overall)} overall</span>}
           </div>
 
-          {profile.overall.capped_reason && (
+          {profile.overall.capped_reason && !embedded && (
             <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">{profile.overall.capped_reason}</p>
           )}
           {profile.status === 'partial' && (
@@ -239,9 +290,9 @@ export default function TeachingProfilePanel({
             </p>
           )}
 
-          {profile.summary && <p className="text-sm text-slate-800 leading-relaxed">{profile.summary}</p>}
+          {profile.summary && !embedded && <p className="text-sm text-slate-800 leading-relaxed">{profile.summary}</p>}
 
-          {(profile.strengths.length > 0 || profile.improvements.length > 0) && (
+          {!embedded && (profile.strengths.length > 0 || profile.improvements.length > 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {profile.strengths.length > 0 && (
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3">
@@ -258,17 +309,33 @@ export default function TeachingProfilePanel({
             </div>
           )}
 
-          <Group profile={profile} group="area" mode="number" />
+          <Group profile={profile} group="area" mode="number" defaultOpen={!embedded} />
           <Group profile={profile} group="extra" mode="number" defaultOpen={false} />
           <Group profile={profile} group="attitude" mode="number" defaultOpen={false} />
           <Group profile={profile} group="resume" mode="number" defaultOpen={false} />
           <Group profile={profile} group="communication" mode="number" defaultOpen={false} />
 
           {profile.relevancy.length > 0 && (
-            <details className="group rounded-2xl border border-slate-200 bg-white">
-              <summary className="cursor-pointer list-none px-4 py-3">
-                <span className="block text-sm font-black text-slate-900">Response relevancy</span>
-                <span className="block text-[11px] text-slate-500">How directly each response answers the question that was asked.</span>
+            <details className="group/rel rounded-2xl border border-slate-200 bg-white">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden px-4 py-3.5 flex items-center gap-3 sm:gap-4 rounded-2xl hover:bg-slate-50/70">
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold text-slate-900">Response relevancy</span>
+                    <span className="text-xs text-slate-400">{profile.relevancy.length} {profile.relevancy.length === 1 ? 'answer' : 'answers'}</span>
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500">How directly each response answers the question that was asked.</span>
+                </span>
+                {(() => {
+                  const sc = profile.relevancy.map((r) => r.score).filter((n): n is number => typeof n === 'number');
+                  const avg = sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null;
+                  return (
+                    <span className={`shrink-0 min-w-[3.5rem] text-center rounded-xl border px-2.5 py-1 ${TONE_BADGE[avg === null ? 'none' : scoreTone(avg)]}`}>
+                      <span className="block text-lg font-bold leading-none tabular-nums">{avg ?? '—'}</span>
+                      <span className="block text-[10px] font-medium opacity-70 mt-0.5">average</span>
+                    </span>
+                  );
+                })()}
+                <span className="text-slate-400 text-xs transition-transform group-open/rel:rotate-180 print:hidden" aria-hidden="true">▼</span>
               </summary>
               <ul className="px-4 pb-3 divide-y divide-slate-100">
                 {profile.relevancy.map((r) => {
