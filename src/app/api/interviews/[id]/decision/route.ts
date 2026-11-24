@@ -8,6 +8,7 @@ import { HIRING_TEAM } from '@/lib/permissions';
 import { roundsFor } from '@/lib/reviewRounds';
 import type { ReviewRound } from '@/lib/types';
 import { reviewStillOwed } from '@/lib/roundReview';
+import { matchRole } from '@/lib/payGuide';
 import { isAdmin } from '@/lib/permissions';
 
 /**
@@ -51,6 +52,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (reviewStillOwed(candidate, round.id) && !isAdmin(ctx.role)) {
       return NextResponse.json({ error: `Wait for ${candidate.round_assignments?.[round.id]?.user_name ?? 'the reviewer'} to give their review of the ${round.name} round first.` }, { status: 409 });
+    }
+
+    if (decision === 'accepted' && rounds[rounds.length - 1]?.id === round.id && matchRole(db.getSchoolById(ctx.schoolId)?.pay_guide, candidate)) {
+      if (candidate.final_offer?.status !== 'approved') {
+        return NextResponse.json({ error: 'The salary offer must be set and approved before the final yes. Use the Final call card on the teacher\u2019s report.' }, { status: 409 });
+      }
     }
 
     const outcome = decide(

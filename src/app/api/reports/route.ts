@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { buildReport, RANGE_DAYS, type ReportRange } from '@/lib/managementReport';
 import { roleDefFor } from '@/lib/roles';
+import { potOf } from '@/lib/payGuide';
 import { accessOf } from '@/lib/permissions';
 
 /**
@@ -43,7 +44,22 @@ export async function GET(req: NextRequest) {
       hourlyCostInr: school?.hr_hourly_cost_inr,
       now,
     });
-    return NextResponse.json({ range, report, school_name: school?.name ?? '' });
+    // What each pay role has spent against its pot, and what is waiting for the admin.
+    const pay = (school?.pay_guide?.roles ?? []).map((r) => {
+      const offers = candidates.filter((c) => c.final_offer?.role_id === r.id);
+      return {
+        id: r.id,
+        name: r.name,
+        pot: potOf(r, candidates),
+        approved: offers.filter((c) => c.final_offer?.status === 'approved' && !c.rejected_by_candidate_at).length,
+        waiting: offers.filter((c) => c.final_offer?.status === 'pending_approval').length,
+        average_monthly: (() => {
+          const done = offers.filter((c) => c.final_offer?.status === 'approved' && !c.rejected_by_candidate_at);
+          return done.length ? Math.round(done.reduce((n, c) => n + (c.final_offer?.monthly ?? 0), 0) / done.length) : null;
+        })(),
+      };
+    });
+    return NextResponse.json({ range, report, pay, school_name: school?.name ?? '' });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not build the report.' }, { status: 500 });
   }

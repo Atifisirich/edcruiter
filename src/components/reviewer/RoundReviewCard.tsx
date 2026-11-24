@@ -11,6 +11,8 @@ import { MAX_STARS, MIN_OPINION, roundStage, rubricFor } from '@/lib/roundReview
 import { canDecideRound } from '@/lib/reviewRounds';
 import { isHiringTeam } from '@/lib/permissions';
 import { useReviewAccess } from './useReviewAccess';
+import PayPanel from './PayPanel';
+import type { PayInfo } from '@/lib/payFlow';
 
 type Staff = { id: string; name: string; role: string; role_id: string };
 
@@ -181,6 +183,8 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // What the Pay Guide says about this teacher, once the pay panel has loaded it.
+  const [payInfo, setPayInfo] = useState<PayInfo | null>(null);
 
   if (!access || !me || !shortlisted || !round) return null;
 
@@ -296,6 +300,7 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
         </div>
         <div className="p-5 sm:p-6 space-y-6">
           {feedback}
+          <PayPanel candidate={candidate} reviewApproved={review?.recommendation === 'approve'} onChanged={onChanged} />
           {earlier.length > 0 && (
             <details className="rounded-2xl border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">What the earlier rounds said ({earlier.length})</summary>
@@ -365,7 +370,10 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
   if (!hr) return null;
 
   // ---------- HR and the admin ----------
-  const optionsHere = reviewersFor(round);
+  // At the final round, when a decision-maker is named for the teacher's pay role, only they (or the admin) can be given the teacher.
+  const finalDecider = !next && payInfo?.matched ? payInfo.role?.decider_user_id : undefined;
+  const optionsHere = reviewersFor(round).filter((s) => !finalDecider || s.id === finalDecider);
+  const awaitingOffer = !next && !!payInfo?.matched && payInfo.final_round && payInfo.offer?.status !== 'approved';
   const optionsNext = next ? reviewersFor(next) : [];
   return (
     <section id="review-card" aria-label={`${round.name} round`} className="rounded-3xl border-2 border-indigo-400 bg-white shadow-lg ring-4 ring-indigo-100 overflow-hidden">
@@ -380,6 +388,7 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
       <div className="p-5 sm:p-6 space-y-5">
         {pipeline}
         {feedback}
+        <PayPanel candidate={candidate} reviewApproved={review?.recommendation === 'approve'} onChanged={onChanged} onInfo={setPayInfo} />
 
         {earlier.length > 0 && (
           <details className="rounded-2xl border border-slate-200 bg-slate-50">
@@ -411,7 +420,7 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
             {stage === 'not_allocated' && (
               <p className="text-xs text-slate-500">
                 Already met them outside the app?{' '}
-                <button type="button" disabled={busy} onClick={() => void decide('round_pass')} className="font-semibold text-indigo-700 hover:underline cursor-pointer disabled:opacity-50">
+                <button type="button" disabled={busy || awaitingOffer} onClick={() => void decide('round_pass')} className="font-semibold text-indigo-700 hover:underline cursor-pointer disabled:opacity-50">
                   {next ? `Pass to ${next.name} without a review` : 'Select without a review'}
                 </button>
               </p>
@@ -438,9 +447,10 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
                     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={`Passed on ${review.reviewer_name}'s review.`} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm" />
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" disabled={busy} onClick={() => void decide('round_pass')} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold disabled:opacity-50 cursor-pointer">
+                    <button type="button" disabled={busy || awaitingOffer} onClick={() => void decide('round_pass')} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold disabled:opacity-50 cursor-pointer">
                       {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {next ? `Pass to ${next.name}` : 'Select this teacher'}
                     </button>
+                    {awaitingOffer && <p className="w-full text-xs text-amber-800">You can select this teacher once the salary offer above is set and approved.</p>}
                     <button type="button" disabled={busy} onClick={() => { setStopping(true); setNote(''); setError(''); }} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white border border-rose-300 text-rose-800 text-sm font-bold cursor-pointer">
                       Stop here
                     </button>

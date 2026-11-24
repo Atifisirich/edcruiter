@@ -8,6 +8,8 @@ import { useAdmin } from '@/components/admin/adminContext';
 import { Badge, Card, CardHeader, EmptyState, PageHeader, StatCard, buttonClass, inputClass } from '@/components/admin/ui';
 import { isAdmin } from '@/lib/permissions';
 import type { ManagementReport, ReportRange } from '@/lib/managementReport';
+import type { PotState } from '@/lib/payGuide';
+import Link from 'next/link';
 
 const RANGES: { key: ReportRange; label: string }[] = [
   { key: '7', label: 'Last 7 days' },
@@ -38,6 +40,7 @@ export default function ReportsPage() {
   const { schoolId, school, user, setSchool, toast } = useAdmin();
   const [range, setRange] = useState<ReportRange>('30');
   const [report, setReport] = useState<ManagementReport | null>(null);
+  const [pay, setPay] = useState<{ id: string; name: string; pot: PotState | null; approved: number; waiting: number; average_monthly: number | null }[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [rate, setRate] = useState('');
@@ -51,6 +54,7 @@ export default function ReportsPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || 'Could not build the report.'); return; }
       setReport(data.report);
+      setPay(data.pay ?? []);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
     } finally {
@@ -271,6 +275,40 @@ export default function ReportsPage() {
               )}
             </Card>
           </div>
+
+          {pay.length > 0 && (
+            <Card>
+              <CardHeader
+                title="Pay budget"
+                description="What the final decision-makers have offered against the Pay Guide, role by role."
+                action={<Link href="/admin/pay-guide" className={buttonClass('secondary', 'sm')}>Open the Pay Guide</Link>}
+              />
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 pr-3 font-semibold">Role</th>
+                      <th className="py-2 pr-3 font-semibold text-right">Offers made</th>
+                      <th className="py-2 pr-3 font-semibold text-right">Average offer</th>
+                      <th className="py-2 pr-3 font-semibold text-right">Budget used</th>
+                      <th className="py-2 font-semibold text-right">Waiting for you</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pay.map((p) => (
+                      <tr key={p.id}>
+                        <td className="py-2.5 pr-3 font-semibold text-slate-900">{p.name}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">{p.approved}{p.pot ? <span className="text-slate-400"> of {p.pot.positions}</span> : null}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">{p.average_monthly ? inr(p.average_monthly) : '—'}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">{p.pot ? <><span className={p.pot.left_monthly < 0 ? 'text-rose-700 font-semibold' : ''}>{inr(p.pot.used_monthly)}</span><span className="text-slate-400"> of {inr(p.pot.monthly_budget)}</span></> : <span className="text-slate-400">No pot set</span>}</td>
+                        <td className="py-2.5 text-right tabular-nums">{p.waiting > 0 ? <Badge tone="amber">{p.waiting}</Badge> : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Your reviewers" description="Interviews each person was booked for, how many they attended, and the yes or no they gave." />

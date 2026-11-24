@@ -190,6 +190,69 @@ export interface School {
   branch_review_rounds?: Record<string, ReviewRound[]>;
   /** What an hour of an HR person's time costs the school, in rupees. Used to estimate the money Edcruiter saved. See managementReport.ts. */
   hr_hourly_cost_inr?: number;
+  /** What management lets the final decision-maker offer, by job role. See payGuide.ts. */
+  pay_guide?: PayGuide;
+}
+
+/** One experience band of a job role, with the monthly gross pay it may be offered. */
+export interface PayTier {
+  id: string;
+  from_years: number;
+  /** Null means "and above". */
+  to_years: number | null;
+  min: number;
+  ideal: number;
+  max: number;
+  label?: string;
+}
+
+/** A job role in the Pay Guide: the grades (and subjects) it covers, who takes the final call, and what may be offered. */
+export interface PayRole {
+  id: string;
+  name: string;
+  /** Grade ids this role teaches (see grades.ts). */
+  grades: string[];
+  /** Subjects it covers. Empty means any subject. */
+  subjects: string[];
+  /** The one person who takes the final call for this role. Absent: the school admin. */
+  decider_user_id?: string;
+  tiers: PayTier[];
+  /** Tiers for one campus, by branch id, when it pays differently. */
+  branch_tiers?: Record<string, PayTier[]>;
+  /** Rupees a month added to every tier for a B.Ed, and for a master's degree. */
+  bed_topup?: number;
+  masters_topup?: number;
+  /** How many posts and how much a month in total. */
+  pot?: { positions: number; monthly_budget: number };
+}
+
+export interface PayGuide {
+  roles: PayRole[];
+}
+
+/** The final call on one candidate: the salary offered, against the Pay Guide, and who approved it. */
+export interface FinalOffer {
+  role_id: string;
+  role_name: string;
+  monthly: number;
+  tier_label: string;
+  range: { min: number; ideal: number; max: number };
+  years: number;
+  over_range: boolean;
+  over_pot: boolean;
+  /** Why the decision-maker wants to go outside the range or pot. */
+  reason?: string;
+  status: 'approved' | 'pending_approval' | 'refused';
+  decided_by_id: string;
+  decided_by: string;
+  decided_at: string;
+  approved_by?: string;
+  approved_at?: string;
+  approval_note?: string;
+  /** What the teacher said back, kept for the record. */
+  counters?: { at: string; by: string; note: string; amount?: number }[];
+  /** Earlier figures, so a change is never silent. */
+  history?: { at: string; by: string; monthly: number; status: string }[];
 }
 
 /**
@@ -768,6 +831,8 @@ export interface Candidate {
   round_reviews?: Record<string, RoundReview>;
   /** Suggested interview questions, by round id. */
   round_questions?: Record<string, RoundQuestions>;
+  /** The salary the decision-maker offered at the final round. See payGuide.ts. */
+  final_offer?: FinalOffer;
   created_at: string;
   updated_at: string;
 }
@@ -822,7 +887,7 @@ export interface AppNotification {
   id: string;
   school_id: string;
   user_id: string;
-  kind: 'interview_scheduled' | 'interview_cancelled' | 'review_allocated' | 'review_submitted';
+  kind: 'interview_scheduled' | 'interview_cancelled' | 'review_allocated' | 'review_submitted' | 'pay_approval' | 'pay_decided';
   title: string;
   body: string;
   /** Where the notice takes them. */

@@ -6,6 +6,7 @@ import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { canDecideRound, roundsFor } from '@/lib/reviewRounds';
 import { reviewStillOwed } from '@/lib/roundReview';
+import { matchRole } from '@/lib/payGuide';
 import { notifyPassedTo } from '@/lib/reviewNotify';
 import { isAdmin } from '@/lib/permissions';
 import type { ReviewRound, RoundAssignment } from '@/lib/types';
@@ -81,6 +82,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // A reviewer was given this teacher: HR waits for their report card before passing or stopping.
     if ((input.action === 'round_pass' || input.action === 'round_reject') && round && reviewStillOwed(candidate, round.id) && !isAdmin(ctx.role)) {
       return NextResponse.json({ error: `Wait for ${candidate.round_assignments?.[round.id]?.user_name ?? 'the reviewer'} to give their review of the ${round.name} round first.` }, { status: 409 });
+    }
+
+    // At the final round, when the Pay Guide covers this teacher, the offer must be set and approved first.
+    if (input.action === 'round_pass' && round && rounds[rounds.length - 1]?.id === round.id) {
+      const payRole = matchRole(db.getSchoolById(ctx.schoolId)?.pay_guide, candidate);
+      if (payRole) {
+        const o = candidate.final_offer;
+        const wait = !o ? 'The decision-maker has not set the salary offer yet.'
+          : o.status === 'pending_approval' ? 'The offer is waiting for the school admin to approve it, because it is outside the Pay Guide.'
+          : o.status === 'refused' ? 'The school admin did not approve that offer. The decision-maker needs to make a new one.'
+          : '';
+        if (wait) return NextResponse.json({ error: `${wait} Then you can select this teacher.` }, { status: 409 });
+      }
     }
 
     const outcome = decide(candidate, input, { id: ctx.user.id, name: ctx.user.name }, undefined, rounds);

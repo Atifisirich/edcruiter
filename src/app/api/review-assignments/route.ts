@@ -5,6 +5,8 @@ import { HIRING_TEAM } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { canDecideRound, currentRound, roundsFor } from '@/lib/reviewRounds';
 import { notifyAllocated } from '@/lib/reviewNotify';
+import { matchRole } from '@/lib/payGuide';
+import { isAdmin } from '@/lib/permissions';
 import type { RoundAssignment } from '@/lib/types';
 
 const MAX_PER_REQUEST = 200;
@@ -46,6 +48,13 @@ export async function POST(req: NextRequest) {
       if (!round) { skipped.push({ id, name: candidate.name, reason: 'That round is not in their review flow.' }); continue; }
       if (!canDecideRound(reviewer, round) || reviewer.role === 'HR') {
         skipped.push({ id, name: candidate.name, reason: `${reviewer.name} does not review the ${round.name} round.` });
+        continue;
+      }
+      // At the final round the person who decides is the one management named for this teacher's role.
+      const payRole = rounds[rounds.length - 1]?.id === round.id ? matchRole(school?.pay_guide, candidate) : null;
+      if (payRole?.decider_user_id && payRole.decider_user_id !== reviewer.id && !isAdmin(reviewer.role)) {
+        const named = db.getUsersBySchool(ctx.schoolId).find((u) => u.id === payRole.decider_user_id);
+        skipped.push({ id, name: candidate.name, reason: `${named?.name ?? 'Someone else'} takes the final call for ${payRole.name}.` });
         continue;
       }
       const closed = candidate.status === 'rejected' || !!candidate.rejected_by_school_at || !!candidate.rejected_by_candidate_at;

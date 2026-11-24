@@ -11,7 +11,9 @@ import OfferLetterModal from './OfferLetterModal';
 export default function OfferDispatch({ candidate, onSent }: { candidate: Candidate; onSent: (next?: Candidate) => void }) {
   const [school, setSchool] = useState<School | null>(null);
   const [open, setOpen] = useState(false);
-  const [salary, setSalary] = useState(candidate.expected_salary || '');
+  // The approved final offer when there is one, else what the teacher asked for. 12 months of the monthly figure, in lakhs.
+  const approved = candidate.final_offer?.status === 'approved' ? candidate.final_offer : undefined;
+  const [salary, setSalary] = useState(approved ? `${(Math.round(((approved.monthly * 12) / 100000) * 100) / 100).toString()} LPA` : candidate.expected_salary || '');
   const [branchId, setBranchId] = useState(candidate.target_branch_id || '');
   const [joining, setJoining] = useState('');
 
@@ -41,6 +43,7 @@ export default function OfferDispatch({ candidate, onSent }: { candidate: Candid
         <label className="block text-xs font-bold text-slate-700">
           Offered salary
           <input value={salary} onChange={(e) => setSalary(e.target.value)} placeholder="e.g. 7.5 LPA" className={field} />
+          {approved && <span className="block mt-1 font-normal text-slate-500">From the approved offer of ₹{approved.monthly.toLocaleString('en-IN')} a month.</span>}
         </label>
         <label className="block text-xs font-bold text-slate-700">
           Campus / branch
