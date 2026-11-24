@@ -29,7 +29,8 @@ import ReportVerdict from './report/ReportVerdict';
 import WrittenAnswers from './report/WrittenAnswers';
 import { parseWrittenSubmission } from '@/lib/writtenAnswers';
 import AiInterviewReportView, { INTERVIEW_REC } from './report/AiInterviewReportView';
-import { MiniChip, PointList, ReportSection, SubHead, TONE, type Metric } from './report/ReportUI';
+import { MiniChip, OpenCue, PointList, Points, ReportSection, SkillBlock, SubHead, TONE, type Metric } from './report/ReportUI';
+import { isPlaceholderSubmission, parsePolicyText, sentences } from '@/lib/reportPoints';
 
 interface CandidateProfileDashboardProps {
   isOpen: boolean;
@@ -72,10 +73,6 @@ function hasDeterministicScores(results: StageResult[]): boolean {
   return results.some((r) => r.ai_scores?.scoring_mode === 'deterministic_fallback');
 }
 
-/** Dimension scores are out of 10. */
-function dimTone(score: number): MetricTone {
-  return score >= 8 ? 'good' : score >= 5 ? 'watch' : 'concern';
-}
 
 function eligibilityText(v?: string): string {
   return v === 'eligible' ? 'Meets the vacancy' : v === 'not_eligible' ? 'Does not meet the vacancy' : v === 'needs_review' ? 'Needs a look' : 'CV reviewed';
@@ -570,6 +567,9 @@ export default function CandidateProfileDashboard({
                     const isOffline = result?.ai_scores?.scoring_mode === 'deterministic_fallback';
                     const written = parseWrittenSubmission(result?.written_submission);
                     const structured = !!written && written.mcqs.length > 0;
+                    const policyFromText = !result?.policy_answers?.length ? parsePolicyText(result?.written_submission) : null;
+                    const placeholder = isPlaceholderSubmission(result?.written_submission);
+                    const lead = sentences(result?.ai_scores?.evidence_reference || result?.reviewer_notes);
                     const tone: MetricTone = score !== null ? toneFor100(score) : 'none';
                     return (
                       <details key={stg.key} id={`stage-${stg.key}`} className="group/stage scroll-mt-20 rounded-xl border border-slate-200 bg-slate-50/40">
@@ -584,6 +584,7 @@ export default function CandidateProfileDashboard({
                             {result ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                             <span className="hidden sm:inline">{result ? 'Done' : 'Not submitted'}</span>
                           </span>
+                          <OpenCue rotate="group-open/stage:rotate-180" size="sm" />
                         </summary>
                         <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-1 space-y-4">
                           {!result ? (
@@ -593,45 +594,56 @@ export default function CandidateProfileDashboard({
                               {structured && result && <WrittenAnswers parsed={written!} result={result} />}
 
                               {isScoredStage(stg.key) && !structured && (
-                                <div className="p-4 rounded-xl bg-white border border-indigo-100 space-y-3">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">AI notes{isOffline ? ' · provisional, offline' : ''}</p>
-                                  {!result.ai_scores?.scores?.length ? (
-                                    <p className="text-sm text-amber-800">No AI scores were stored for this submission. The answers and video are below for a person to review.</p>
-                                  ) : (
-                                    <>
-                                      <p className="text-sm text-slate-800 leading-relaxed">
-                                        {result.ai_scores?.evidence_reference || result.reviewer_notes || 'AI notes were not stored for this submission.'}
-                                      </p>
-                                      {result.ai_scores?.identified_gaps && result.ai_scores.identified_gaps.length > 0 && (
-                                        <PointList items={result.ai_scores.identified_gaps} tone="watch" empty="" />
-                                      )}
-                                      <ul className="space-y-2.5">
-                                        {result.ai_scores?.scores?.map((dim) => {
-                                          const t = dimTone(Number(dim.score) || 0);
-                                          return (
-                                            <li key={dim.dimension} className="space-y-1">
-                                              <div className="flex items-center gap-3">
-                                                <span className="w-40 sm:w-48 shrink-0 text-sm text-slate-700 capitalize truncate">{dim.dimension.replace(/_/g, ' ')}</span>
-                                                <span className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
-                                                  <span className={`block h-full rounded-full ${TONE[t].dot}`} style={{ width: `${(Number(dim.score) || 0) * 10}%` }} />
-                                                </span>
-                                                <span className={`w-10 text-right text-sm font-bold tabular-nums ${TONE[t].number}`}>{dim.score}/10</span>
-                                              </div>
-                                              {dim.justification && <p className="text-xs text-slate-500 leading-relaxed">{dim.justification}</p>}
-                                            </li>
-                                          );
-                                        })}
-                                      </ul>
-                                    </>
+                                <div className="space-y-3">
+                                  <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-2.5">
+                                    <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                                      AI review
+                                      {isOffline && <span className={`normal-case tracking-normal px-2 py-0.5 rounded-full border ${TONE.watch.chip}`}>Provisional, scored offline</span>}
+                                    </p>
+                                    {!result.ai_scores?.scores?.length ? (
+                                      <p className="text-sm text-amber-800">No AI scores were stored for this submission. The answers and video are below for a person to review.</p>
+                                    ) : (
+                                      <>
+                                        {lead.length > 0 && <p className="text-[15px] font-semibold text-slate-900 leading-snug">{lead[0]}</p>}
+                                        {lead.length > 1 && <Points text={lead.slice(1).join(' ')} />}
+                                        {result.ai_scores?.identified_gaps && result.ai_scores.identified_gaps.length > 0 && (
+                                          <div className="pt-1">
+                                            <SubHead>What is missing</SubHead>
+                                            <Points points={result.ai_scores.identified_gaps.map((g) => ({ text: g, tone: 'watch' as const }))} />
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                  {(result.ai_scores?.scores?.length ?? 0) > 0 && (
+                                    <div className="grid gap-3 xl:grid-cols-2">
+                                      {result.ai_scores!.scores!.map((dim) => (
+                                        <SkillBlock
+                                          key={dim.dimension}
+                                          name={dim.dimension.replace(/_/g, ' ')}
+                                          score={Number(dim.score) || 0}
+                                          measures={dim.pedagogical_benchmark}
+                                          text={dim.justification}
+                                        />
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
                               )}
 
                               {result.policy_answers?.length ? (
                                 <PolicyAnswersPanel answers={result.policy_answers} video={result.policy_video} />
+                              ) : policyFromText ? (
+                                <PolicyAnswersPanel answers={policyFromText.answers} note={policyFromText.note} />
                               ) : null}
 
-                              {result.written_submission && !structured && (
+                              {placeholder && (
+                                <p className="inline-flex items-center gap-1.5 text-sm text-emerald-800">
+                                  <CheckCircle2 className="w-4 h-4" /> {result.written_submission}
+                                </p>
+                              )}
+
+                              {result.written_submission && !structured && !policyFromText && !placeholder && (
                                 <div>
                                   <SubHead>Candidate answers</SubHead>
                                   <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800 leading-relaxed bg-white p-4 rounded-xl border border-slate-100 max-h-[420px] overflow-y-auto print:max-h-none">
@@ -780,8 +792,9 @@ export default function CandidateProfileDashboard({
 
                 {proctoringEvents.length > 0 && (
                   <details className="group/ev rounded-xl border border-slate-200">
-                    <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer px-4 py-2.5 text-sm font-semibold text-indigo-700">
+                    <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer px-4 py-2.5 flex items-center justify-between gap-3 text-sm font-semibold text-indigo-700">
                       Every event, in order ({proctoringEvents.length})
+                      <OpenCue rotate="group-open/ev:rotate-180" size="sm" />
                     </summary>
                     <ul className="divide-y divide-slate-100 border-t border-slate-100">
                       {proctoringEvents.map((evt) => (

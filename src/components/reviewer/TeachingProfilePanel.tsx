@@ -8,6 +8,7 @@ import {
 } from '@/lib/teachingProfile';
 import { bandBadgeClass, type ShortlistBand } from '@/lib/shortlistBands';
 import { summariseFactors } from '@/lib/reportVerdict';
+import { OpenCue, Points } from './report/ReportUI';
 
 export interface ProfileResponse {
   profile: TeachingProfile | null;
@@ -44,7 +45,7 @@ function FactorRow({ f, mode }: { f: ProfileFactor; mode: 'number' | 'band' }) {
     <li className="py-3.5 grid grid-cols-1 sm:grid-cols-[13rem_1fr] gap-x-5 gap-y-2">
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2 sm:block">
-          <p className="text-sm font-semibold text-slate-900">{f.label}</p>
+          <p className="text-[15px] font-bold text-slate-900">{f.label}</p>
           <span className={`sm:hidden shrink-0 px-2.5 py-0.5 rounded-lg border text-sm font-bold tabular-nums ${TONE_BADGE[tone]}`}>
             {mode === 'band' ? observationLabel(f) : noData ? 'No data' : f.score}
           </span>
@@ -63,7 +64,7 @@ function FactorRow({ f, mode }: { f: ProfileFactor; mode: 'number' | 'band' }) {
           )}
           {mode === 'number' && !noData && <Stars score={f.score as number} />}
         </div>
-        <p className="text-sm text-slate-700 leading-relaxed">{f.reason}</p>
+        <Points text={f.reason} />
         {f.quote && <p className="text-xs italic text-slate-500 border-l-2 border-indigo-200 pl-2.5">&ldquo;{f.quote}&rdquo;</p>}
         {f.confidence === 'low' && (
           <p className="text-xs text-slate-400 italic">No matching quote was found in their answer, so this is for information only and is not counted in the overall score.</p>
@@ -124,7 +125,7 @@ function Group({ profile, group, mode, defaultOpen = true }: { profile: Teaching
             <span className="block text-[10px] font-medium opacity-70 mt-0.5">average</span>
           </span>
         )}
-        <span className="text-slate-400 text-xs transition-transform group-open/fg:rotate-180 print:hidden" aria-hidden="true">▼</span>
+        <OpenCue rotate="group-open/fg:rotate-180" />
       </summary>
       <p className="px-4 -mt-1 pb-1 text-xs text-slate-500">{GROUP_NOTE[group]}</p>
       <ul className="px-4 pb-2 divide-y divide-slate-100">
@@ -335,7 +336,7 @@ export default function TeachingProfilePanel({
                     </span>
                   );
                 })()}
-                <span className="text-slate-400 text-xs transition-transform group-open/rel:rotate-180 print:hidden" aria-hidden="true">▼</span>
+                <OpenCue rotate="group-open/rel:rotate-180" />
               </summary>
               <ul className="px-4 pb-3 divide-y divide-slate-100">
                 {profile.relevancy.map((r) => {

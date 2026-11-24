@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { ChevronDown } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { toPoints, type Point } from '@/lib/reportPoints';
 import type { MetricTone, VerdictKey } from '@/lib/reportVerdict';
 
 /** One colour language for the whole report: green good, amber watch, red concern, grey no data. */
@@ -56,13 +57,18 @@ export function MetricCard({ m }: { m: Metric }) {
         {m.unit && <span className="text-xs font-medium text-slate-400">{m.unit}</span>}
       </span>
       {m.caption && <span className="mt-1.5 block text-xs text-slate-600 leading-snug line-clamp-2">{m.caption}</span>}
+      {m.target && (
+        <span className="mt-auto pt-2.5 inline-flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 group-hover/card:gap-1.5 transition-all print:hidden">
+          See details <ChevronRight className="w-3.5 h-3.5" />
+        </span>
+      )}
       <span className="sr-only">{t.label}</span>
     </>
   );
   const cls = `report-card flex flex-col text-left rounded-2xl border p-4 min-h-[7.5rem] ${t.card}`;
   if (!m.target) return <div className={cls}>{body}</div>;
   return (
-    <button type="button" onClick={() => openSection(m.target!)} className={`${cls} cursor-pointer transition hover:shadow-md hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-indigo-500`}>
+    <button type="button" onClick={() => openSection(m.target!)} className={`${cls} group/card cursor-pointer transition hover:shadow-md hover:border-indigo-300 hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-indigo-500`}>
       {body}
     </button>
   );
@@ -101,8 +107,8 @@ export function ReportSection({
             {hint && <span className="block text-xs text-slate-500 truncate">{hint}</span>}
           </span>
           {badge && <span className={`shrink-0 px-2.5 py-1 rounded-full border text-xs font-semibold tabular-nums ${TONE[badgeTone].chip}`}>{badge}</span>}
-          <span className="hidden sm:inline text-xs font-medium text-indigo-600 group-open/sec:hidden print:hidden">Details</span>
-          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 transition-transform group-open/sec:rotate-180 print:hidden" aria-hidden="true" />
+          <span className="hidden sm:inline text-xs font-semibold text-indigo-600 print:hidden"><span className="group-open/sec:hidden">Open</span><span className="hidden group-open/sec:inline">Close</span></span>
+          <OpenCue rotate="group-open/sec:rotate-180" />
         </span>
         {preview && <span className="mt-3 flex flex-wrap gap-1.5 sm:pl-12 group-open/sec:hidden print:hidden">{preview}</span>}
       </summary>
@@ -153,4 +159,71 @@ export function PointList({ items, tone, empty }: { items: string[]; tone: Metri
 /** A small label above a block of detail. */
 export function SubHead({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">{children}</p>;
+}
+
+/** The sign that a card opens: a chevron in a soft circle, turned when open. Pass the open-state class of the card's named group. */
+export function OpenCue({ rotate, size = 'md' }: { rotate: string; size?: 'sm' | 'md' }) {
+  return (
+    <span className={`shrink-0 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center print:hidden ${size === 'sm' ? 'w-6 h-6' : 'w-7 h-7'}`} aria-hidden="true">
+      <ChevronDown className={`${size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4'} transition-transform ${rotate}`} />
+    </span>
+  );
+}
+
+const POINT_ICON: Record<Point['tone'], React.ReactNode> = {
+  good: <CheckCircle2 className="w-4 h-4 text-emerald-600" />,
+  watch: <AlertCircle className="w-4 h-4 text-amber-500" />,
+  concern: <AlertCircle className="w-4 h-4 text-rose-500" />,
+  none: <span className="block w-1.5 h-1.5 m-[5px] rounded-full bg-slate-400" />,
+};
+
+/** A paragraph from the AI as short points: a tick for a good sign, an alert for something to watch. */
+export function Points({ text, points, className = '' }: { text?: string | null; points?: Point[]; className?: string }) {
+  const list = points ?? toPoints(text);
+  if (!list.length) return null;
+  return (
+    <ul className={`space-y-1.5 ${className}`}>
+      {list.map((p, i) => (
+        <li key={i} className="flex gap-2 text-sm text-slate-700 leading-relaxed">
+          <span className="mt-[3px] shrink-0">{POINT_ICON[p.tone]}</span>
+          <span>{p.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Score out of 10 to a word, for the result next to each skill. */
+function resultWord(score: number, max: number): { word: string; tone: MetricTone } {
+  const pct = (score / max) * 100;
+  return pct >= 80 ? { word: 'Strong', tone: 'good' } : pct >= 50 ? { word: 'Fair', tone: 'watch' } : { word: 'Weak', tone: 'concern' };
+}
+
+/**
+ * One assessed skill: its name as a clear heading, what it is measured against,
+ * the result as a word and a number, and the AI's reasoning as points.
+ */
+export function SkillBlock({ name, score, max = 10, measures, text }: { name: string; score: number; max?: number; measures?: string; text?: string }) {
+  const r = resultWord(score, max);
+  const t = TONE[r.tone];
+  return (
+    <div className={`report-card rounded-xl border bg-white overflow-hidden border-l-4 ${r.tone === 'good' ? 'border-l-emerald-500' : r.tone === 'watch' ? 'border-l-amber-400' : 'border-l-rose-500'} border-slate-200`}>
+      <div className="px-4 pt-3.5 pb-3 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tested</p>
+          <h4 className="text-base font-bold text-slate-900 capitalize leading-snug">{name}</h4>
+          {measures && <p className="text-xs text-slate-500 mt-0.5">{measures}</p>}
+        </div>
+        <div className={`shrink-0 text-center rounded-xl border px-3 py-1.5 ${t.chip}`}>
+          <p className="text-xl font-bold leading-none tabular-nums">{score}<span className="text-xs font-medium opacity-60">/{max}</span></p>
+          <p className="text-[11px] font-semibold mt-0.5">{r.word}</p>
+        </div>
+      </div>
+      <div className="mx-4 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
+        <div className={`h-full rounded-full ${t.dot}`} style={{ width: `${Math.max(0, Math.min(100, (score / max) * 100))}%` }} />
+      </div>
+      {text && <Points text={text} className="px-4 pt-3 pb-4" />}
+      {!text && <div className="pb-3" />}
+    </div>
+  );
 }

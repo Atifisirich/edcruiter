@@ -5,32 +5,8 @@ import { BookOpen, Check, ListChecks, Sparkles, X } from 'lucide-react';
 import type { StageResult } from '@/lib/types';
 import { isSubjectDimension, type ParsedWritten } from '@/lib/writtenAnswers';
 import { MIN_LESSON_WORDS, countWords } from '@/lib/testRules';
-import { PointList, SubHead, TONE } from './ReportUI';
+import { PointList, Points, SkillBlock, SubHead, TONE } from './ReportUI';
 import type { MetricTone } from '@/lib/reportVerdict';
-
-type Dim = NonNullable<NonNullable<StageResult['ai_scores']>['scores']>[number];
-
-/** Dimension scores are out of 10. */
-function dimTone(score: number): MetricTone {
-  return score >= 8 ? 'good' : score >= 5 ? 'watch' : 'concern';
-}
-
-function DimRow({ d }: { d: Dim }) {
-  const score = Number(d.score) || 0;
-  const t = dimTone(score);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-3">
-        <span className="flex-1 text-sm font-medium text-slate-800 capitalize">{d.dimension.replace(/_/g, ' ')}</span>
-        <span className={`text-sm font-bold tabular-nums ${TONE[t].number}`}>{score}/10</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
-        <div className={`h-full rounded-full ${TONE[t].dot}`} style={{ width: `${score * 10}%` }} />
-      </div>
-      {d.justification && <p className="text-xs text-slate-600 leading-relaxed">{d.justification}</p>}
-    </div>
-  );
-}
 
 /**
  * The written stage as two cards: the subject test, one line per question with a
@@ -101,7 +77,7 @@ export default function WrittenAnswers({ parsed, result }: { parsed: ParsedWritt
           </ol>
           {subjectDims.length > 0 && (
             <div className="px-4 pb-4 pt-1 space-y-3">
-              {subjectDims.map((d) => <DimRow key={d.dimension} d={d} />)}
+              {subjectDims.map((d) => <SkillBlock key={d.dimension} name={d.dimension.replace(/_/g, ' ')} score={Number(d.score) || 0} measures={d.pedagogical_benchmark} text={d.justification} />)}
             </div>
           )}
         </section>
@@ -131,9 +107,9 @@ export default function WrittenAnswers({ parsed, result }: { parsed: ParsedWritt
               <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
                 <Sparkles className="w-3.5 h-3.5" /> AI review{provisional ? ' · provisional' : ''}
               </p>
-              {lessonDims.length ? lessonDims.map((d) => <DimRow key={d.dimension} d={d} />) : <p className="text-sm text-slate-500">No AI score was stored for the lesson plan.</p>}
+              {lessonDims.length ? lessonDims.map((d) => <SkillBlock key={d.dimension} name={d.dimension.replace(/_/g, ' ')} score={Number(d.score) || 0} measures={d.pedagogical_benchmark} text={d.justification} />) : <p className="text-sm text-slate-500">No AI score was stored for the lesson plan.</p>}
               {gaps.length > 0 && <div><SubHead>What is missing</SubHead><PointList items={gaps} tone="watch" empty="" /></div>}
-              {note && <p className="text-xs text-slate-500 leading-relaxed">{note}</p>}
+              {note && <Points text={note} />}
             </aside>
           </div>
         </section>
