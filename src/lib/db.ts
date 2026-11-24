@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { PolicyChangeRequest, ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview, AvailabilitySlot, AppNotification } from './types';
+import { LeadList, PolicyChangeRequest, ScreeningCall, SupportMessage, StageAttempt, School, User, Account, Candidate, StageResult, ProctoringEvent, AuditLogEntry, HRPolicyDocument, RubricTemplate, QuestionnaireItem, StageKey, EvaluationRecord, PublicVacancy, AssessmentPack, WhatsAppMessageLog, MessagingConsent, MessageWindow, UploadOwner, DeletionRequest, ScheduledInterview, AvailabilitySlot, AppNotification } from './types';
 import type { TeachingProfile } from './teachingProfile';
 import type { BankState } from './testBank';
 import { candidateMatchesIdentifier } from './candidateMatch';
@@ -34,6 +34,7 @@ interface DatabaseSchema {
   stageAttempts?: StageAttempt[];
   questionBank?: BankState;
   screeningCalls?: ScreeningCall[];
+  leadLists?: LeadList[];
   supportMessages?: SupportMessage[];
   policyChanges?: PolicyChangeRequest[];
 }
@@ -358,8 +359,15 @@ class DB {
   }
 
   // Candidates - Tenant Scoped
-  getCandidatesBySchool(schoolId: string, filters?: { branchId?: string; subject?: string; segment?: string; status?: string }): Candidate[] {
-    let list = this.data.candidates.filter(c => c.school_id === schoolId);
+  /**
+   * A school's candidates. Leads (people on a lead list who have not been moved
+   * into Candidates yet) are left out unless `leads` asks for them: they must
+   * never show in the candidate list, its counts, dashboards or pay figures.
+   */
+  getCandidatesBySchool(schoolId: string, filters?: { branchId?: string; subject?: string; segment?: string; status?: string; leads?: 'only' | 'include' }): Candidate[] {
+    const isLead = (c: Candidate) => !!c.lead && c.lead.status !== 'moved';
+    let list = this.data.candidates.filter(c => c.school_id === schoolId
+      && (filters?.leads === 'include' ? true : filters?.leads === 'only' ? isLead(c) : !isLead(c)));
     if (filters?.branchId) {
       const bId = filters.branchId;
       list = list.filter(c => c.target_branch_id === bId || c.relocation_branches.includes(bId));
@@ -692,6 +700,51 @@ class DB {
     Object.assign(call, updates);
     this.save();
     return call;
+  }
+
+  // --- Lead lists (bulk uploads to screen by AI call) ---
+
+  getLeadLists(schoolId?: string): LeadList[] {
+    const all = this.data.leadLists ?? [];
+    return (schoolId ? all.filter((l) => l.school_id === schoolId) : all).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  getLeadList(schoolId: string, id: string): LeadList | undefined {
+    return (this.data.leadLists ?? []).find((l) => l.school_id === schoolId && l.id === id);
+  }
+
+  addLeadList(list: LeadList): LeadList {
+    (this.data.leadLists ??= []).push(list);
+    this.save();
+    return list;
+  }
+
+  updateLeadList(schoolId: string, id: string, updates: Partial<LeadList>): LeadList | undefined {
+    const list = (this.data.leadLists ??= []).find((l) => l.school_id === schoolId && l.id === id);
+    if (!list) return undefined;
+    Object.assign(list, updates, { updated_at: new Date().toISOString() });
+    this.save();
+    return list;
+  }
+
+  /** Removes an empty list record (after merging it into another). Never touches people. */
+  removeEmptyLeadList(schoolId: string, id: string): boolean {
+    if (this.data.candidates.some((c) => c.school_id === schoolId && c.lead?.list_id === id)) return false;
+    const before = (this.data.leadLists ?? []).length;
+    this.data.leadLists = (this.data.leadLists ?? []).filter((l) => !(l.school_id === schoolId && l.id === id));
+    this.save();
+    return this.data.leadLists.length < before;
+  }
+
+  /** The people on a list, raw (no score worked out): moved ones included, for the report. */
+  getLeadsOfList(schoolId: string, listId: string): Candidate[] {
+    return this.data.candidates.filter((c) => c.school_id === schoolId && c.lead?.list_id === listId);
+  }
+
+  /** Adds many people in one go and saves once. */
+  createCandidates(list: Candidate[]): void {
+    this.data.candidates.push(...list);
+    this.save();
   }
 
   // --- Help bot requests to the Edcruiter team ---

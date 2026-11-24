@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useState, useRef } from 'react';
 import {
   FileSpreadsheet, Upload, CheckCircle2, X,
@@ -11,7 +12,7 @@ import { flagDuplicateLeads, type CvLead } from '@/lib/cvLead';
 import InterviewModePicker from '@/components/admin/InterviewModePicker';
 import type { InterviewMode } from '@/lib/types';
 
-interface ParsedCandidate {
+export interface ParsedCandidate {
   name: string;
   email: string;
   phone: string;
@@ -156,13 +157,13 @@ function parseMatrix(rows: string[][]): ParsedCandidate[] {
   return out.slice(0, 200);
 }
 
-function parseCsvText(text: string): ParsedCandidate[] {
+export function parseCsvText(text: string): ParsedCandidate[] {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return [];
   return parseMatrix(lines.map(splitCsvLine));
 }
 
-function parseWorkbook(buffer: ArrayBuffer): ParsedCandidate[] {
+export function parseWorkbook(buffer: ArrayBuffer): ParsedCandidate[] {
   const workbook = XLSX.read(buffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return [];
@@ -417,6 +418,9 @@ export default function ExcelCandidateUploaderModal({
               <h3 className="font-extrabold text-base text-slate-900">Bulk import teacher leads</h3>
               <p className="text-xs text-slate-500">
                 Excel or CSV with Name + Phone + Subject (email optional). Up to 200 rows.
+              </p>
+              <p className="text-xs text-indigo-700 mt-0.5">
+                Many leads to filter first? <Link href="/admin/leads" className="font-bold underline">Use Lead screening</Link>: the AI calls them and only good fits come here.
               </p>
             </div>
           </div>

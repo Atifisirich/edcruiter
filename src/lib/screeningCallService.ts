@@ -25,7 +25,9 @@ import { roundsFor } from './reviewRounds';
 import {
   emailCapReached, emailDigest, emailGoodFit, emailWaiting, markSchoolState, sendHeadsUp, sendMissedCall, whenText,
 } from './screeningMessages';
-import type { Candidate, School, ScreeningCall, ScreeningDecision } from './types';
+import type { Candidate, LeadList, School, ScreeningCall, ScreeningDecision } from './types';
+import { verdictForCall } from './leadLists';
+import { moveLead, setLead } from './leadActions';
 
 /** A call still ringing after this long is treated as lost, so the candidate can be called again. */
 const STUCK_AFTER_MS = 20 * 60_000;
@@ -72,7 +74,11 @@ export async function startScreeningCall(
   if (env && !phone) return { ok: false, candidateId: candidate.id, error: `${candidate.name} has no valid mobile number.` };
 
   const settings = screeningSettingsOf(school);
-  const set = questionSetFor(settings, candidate);
+  // A lead is asked their list's own questions, made from HR's description of a good fit.
+  const leadSetup = candidate.lead && candidate.lead.status !== 'moved' ? db.getLeadList(schoolId, candidate.lead.list_id)?.setup : undefined;
+  const set = leadSetup
+    ? { questions: leadSetup.questions, requirements: leadSetup.requirements, importance: leadSetup.importance, group: null, own: false }
+    : questionSetFor(settings, candidate);
   const values = variableValues(settings.script, candidate, school);
   const now = Date.now();
   const later = opts.at && opts.at.getTime() > now + 30_000;
@@ -87,7 +93,7 @@ export async function startScreeningCall(
     requirements: set.requirements.map((r) => fillTemplate(r, values)),
     importance: set.importance,
     ...(set.own && set.group ? { group: set.group } : {}),
-    language: callLanguage(settings.language, candidate.languages),
+    language: callLanguage(leadSetup?.language ?? settings.language, candidate.languages),
     attempt: opts.attempt ?? 1,
     callback_count: opts.callbackCount ?? 0,
     requested_by: opts.requestedBy,
@@ -278,6 +284,8 @@ export async function actOnResult(callId: string): Promise<void> {
   if (!school || !candidate) return;
   const settings = screeningSettingsOf(school);
   const rules = settings.rules;
+  // People on a lead list are always acted on: that is what the list is for.
+  if (candidate.lead && candidate.lead.status !== 'moved') return actOnLeadResult(call, candidate, school, settings);
   if (!rules.enabled) return;
 
   if (call.status === 'completed') {
@@ -330,6 +338,113 @@ export async function actOnResult(callId: string): Promise<void> {
     const why = `The call could not go through${call.failure_reason ? `: ${call.failure_reason}` : ''}.`;
     if (rules.after_failed === 'send_link') { await sendLinkAndRecord(call, candidate, why); return; }
     return decideCall(call.id, { action: 'flagged', detail: `${why} Nothing was sent. HR follows up.` });
+  }
+}
+
+// --- Lead lists -------------------------------------------------------------------
+
+/**
+ * A finished call for someone on a lead list: a good fit is moved into
+ * Candidates (and sent the test link if the list says so), an unclear one waits
+ * for HR's look, anyone filtered out is set aside with the reason. Retries and
+ * call-backs follow the school's rules.
+ */
+async function actOnLeadResult(call: ScreeningCall, candidate: Candidate, school: School, settings: FullScreeningSettings): Promise<void> {
+  const list = db.getLeadList(call.school_id, candidate.lead!.list_id);
+  if (!list) return;
+  const rules = settings.rules;
+  const v = verdictForCall(call, rules);
+  if (v.kind === 'wait') return;
+  if (v.kind === 'retry') {
+    const plan = planAfterNoAnswer(rules, call);
+    if (plan.kind === 'retry') {
+      if (rules.missed_call_message && call.mode === 'live' && (call.attempt ?? 1) === 1) void sendMissedCall(school, candidate, plan.at).catch(() => []);
+      setLead(candidate, 'calling');
+      return decideCall(call.id, { action: 'retry_scheduled', detail: `${call.status === 'busy' ? 'The line was busy' : 'They did not answer'}. Trying again ${whenText(plan.at)}.`, retry_at: plan.at.toISOString() });
+    }
+  }
+  if (v.kind === 'call_back') {
+    const at = callbackTime(v.at, rules);
+    setLead(candidate, 'calling');
+    return decideCall(call.id, { action: 'callback_scheduled', detail: `They asked to be called ${v.when_text}. The AI will call back ${whenText(at)}.`, retry_at: at.toISOString() });
+  }
+  if (v.kind === 'good_fit') {
+    const invite = list.on_good_fit === 'move_and_invite';
+    const r = await moveLead(candidate, list, { invite, demo: call.mode === 'demo' });
+    decideCall(call.id, r.invited
+      ? { action: 'link_sent', detail: `Good fit by your list's criteria: moved to Candidates and sent the test link by ${r.channels.join(' and ')}.`, channels: r.channels }
+      : { action: 'none', detail: `Good fit by your list's criteria: moved to Candidates.${invite ? (call.mode === 'demo' ? ' Demo: no test link was sent.' : ' The test link could not be sent (no WhatsApp consent and no usable email); send it from their page.') : ''}` });
+  } else if (v.kind === 'needs_look') {
+    setLead(candidate, 'needs_look', v.reason);
+    decideCall(call.id, { action: 'held', detail: `Needs a look: ${v.reason.text}. Move them to Candidates or set them aside from the list.` });
+  } else {
+    const reason = v.kind === 'set_aside' ? v.reason : { text: 'No answer', key: 'no answer' };
+    setLead(candidate, 'set_aside', reason);
+    decideCall(call.id, { action: 'none', detail: `Set aside: ${reason.text}. They stay on the list's report.` });
+  }
+  finishListIfDone(list);
+}
+
+function finishListIfDone(list: LeadList): void {
+  const open = db.getLeadsOfList(list.school_id, list.id).some((c) => c.lead?.status === 'waiting' || c.lead?.status === 'calling');
+  if (!open && list.status === 'running') db.updateLeadList(list.school_id, list.id, { status: 'done', finished_at: new Date().toISOString(), note: undefined });
+}
+
+/** How many calls may ring at once across the platform (Sarvam's pay-as-you-go plan allows 4). */
+export const maxConcurrent = () => Math.max(1, Math.min(50, Number(process.env.SCREENING_MAX_CONCURRENT) || 3));
+let campaignBusy = false;
+
+/**
+ * The calling queue for lead lists that are running: places the next calls,
+ * a few at a time, only inside the school's calling hours, and stops a list
+ * at the school's daily and monthly limits. Runs every 20 seconds while any
+ * list is calling.
+ */
+export async function runLeadCampaigns(now: Date = new Date()): Promise<number> {
+  if (campaignBusy) return 0;
+  campaignBusy = true;
+  try {
+    const running = db.getLeadLists().filter((l) => l.status === 'running');
+    if (!running.length) return 0;
+    const ringing = db.getAllScreeningCalls().filter((c) => c.status === 'calling' && now.getTime() - Date.parse(c.started_at) < STUCK_AFTER_MS).length;
+    let room = maxConcurrent() - ringing;
+    let placed = 0;
+    for (const list of running) {
+      const leads = db.getLeadsOfList(list.school_id, list.id);
+      // Someone marked as being called whose calls have all ended without a decision (a lost webhook): back in the queue.
+      for (const c of leads.filter((l) => l.lead?.status === 'calling')) {
+        const calls = db.getScreeningCallsBySchool(list.school_id, c.id);
+        const live = calls.some((x) => x.status === 'scheduled' || (x.status === 'calling' && now.getTime() - Date.parse(x.started_at) < STUCK_AFTER_MS)
+          || x.decision?.action === 'retry_scheduled' || x.decision?.action === 'callback_scheduled');
+        if (!live && !calls.some((x) => !x.decision && x.status !== 'calling')) setLead(c, 'waiting');
+      }
+      finishListIfDone(list);
+      if (room <= 0) continue;
+      const school = db.getSchoolById(list.school_id);
+      if (!school || !list.setup) continue;
+      const settings = screeningSettingsOf(school);
+      if (nextInWindow(now, settings.rules).getTime() !== now.getTime()) continue;
+      const cap = monthlyCap(school, settings);
+      if (sarvamEnv() && cap > 0 && callUsageThisMonth(school.id).amount_inr >= cap) {
+        db.updateLeadList(list.school_id, list.id, { status: 'paused', note: `Paused: this month's AI call limit of ₹${cap} is reached. Raise it in Settings, then resume.` });
+        continue;
+      }
+      if (settings.limits.daily_max_calls > 0 && automaticCallsToday(school.id, now) >= settings.limits.daily_max_calls) continue;
+      const fresh = db.getLeadsOfList(list.school_id, list.id);
+      for (const c of fresh.filter((l) => l.lead?.status === 'waiting')) {
+        if (room <= 0) break;
+        const candidate = db.getCandidateById(list.school_id, c.id);
+        if (!candidate) continue;
+        setLead(candidate, 'calling');
+        const r = await startScreeningCall(list.school_id, candidate, { requestedBy: `Lead list: ${list.name}`, trigger: 'campaign', appUrl: appUrlDefault() });
+        if (r.ok) { room--; placed++; continue; }
+        const latest = db.getCandidateById(list.school_id, c.id);
+        if (latest) setLead(latest, 'set_aside', { text: `Could not be called: ${r.error}`, key: 'call failed' });
+      }
+    }
+    return placed;
+  } finally {
+    campaignBusy = false;
   }
 }
 
@@ -489,7 +604,14 @@ export async function runScreeningSweep(now: Date = new Date()): Promise<void> {
   }
 }
 
-const g = globalThis as unknown as { __screeningRetryTimer?: ReturnType<typeof setInterval> };
+const g = globalThis as unknown as { __screeningRetryTimer?: ReturnType<typeof setInterval>; __leadCampaignTimer?: ReturnType<typeof setInterval> };
+
+/** Keeps the lead-list calling queue moving every 20 seconds. Cheap when no list is running. */
+export function ensureCampaignTimer(): void {
+  if (g.__leadCampaignTimer) return;
+  g.__leadCampaignTimer = setInterval(() => { void runLeadCampaigns().catch((e) => console.warn('Lead campaign failed:', e instanceof Error ? e.message : e)); }, 20_000);
+  g.__leadCampaignTimer.unref?.();
+}
 
 /**
  * Runs the sweep every five minutes. One copy of the app runs, so a timer is
@@ -497,6 +619,7 @@ const g = globalThis as unknown as { __screeningRetryTimer?: ReturnType<typeof s
  * the app restarts: the timer starts again on the next request.
  */
 export function ensureRetrySweeper(): void {
+  ensureCampaignTimer();
   if (g.__screeningRetryTimer) return;
   g.__screeningRetryTimer = setInterval(() => { void runScreeningSweep(); }, 5 * 60_000);
   g.__screeningRetryTimer.unref?.();

@@ -148,6 +148,11 @@ function parseSet(raw: unknown, label: string, known: Set<string>): { ok: true; 
   return { ok: true, set: { questions, requirements, importance } };
 }
 
+/** Checks one list of questions on its own (a lead list's screening), with the school's call-script variables allowed. */
+export function parseQuestionSet(raw: unknown, school?: Pick<School, 'screening_call'> | null): { ok: true; set: ScreeningQuestionSet } | { ok: false; error: string } {
+  return parseSet(raw, '', knownKeys(scriptOf(school?.screening_call?.script)));
+}
+
 /** Checks the school's edited settings before they are saved. */
 export function parseScreeningSettings(input: unknown): { ok: true; settings: FullScreeningSettings } | { ok: false; error: string } {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;

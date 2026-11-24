@@ -182,6 +182,8 @@ export interface School {
   screening_call_owner_cap_inr?: number;
   /** Bookkeeping for the call automation, so a summary or an alert goes out once. */
   screening_call_state?: { digest_on?: string; cap_alert_month?: string };
+  /** Screening setups HR saved to reuse on the next lead list. */
+  screening_templates?: ScreeningTemplate[];
   /** The interview rounds after the shortlist, in order. Absent means the standard three. See reviewRounds.ts. */
   review_rounds?: ReviewRound[];
   /** Whether a B.Ed or a master's degree is mandatory when a CV is read. Absent means neither is. See hiringRequirements.ts. */
@@ -329,6 +331,70 @@ export interface ScreeningQuestionSet {
 
 export type ScreeningLanguage = 'auto' | 'English' | 'Hindi' | 'Telugu';
 
+/** Where a lead stands on their list. */
+export type LeadStatus = 'waiting' | 'calling' | 'good_fit' | 'needs_look' | 'set_aside' | 'moved';
+
+export interface LeadState {
+  list_id: string;
+  status: LeadStatus;
+  /** Why they were set aside or need a look, in a few words ("No B.Ed", "No answer after 3 tries"). */
+  reason?: string;
+  /** The short tag the reason is counted under in the list's report. */
+  reason_key?: string;
+  updated_at: string;
+  /** When they were moved into Candidates, and whether the test link went out. */
+  moved_at?: string;
+  invited?: boolean;
+}
+
+/** What HR wants to find out on the call, made from her own words and edited by her. */
+export interface LeadScreeningSetup extends ScreeningQuestionSet {
+  language: ScreeningLanguage;
+  /** One plain line: who counts as a good fit. Shown at the top of the list. */
+  good_fit: string;
+  /** Things HR asked for that were left out, and why (for example a question about age). */
+  left_out?: string[];
+  generated_at?: string;
+}
+
+/**
+ * A batch of people a school uploaded to screen by AI phone call (for example
+ * 400 leads from a job portal), kept apart from the school's candidates until
+ * they are worth moving over.
+ */
+export interface LeadList {
+  id: string;
+  school_id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  /** HR's own words for who she is looking for. */
+  brief?: string;
+  setup?: LeadScreeningSetup;
+  /** setup: being set up. running: calling. paused: stopped by HR. done: everyone has a result. */
+  status: 'setup' | 'running' | 'paused' | 'done';
+  /** What happens to a good fit: moved into Candidates and sent the test link, or only moved. */
+  on_good_fit: 'move_and_invite' | 'move';
+  /** The test a moved good fit takes. Missing means the five-stage test. */
+  interview_mode?: InterviewMode;
+  started_at?: string;
+  finished_at?: string;
+  /** Why calling stopped on its own, such as the monthly limit being reached. */
+  note?: string;
+  /** Lists merged into this one, for the record. */
+  merged_from?: string[];
+}
+
+/** A screening setup saved to reuse. */
+export interface ScreeningTemplate {
+  id: string;
+  name: string;
+  brief: string;
+  setup: LeadScreeningSetup;
+  created_at: string;
+}
+
 export interface ScreeningCallSettings {
   /** The main questions, used for every post without its own set. */
   questions: string[];
@@ -452,7 +518,8 @@ export interface ScreeningCall {
   /** The school's questions as they were when the call was placed. */
   questions: string[];
   requested_by: string;
-  trigger: 'manual' | 'auto' | 'retry' | 'callback';
+  /** campaign: placed by a lead list's calling queue. */
+  trigger: 'manual' | 'auto' | 'retry' | 'callback' | 'campaign';
   /** When a scheduled call is due. */
   scheduled_for?: string;
   /** The kind of post whose questions were asked. Absent: the main questions. */
@@ -775,6 +842,12 @@ export interface Candidate {
   ai_interview?: AiInterview;
   /** What this candidate goes through, copied from the vacancy they applied for. Missing means the five-stage test. */
   interview_mode?: InterviewMode;
+  /**
+   * Set when this person came in through a lead list (a bulk upload to be AI-screened).
+   * While `status` is anything but "moved", they are a lead: kept out of the candidate
+   * list, counts and dashboards, and shown only on their list. See leadLists.ts.
+   */
+  lead?: LeadState;
   status: 'in_progress' | 'passed' | 'rejected' | 'hired';
   shortlist_status?: 'pending' | 'shortlisted' | 'rejected' | 'hold';
   total_ai_score?: number; // 0 - 100 aggregate score
@@ -1268,9 +1341,25 @@ export interface AiInterview {
   duration_sec?: number;
   plan: InterviewTopic[];
   transcript: { role: 'agent' | 'user'; text: string }[];
-  /** sarvam: read back from Sarvam. browser: what the candidate's browser reported, not verified. */
-  transcript_source?: 'sarvam' | 'browser' | 'sample';
+  /** sarvam: read back from Sarvam. browser: what the candidate's browser reported, not verified. server: written by our own voice pipeline as it happened. */
+  transcript_source?: 'sarvam' | 'browser' | 'sample' | 'server';
   report?: AiInterviewReport;
+  /** own: our pipeline (Sarvam speech-to-text, chat and voice, joined on our server). sarvam_agent: Sarvam's hosted voice agent. Absent: the hosted agent. */
+  engine?: 'own' | 'sarvam_agent';
+  /** What the own pipeline used and what it cost the platform, in rupees before GST. */
+  usage?: {
+    stt_sec: number;
+    tts_chars: number;
+    /** Characters played from saved audio, so not paid for again. */
+    tts_cached_chars: number;
+    llm_in: number;
+    llm_out: number;
+    llm_cached: number;
+    turns: number;
+    cost_inr: number;
+  };
+  /** Silences in a row with no answer, so the interviewer can close a dead session. */
+  silent_turns?: number;
 }
 
 /** five_stage: the five-stage test. ai: details and CV, a spoken AI interview, then the school policies. both: the five stages, then the AI interview. */
