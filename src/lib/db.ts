@@ -920,6 +920,14 @@ class DB {
     return this.data.whatsappMessages?.find((m) => m.wa_message_id === waMessageId);
   }
 
+  getWhatsAppMessagesBySchool(schoolId: string): WhatsAppMessageLog[] {
+    return (this.data.whatsappMessages || []).filter((m) => m.school_id === schoolId);
+  }
+
+  getStageResultsBySchool(schoolId: string): StageResult[] {
+    return this.data.stageResults.filter((sr) => sr.school_id === schoolId);
+  }
+
   getWhatsAppMessagesByCandidate(schoolId: string, candidateId: string): WhatsAppMessageLog[] {
     return (this.data.whatsappMessages || [])
       .filter((m) => m.school_id === schoolId && m.candidate_id === candidateId)

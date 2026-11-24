@@ -8,7 +8,11 @@ import { AssessmentPack } from '@/lib/types';
 import { useAdmin } from '@/components/admin/adminContext';
 import { isAdmin, isHiringTeam } from '@/lib/permissions';
 import { CURRICULA, testSubjects } from '@/lib/subjects';
-import QuestionBankPanel from '@/components/admin/QuestionBankPanel';
+import QuestionBankPanel, { type BankFocus } from '@/components/admin/QuestionBankPanel';
+import { ENOUGH_FOR_A_DRAW, type SubjectSummary } from '@/lib/bankCatalog';
+import { gradesFromSegment } from '@/lib/grades';
+import { normalizeSubject } from '@/lib/subjectMatch';
+import { usesOwnQuestions } from '@/lib/ownTest';
 import TestEditor from '@/components/admin/TestEditor';
 
 const SEGMENTS = [
@@ -40,6 +44,9 @@ export default function AssessmentLibraryPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'draft' | 'archived'>('all');
   const [view, setView] = useState<'tests' | 'bank'>('tests');
   const [editing, setEditing] = useState(false);
+  // What Edcruiter's bank covers, so each test can say plainly where its candidates' questions come from.
+  const [bank, setBank] = useState<SubjectSummary[] | null>(null);
+  const [bankFocus, setBankFocus] = useState<BankFocus | undefined>(undefined);
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
@@ -66,6 +73,30 @@ export default function AssessmentLibraryPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    fetch(`/api/question-bank?school_id=${encodeURIComponent(schoolId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setBank(d?.subjects ?? null))
+      .catch(() => setBank(null));
+  }, [schoolId]);
+
+  /** Where candidates for this test get their questions: the school's own, Edcruiter's bank, or (bank too small) the test's AI questions. */
+  const sourceOf = (p: AssessmentPack): { kind: 'own' | 'bank' | 'ai'; subjectKey: string; grades: string[] } => {
+    const subjectKey = normalizeSubject(p.subject);
+    const grades = gradesFromSegment(p.segment);
+    if (usesOwnQuestions(p)) return { kind: 'own', subjectKey, grades };
+    const entry = bank?.find((s) => s.key === subjectKey);
+    const ready = !!entry && entry.grades.some((g) => (grades.includes(g.grade) || g.grade === '*') && g.count >= ENOUGH_FOR_A_DRAW);
+    return { kind: ready ? 'bank' : 'ai', subjectKey, grades };
+  };
+
+  const openBank = (p: AssessmentPack) => {
+    const src = sourceOf(p);
+    setBankFocus({ subject: src.subjectKey, grades: src.grades });
+    setView('bank');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const generate = async () => {
     const chosen = subject === OTHER ? customSubject.trim() : subject;
@@ -160,7 +191,15 @@ export default function AssessmentLibraryPage() {
           ))}
         </div>
 
-        {view === 'bank' && <QuestionBankPanel schoolId={schoolId} />}
+        {view === 'bank' && (
+          <QuestionBankPanel
+            key={bankFocus ? `${bankFocus.subject}|${bankFocus.grades.join(',')}` : 'all'}
+            schoolId={schoolId}
+            focus={bankFocus}
+            tests={packs.filter((p) => p.status !== 'archived' && hiring && (admin || p.status !== 'active'))}
+            onCopied={load}
+          />
+        )}
 
         {view === 'tests' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <section className="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
@@ -241,6 +280,7 @@ export default function AssessmentLibraryPage() {
                         <span className="block text-slate-500 mt-0.5">
                           {p.board} · {p.subject} · {p.mcqs.length} MCQs ·{' '}
                           <span className={p.status === 'active' ? 'text-emerald-700 font-bold' : ''}>{p.status}</span>
+                          {' · '}{sourceOf(p).kind === 'own' ? 'your own questions' : sourceOf(p).kind === 'bank' ? 'Edcruiter bank' : "this test's questions"}
                           {p.edited_at && <span className="text-indigo-700"> · edited by your team</span>}
                         </span>
                       </button>
@@ -308,6 +348,33 @@ export default function AssessmentLibraryPage() {
                     )}
                   </div> : preview.status !== 'active' && <p className="text-[11px] text-slate-500">The school admin puts a new test in use.</p>}
                 </div>
+                {(() => {
+                  const src = sourceOf(preview);
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+                      <p className="text-xs font-black text-slate-900">Where candidates get their questions</p>
+                      {src.kind === 'own' && (
+                        <p className="text-[12px] text-slate-700">Your own questions. Every candidate gets the {preview.mcqs.length} questions on this test, each in their own order. They are listed below.</p>
+                      )}
+                      {src.kind === 'bank' && (
+                        <p className="text-[12px] text-slate-700">Edcruiter&apos;s question bank for {preview.subject}. Each candidate gets their own random mix, so no two papers match. The questions listed below are this test&apos;s own set, kept as a spare. To see what candidates are drawn from, open the bank.</p>
+                      )}
+                      {src.kind === 'ai' && (
+                        <p className="text-[12px] text-slate-700">The questions on this test. Edcruiter&apos;s bank does not have enough {preview.subject} questions for these grades yet, so every candidate gets the set listed below.</p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {(src.kind !== 'ai' || bank?.some((s) => s.key === src.subjectKey && s.total > 0)) && (
+                          <button type="button" onClick={() => openBank(preview)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-bold cursor-pointer">
+                            <BookOpen className="w-3.5 h-3.5" /> See Edcruiter&apos;s {preview.subject} questions
+                          </button>
+                        )}
+                        {src.kind === 'bank' && hiring && (
+                          <span className="text-[11px] text-slate-500 self-center">To change one, copy it from the bank into this test, then edit it here. Edcruiter&apos;s own questions never change.</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {canEditPreview && !editing && (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2.5">
                     <p className="text-[11px] text-slate-600">

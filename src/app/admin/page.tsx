@@ -202,6 +202,13 @@ export default function HiringOverview() {
         <StatCard label="Selected" value={loading ? '–' : tabs.selected} hint="Hired or offered" Icon={CheckCircle2} tone="emerald" href="/admin/candidates?tab=selected" />
       </div>
 
+      {user?.role === 'SCHOOL_ADMIN' && (
+        <Link href="/admin/reports" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 hover:bg-emerald-100/70 transition-colors">
+          <span className="text-sm text-emerald-950"><strong className="font-semibold">Management report.</strong> Leads, invites, interviews, how far candidates got, and the time and money Edcruiter saved your team.</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800">Open the report <ArrowRight className="w-4 h-4" /></span>
+        </Link>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card padded={false} className="lg:col-span-2 overflow-hidden">
           <div className="px-5 sm:px-6 pt-5 sm:pt-6">

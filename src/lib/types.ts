@@ -188,6 +188,8 @@ export interface School {
   hiring_requirements?: { require_bed?: boolean; require_masters?: boolean };
   /** A campus's own review rounds, by branch id. A teacher who applied to that campus follows these instead of review_rounds. See reviewRounds.ts. */
   branch_review_rounds?: Record<string, ReviewRound[]>;
+  /** What an hour of an HR person's time costs the school, in rupees. Used to estimate the money Edcruiter saved. See managementReport.ts. */
+  hr_hourly_cost_inr?: number;
 }
 
 /**

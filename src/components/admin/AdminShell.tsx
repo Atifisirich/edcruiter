@@ -4,10 +4,7 @@ import NotificationBell from '@/components/shared/NotificationBell';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Activity, Briefcase, CalendarCheck2, CheckCircle2, ClipboardCheck, ChevronDown, CloudUpload, FileCheck2, LayoutDashboard, LogOut,
-  Menu, MessageSquare, Plus, Settings, ShieldCheck, TriangleAlert, UserPlus, Users, UsersRound, X, XCircle, Globe, LifeBuoy,
-} from 'lucide-react';
+import { Activity, Briefcase, CalendarCheck2, CheckCircle2, ClipboardCheck, ChevronDown, CloudUpload, FileCheck2, LayoutDashboard, LogOut, Menu, MessageSquare, Plus, Settings, ShieldCheck, TriangleAlert, UserPlus, Users, UsersRound, X, XCircle, Globe, LifeBuoy, BarChart3 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import BrandMark from '@/components/shared/BrandMark';
 import AIJobGeneratorModal from '@/components/admin/AIJobGeneratorModal';
@@ -42,6 +39,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { href: '/reviewer/me', label: 'My reviews', Icon: ClipboardCheck, for: ['reviewer'] },
       { href: '/admin/jobs', label: 'Vacancies', Icon: Briefcase, for: ['admin', 'hr'] },
       { href: '/admin/interviews', label: 'Interviews', Icon: CalendarCheck2, for: ['admin', 'hr'] },
+      { href: '/admin/reports', label: 'Reports', Icon: BarChart3, for: ['admin'] },
     ],
   },
   {
