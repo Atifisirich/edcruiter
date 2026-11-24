@@ -7,7 +7,8 @@
  * no help the second time.
  */
 
-import type { StageAttempt, StageKey } from './types';
+import type { Candidate, InterviewMode, StageAttempt, StageKey } from './types';
+import { modeOf, stepsFor } from './interviewMode';
 
 /** The stages that are taken as a go with a start and an end. Stage 1 (details and CV) is a form. */
 export const ATTEMPT_STAGES: StageKey[] = [
@@ -59,11 +60,23 @@ export function nextStageToTake(doneKeys: string[]): StageKey | null {
   return STAGE_SEQUENCE.find((k) => !doneKeys.includes(k)) ?? null;
 }
 
-/** Whether every stage before this one is finished. */
-export function canStart(stage: StageKey, doneKeys: string[]): boolean {
-  const i = STAGE_SEQUENCE.indexOf(stage);
+/**
+ * Whether every step before this one is finished, on the candidate's own route.
+ * The AI-interview route is profile, spoken interview, school policies: the
+ * five-stage test's middle stages are not part of it and must not be asked for.
+ * Without a route, the five-stage order applies.
+ */
+export function canStart(stage: StageKey, doneKeys: string[], route?: { mode?: InterviewMode; interviewDone?: boolean }): boolean {
+  const steps = route?.mode ? stepsFor(route.mode) : STAGE_SEQUENCE;
+  const i = steps.indexOf(stage);
   if (i < 0) return false;
-  return STAGE_SEQUENCE.slice(0, i).every((k) => doneKeys.includes(k));
+  const done = route?.interviewDone ? [...doneKeys, 'ai_interview'] : doneKeys;
+  return steps.slice(0, i).every((k) => done.includes(k));
+}
+
+/** A candidate's route, for canStart: which steps they take and whether the spoken interview is done. */
+export function routeOf(c: Pick<Candidate, 'interview_mode' | 'ai_interview'>): { mode: InterviewMode; interviewDone: boolean } {
+  return { mode: modeOf(c), interviewDone: c.ai_interview?.status === 'completed' };
 }
 
 /** "14 minutes" or "2 hours", for the note a reviewer reads. */

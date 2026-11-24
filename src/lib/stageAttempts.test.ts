@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_ATTEMPTS, RESUME_WINDOW_MS, canStart, decideAttempt, nextStageToTake, sinceText, stageBefore,
+  MAX_ATTEMPTS, RESUME_WINDOW_MS, canStart, decideAttempt, nextStageToTake, routeOf, sinceText, stageBefore,
 } from './stageAttempts';
 import type { StageAttempt } from './types';
 
@@ -51,6 +51,23 @@ describe('the order of the stages', () => {
     expect(canStart('written_theory', ['identity_verification'])).toBe(true);
     expect(canStart('situational_scenario', ['identity_verification', 'written_theory'])).toBe(false);
     expect(canStart('hr_policy_briefing', ['identity_verification', 'written_theory', 'micro_teaching_demo', 'situational_scenario'])).toBe(true);
+  });
+
+  it('follows the AI-interview route: profile, spoken interview, then school policies', () => {
+    const ai = (interviewDone: boolean) => ({ mode: 'ai' as const, interviewDone });
+    // A candidate who finished the profile and the interview can take the policy step (the five-stage middle is not asked for).
+    expect(canStart('hr_policy_briefing', ['identity_verification'], ai(true))).toBe(true);
+    // Not before the interview, and not before the profile.
+    expect(canStart('hr_policy_briefing', ['identity_verification'], ai(false))).toBe(false);
+    expect(canStart('hr_policy_briefing', [], ai(true))).toBe(false);
+    // The written test is not part of this route at all.
+    expect(canStart('written_theory', ['identity_verification'], ai(true))).toBe(false);
+    // The five-stage route is unchanged.
+    expect(canStart('hr_policy_briefing', ['identity_verification'], { mode: 'five_stage', interviewDone: true })).toBe(false);
+    // Both: the five stages, then the interview.
+    expect(canStart('hr_policy_briefing', ['identity_verification', 'written_theory', 'micro_teaching_demo', 'situational_scenario'], { mode: 'both', interviewDone: false })).toBe(true);
+    expect(routeOf({ interview_mode: 'ai', ai_interview: { status: 'completed' } as never })).toEqual({ mode: 'ai', interviewDone: true });
+    expect(routeOf({})).toEqual({ mode: 'five_stage', interviewDone: false });
   });
 
   it('names the stage before and the next to take', () => {

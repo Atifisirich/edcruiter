@@ -12,7 +12,7 @@ import { maybeGenerateTeachingProfile } from '@/lib/profileGenerator';
 import { testFor } from '@/lib/candidateTest';
 import { resolveTest } from '@/lib/testBank';
 import { closeAttempt, openAttempt } from '@/lib/attemptService';
-import { canStart } from '@/lib/stageAttempts';
+import { canStart, routeOf } from '@/lib/stageAttempts';
 import { CANDIDATE_SELF_FIELDS, pickAllowed } from '@/lib/candidateFields';
 import { ageFromDob } from '@/lib/age';
 import { countWords, gradeMcqs, MIN_LESSON_WORDS, type GradableMcq } from '@/lib/testRules';
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       if (doneKeys.includes(stage_key)) {
         return NextResponse.json({ error: 'This stage is already finished.' }, { status: 409 });
       }
-      if (!canStart(stage_key as StageKey, doneKeys)) {
+      if (!canStart(stage_key as StageKey, doneKeys, routeOf(existing))) {
         return NextResponse.json({ error: 'Please finish the earlier stages first.' }, { status: 409 });
       }
       if (!attempt) {

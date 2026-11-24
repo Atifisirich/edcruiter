@@ -938,7 +938,8 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             number={currentStageConfig?.order ?? 2}
             applicationId={candidate.invite_code}
             faceReference={candidate.face_reference}
-            testReady={packReady}
+            // The school policy step uses no subject test, so it never waits for one.
+            testReady={packReady || activeStageKey === 'hr_policy_briefing'}
             starting={starting}
             startError={startError}
             onStart={() => beginStage(activeStageKey)}

@@ -3,8 +3,8 @@ import { db } from '@/lib/db';
 import { assertSchoolActive, authErrorResponse, requireCandidate } from '@/lib/auth';
 import { ensureActivePack } from '@/lib/ensurePack';
 import { beginAttempt } from '@/lib/attemptService';
-import { ATTEMPT_STAGES, canStart } from '@/lib/stageAttempts';
-import type { StageKey } from '@/lib/types';
+import { ATTEMPT_STAGES, canStart, routeOf } from '@/lib/stageAttempts';
+import type { AssessmentPack, StageKey } from '@/lib/types';
 
 /**
  * Opens one stage for the signed-in candidate. Their questions are only sent now,
@@ -28,16 +28,19 @@ export async function POST(req: NextRequest) {
     if (done.includes(stage)) {
       return NextResponse.json({ error: 'You have already finished this stage.', code: 'already_done' }, { status: 409 });
     }
-    if (!canStart(stage, done)) {
+    if (!canStart(stage, done, routeOf(candidate))) {
       return NextResponse.json({ error: 'Please finish the earlier stages first.', code: 'earlier_stage_open' }, { status: 409 });
     }
 
+    // The school policy step uses nothing from the subject test, so it never waits for one to be prepared.
+    const policyOnly = stage === 'hr_policy_briefing';
     const prepared = ensureActivePack(candidate.school_id, candidate.applied_subject, candidate.applied_segment);
-    if (prepared.state !== 'ready') {
+    if (prepared.state !== 'ready' && !policyOnly) {
       return NextResponse.json({ error: 'Your test is still being prepared. Please wait a moment.', code: 'preparing' }, { status: 409 });
     }
+    const pack = prepared.state === 'ready' ? prepared.pack : ({} as AssessmentPack);
 
-    const began = await beginAttempt(candidate, prepared.pack, stage);
+    const began = await beginAttempt(candidate, pack, stage);
     if (!began.ok) {
       return NextResponse.json({
         error: `You have used all ${began.allowed} goes at this stage. The school has been told and can allow another.`,
