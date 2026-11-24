@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, CheckCircle2, ChevronRight, Copy, Loader2, MapPin, Pencil, Plus, Sparkles, Table2, Trash2, Wallet, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronRight, Copy, Loader2, MapPin, Pencil, Plus, Sparkles, Table2, Trash2, UploadCloud, Wallet, X } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Badge, Card, CardHeader, EmptyState, PageHeader, SaveBar, buttonClass, selectClass } from '@/components/admin/ui';
 import JobEditor, { type Person } from '@/components/admin/payguide/JobEditor';
+import PayGuideImport from '@/components/admin/payguide/PayGuideImport';
+import { combineRoles } from '@/lib/payGuideImport';
 import { isAdmin } from '@/lib/permissions';
 import { gradeSummary, type PotState } from '@/lib/payGuide';
 import {
@@ -58,6 +60,7 @@ export default function PayGuidePage() {
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [answering, setAnswering] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -110,6 +113,14 @@ export default function PayGuidePage() {
     const made = typicalRoles(multi ? current : ALL);
     change([...roles, ...made]);
     setView('table');
+  };
+  const applyImport = (imported: EditRole[], mode: 'add' | 'replace') => {
+    if (!roles) return;
+    change(combineRoles(roles, imported, mode));
+    setImporting(false);
+    setView('jobs');
+    setEditing(null);
+    toast(`Brought in ${imported.length} ${imported.length === 1 ? 'job' : 'jobs'}. Check them, then press Save the Pay Guide.`, 'success');
   };
   const copyFrom = (branch: string) => {
     if (!roles) return;
@@ -290,7 +301,8 @@ export default function PayGuidePage() {
                 description="The fastest way: start from the usual stages of a school, then just type the pay for each."
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
-                    <button type="button" onClick={startWithUsual} className={buttonClass('primary')}><Sparkles className="w-4 h-4" /> Start with the usual stages</button>
+                    <button type="button" onClick={() => setImporting(true)} className={buttonClass('primary')}><UploadCloud className="w-4 h-4" /> Bring in my pay sheet (Excel or PDF)</button>
+                    <button type="button" onClick={startWithUsual} className={buttonClass('secondary')}><Sparkles className="w-4 h-4" /> Start with the usual stages</button>
                     <button type="button" onClick={addJob} className={buttonClass('secondary')}><Plus className="w-4 h-4" /> Add one job myself</button>
                     {multi && otherCampuses.map((b) => (
                       <button key={b.id} type="button" onClick={() => copyFrom(b.id)} className={buttonClass('secondary')}><Copy className="w-4 h-4" /> Copy jobs from {b.name}</button>
@@ -414,6 +426,7 @@ export default function PayGuidePage() {
 
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={addJob} className={buttonClass('secondary', 'sm')}><Plus className="w-4 h-4" /> Add another job</button>
+                  <button type="button" onClick={() => setImporting(true)} className={buttonClass('secondary', 'sm')}><UploadCloud className="w-4 h-4" /> Bring in a pay sheet</button>
                 </div>
               </div>
             )}
@@ -432,6 +445,16 @@ export default function PayGuidePage() {
 
           {error && <p role="alert" className="text-sm font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">{error}</p>}
           <SaveBar onSave={() => void save()} saving={saving} dirty={dirty} label="Save the Pay Guide" />
+          {importing && (
+            <PayGuideImport
+              schoolId={schoolId}
+              campusId={multi ? current : ALL}
+              campusName={campusName}
+              hasJobsHere={jobs.length > 0}
+              onApply={applyImport}
+              onClose={() => setImporting(false)}
+            />
+          )}
         </>
       )}
     </div>
