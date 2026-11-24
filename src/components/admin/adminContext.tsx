@@ -9,7 +9,7 @@ export interface AdminContextValue {
   school: School | null;
   schoolId: string;
   /** The signed-in person, for greetings. */
-  user: { name: string; email: string; role: string } | null;
+  user: { name: string; email: string; role: string; also_management?: boolean } | null;
   candidates: Candidate[];
   loading: boolean;
   refresh: () => Promise<void>;

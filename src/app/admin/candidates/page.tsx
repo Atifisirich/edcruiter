@@ -1,9 +1,10 @@
 'use client';
 
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, Users, Mic } from 'lucide-react';
+import { ArrowLeft, CheckSquare, CloudUpload, PhoneCall, Search, SearchX, Trash2, UserPlus, UserX, Users, Mic } from 'lucide-react';
+import NotRespondingList, { type SetAsideCandidate } from '@/components/admin/NotRespondingList';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Card, EmptyState, PageHeader, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import CandidateTable from '@/components/admin/CandidateTable';
@@ -14,12 +15,12 @@ import { normalizeBands } from '@/lib/shortlistBands';
 import { appliedTo } from '@/lib/vacancyCandidates';
 import type { PublicVacancy } from '@/lib/types';
 
-type TabKey = 'all' | CandidateTab;
+type TabKey = 'all' | CandidateTab | 'not_responding';
 
 function CandidatesList() {
   const router = useRouter();
   const params = useSearchParams();
-  const { school, schoolId, user, candidates: allCandidates, loading, openAddCandidate, openBulkUpload, toast } = useAdmin();
+  const { school, schoolId, user, candidates: allCandidates, loading, refresh, openAddCandidate, openBulkUpload, toast } = useAdmin();
   // Only the school admin (or Edcruiter support) removes candidates; admin and HR can call them.
   const canDelete = isHiringTeam(user?.role);
   const canCall = isHiringTeam(user?.role);
@@ -29,7 +30,31 @@ function CandidatesList() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const requested = params.get('tab');
-  const tab: TabKey = (TAB_ORDER as string[]).includes(requested || '') ? (requested as CandidateTab) : 'all';
+  const tab: TabKey = requested === 'not_responding' ? 'not_responding' : (TAB_ORDER as string[]).includes(requested || '') ? (requested as CandidateTab) : 'all';
+
+  // On a narrow screen the open tab may sit off to the side of the tab bar: bring it into view.
+  const tabBar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabBar.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
+
+  // People set aside as "Not responding": kept out of the list above, shown in their own section.
+  const [setAside, setSetAside] = useState<SetAsideCandidate[]>([]);
+  const [setAsideLoading, setSetAsideLoading] = useState(true);
+  const loadSetAside = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const r = await fetch(`/api/candidates?school_id=${schoolId}&not_responding=only`);
+      const d = r.ok ? await r.json() : { candidates: [] };
+      setSetAside(d.candidates ?? []);
+    } catch { /* the section shows empty; the main list is unaffected */ } finally {
+      setSetAsideLoading(false);
+    }
+  }, [schoolId]);
+  useEffect(() => {
+    const start = window.setTimeout(() => void loadSetAside(), 0);
+    return () => window.clearTimeout(start);
+  }, [loadSetAside]);
 
   // Opened from a vacancy card (?job=...): only the people who applied for that vacancy.
   const jobId = params.get('job');
@@ -89,6 +114,9 @@ function CandidatesList() {
       .sort((a, b) => Number(b.total_ai_score || 0) - Number(a.total_ai_score || 0) || (b.created_at || '').localeCompare(a.created_at || ''));
   }, [candidates, tab, subject, grade, scoreFilter, search, greenMin, yellowMin]);
 
+  // Ticked candidates still in the school's list, in the order shown.
+  const selectedList = useMemo(() => candidates.filter((c) => selected.has(c.id)), [candidates, selected]);
+
   // An AI screening call to every ticked candidate.
   const callSelected = async () => {
     if (!window.confirm(`Start an AI screening call to ${selectedList.length} ${selectedList.length === 1 ? 'candidate' : 'candidates'}?`)) return;
@@ -135,8 +163,39 @@ function CandidatesList() {
     }
   };
 
-  // Ticked candidates still in the school's list, in the order shown.
-  const selectedList = useMemo(() => candidates.filter((c) => selected.has(c.id)), [candidates, selected]);
+
+  const [settingAside, setSettingAside] = useState(false);
+  const moveCandidates = async (action: 'set_aside' | 'move_back', ids: string[]) => {
+    const r = await fetch('/api/candidates/not-responding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ school_id: schoolId, action, candidate_ids: ids }),
+    }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : { error: 'Could not reach the server. Check your connection.' };
+    const moved: number = d.moved ?? 0;
+    const skipped: { name: string; reason: string }[] = d.skipped ?? [];
+    if (moved) await Promise.all([refresh(), loadSetAside()]);
+    if (skipped.length) toast(skipped.slice(0, 2).map((s) => `${s.name}: ${s.reason}`).join(' ') + (skipped.length > 2 ? ` (+${skipped.length - 2} more)` : ''), 'error');
+    if (!moved && !skipped.length) toast(d.error || 'That could not be saved. Try again.', 'error');
+    return moved;
+  };
+  const setAsideSelected = async () => {
+    setSettingAside(true);
+    try {
+      const moved = await moveCandidates('set_aside', selectedList.map((c) => c.id));
+      if (moved) {
+        toast(`${moved} moved to Not responding. Nothing is deleted, and no automatic calls go to them. Move them back any time.`, 'success');
+        setSelected(new Set());
+        setSelecting(false);
+      }
+    } finally {
+      setSettingAside(false);
+    }
+  };
+  const moveBackOne = async (c: SetAsideCandidate) => {
+    const moved = await moveCandidates('move_back', [c.id]);
+    if (moved) toast(`${c.name} is back in the main list.`, 'success');
+  };
 
   const filtering = tab !== 'all' || subject !== 'ALL' || grade !== 'ALL' || scoreFilter !== 'any' || search.trim() !== '';
 
@@ -144,6 +203,8 @@ function CandidatesList() {
     const q = new URLSearchParams();
     if (jobId) q.set('job', jobId);
     if (next !== 'all') q.set('tab', next);
+    setSelecting(false);
+    setSelected(new Set());
     const qs = q.toString();
     router.replace(qs ? `/admin/candidates?${qs}` : '/admin/candidates', { scroll: false });
   };
@@ -196,7 +257,7 @@ function CandidatesList() {
 
       <Card padded={false} className="overflow-hidden">
         <div className="border-b border-slate-200 px-2 sm:px-4 overflow-x-auto">
-          <div role="tablist" className="flex gap-1 min-w-max">
+          <div ref={tabBar} role="tablist" className="flex gap-1 min-w-max">
             {tabs.map((t) => {
               const active = tab === t.key;
               return (
@@ -216,9 +277,27 @@ function CandidatesList() {
                 </button>
               );
             })}
+            {/* Set apart from the tabs above: these people are not part of the counts. */}
+            <span className="my-3 mx-1 w-px bg-slate-200" aria-hidden="true" />
+            <button
+              role="tab"
+              aria-selected={tab === 'not_responding'}
+              type="button"
+              onClick={() => goTab('not_responding')}
+              className={`relative px-3 sm:px-4 py-3.5 text-sm font-medium whitespace-nowrap cursor-pointer transition-colors inline-flex items-center gap-1.5 ${
+                tab === 'not_responding' ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <UserX className="w-4 h-4" /> Not responding
+              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === 'not_responding' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{setAside.length}</span>
+              {tab === 'not_responding' && <span className="absolute left-3 right-3 -bottom-px h-0.5 bg-indigo-600 rounded-full" />}
+            </button>
           </div>
         </div>
 
+        {tab === 'not_responding' ? (
+          <NotRespondingList candidates={setAside} loading={setAsideLoading} canMove={canCall} onMoveBack={moveBackOne} />
+        ) : (<>
         <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50/60">
           <div className="relative flex-1 min-w-[14rem]">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -288,6 +367,17 @@ function CandidatesList() {
                 <PhoneCall className="w-4 h-4" /> {calling ? 'Starting calls…' : 'AI call selected'}
               </button>
             )}
+            {canCall && (
+              <button
+                type="button"
+                disabled={selectedList.length === 0 || settingAside}
+                onClick={() => void setAsideSelected()}
+                className={buttonClass('secondary', 'sm')}
+                title="Move people who never answer out of the main list. Nothing is deleted."
+              >
+                <UserX className="w-4 h-4" /> {settingAside ? 'Moving…' : 'Not responding'}
+              </button>
+            )}
             {canDelete && (
               <button
                 type="button"
@@ -340,6 +430,7 @@ function CandidatesList() {
             Showing {visible.length} of {candidates.length} {candidates.length === 1 ? 'candidate' : 'candidates'}
           </p>
         )}
+        </>)}
       </Card>
 
       {confirmDelete && selectedList.length > 0 && (

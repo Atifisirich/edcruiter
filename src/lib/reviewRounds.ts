@@ -8,8 +8,8 @@
  * in rm_clearance / ih_clearance / coo_clearance, which are still read here.
  */
 
-import { accessOf, isAdmin } from './permissions';
-import { rolesOf } from './roles';
+import { accessOf, actsAsManagement, isAdmin } from './permissions';
+import { heldRoleIds, rolesOf } from './roles';
 import { parseRubric } from './roundReview';
 import type { Candidate, ReviewRound, RoleDef, RoundResult, School, User } from './types';
 
@@ -104,6 +104,23 @@ export function canDecideRound(user: Pick<User, 'role' | 'role_id'>, round: Revi
   if (isAdmin(user.role)) return true;
   if (accessOf(user.role) !== 'reviewer') return false;
   return round.role_ids.includes(user.role_id ?? user.role);
+}
+
+/**
+ * Is this person one of the round's reviewers, someone HR can give a teacher
+ * to for it? Reviewers who hold one of its roles, and an admin who also acts as
+ * management for a round management reviews. HR never; a plain admin decides
+ * every round anyway but is not listed as a reviewer.
+ */
+export function reviewsRound(
+  school: Pick<School, 'roles'> | null | undefined,
+  user: Pick<User, 'role' | 'role_id' | 'also_management'>,
+  round: Pick<ReviewRound, 'role_ids'>
+): boolean {
+  if (accessOf(user.role) === 'reviewer') return round.role_ids.includes(user.role_id ?? user.role);
+  if (!actsAsManagement(user)) return false;
+  const held = heldRoleIds(school, user);
+  return round.role_ids.some((id) => held.includes(id));
 }
 
 function cleanName(value: unknown): string {

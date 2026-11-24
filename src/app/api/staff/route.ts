@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
-import { HIRING_TEAM } from '@/lib/permissions';
+import { HIRING_TEAM, actsAsManagement } from '@/lib/permissions';
+import { heldRoleIds } from '@/lib/roles';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Too many requests this hour.' }, { status: 429 });
     }
 
+    const school = db.getSchoolById(ctx.schoolId);
     const staff = db.getUsersBySchool(ctx.schoolId).map((u) => ({
       id: u.id,
       name: u.name,
@@ -27,6 +29,9 @@ export async function GET(req: NextRequest) {
       role: u.role,
       role_id: u.role_id ?? u.role,
       department: u.department,
+      // An admin who also acts as management holds the management roles too.
+      also_management: actsAsManagement(u),
+      role_ids: heldRoleIds(school, u),
     }));
 
     return NextResponse.json({ staff });

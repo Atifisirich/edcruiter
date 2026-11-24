@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { MAX_ROUNDS, parseRounds, roundsOf } from '@/lib/reviewRounds';
 import { roleDefFor, rolesOf } from '@/lib/roles';
+import { actsAsManagement } from '@/lib/permissions';
 
 function schoolIdParam(req: NextRequest) {
   return new URL(req.url).searchParams.get('school_id');
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
       branches: (school?.branches ?? []).map((b) => ({ id: b.id, name: b.name })),
       roles: rolesOf(school),
       max: MAX_ROUNDS,
-      me: { id: ctx.user.id, name: ctx.user.name, role: ctx.role, role_id: def.id, role_name: def.name },
+      me: { id: ctx.user.id, name: ctx.user.name, role: ctx.role, role_id: def.id, role_name: def.name, also_management: actsAsManagement(ctx.user) },
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not load the review rounds.' }, { status: 500 });

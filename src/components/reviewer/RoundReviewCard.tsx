@@ -5,16 +5,16 @@ import Link from 'next/link';
 import {
   ArrowRight, Check, CheckCircle2, ClipboardCheck, Copy, Loader2, MessageCircleQuestion, RefreshCw, Send, Star, ThumbsDown, ThumbsUp, UserCheck, XCircle,
 } from 'lucide-react';
-import type { Candidate, ReviewRound, RoundQuestions, RoundReview } from '@/lib/types';
+import type { Candidate, ReviewRound, RoundQuestions, RoundReview, UserRole } from '@/lib/types';
 import { currentRound, roundResultOf, roundsForCandidate } from '@/lib/reviewRounds';
 import { MAX_STARS, MIN_OPINION, roundStage, rubricFor } from '@/lib/roundReview';
-import { canDecideRound } from '@/lib/reviewRounds';
+import { canDecideRound, reviewsRound } from '@/lib/reviewRounds';
 import { isHiringTeam } from '@/lib/permissions';
 import { useReviewAccess } from './useReviewAccess';
 import PayPanel from './PayPanel';
 import type { PayInfo } from '@/lib/payFlow';
 
-type Staff = { id: string; name: string; role: string; role_id: string };
+type Staff = { id: string; name: string; role: string; role_id: string; also_management?: boolean };
 
 const starTone = (score: number) => (score >= 4 ? 'text-emerald-600' : score === 3 ? 'text-amber-500' : 'text-rose-600');
 const barTone = (score: number) => (score >= 4 ? 'bg-emerald-500' : score === 3 ? 'bg-amber-400' : 'bg-rose-500');
@@ -191,10 +191,11 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
   const rubric = rubricFor(round);
   const assignment = candidate.round_assignments?.[round.id];
   const review = candidate.round_reviews?.[round.id];
-  const iAmReviewer = assignment?.user_id === me.id && canDecideRound(me, round) && !hr;
+  // An admin who also acts as management gives their own review when HR gave them the teacher, then decides as HR.
+  const iAmReviewer = assignment?.user_id === me.id && canDecideRound(me, round) && (!hr || (!!me.also_management && !review));
   const stage = roundStage(candidate, round.id, roundResultOf(candidate, round.id));
   const earlier = rounds.filter((r) => r.id !== round.id && candidate.round_reviews?.[r.id] && rounds.indexOf(r) < rounds.indexOf(round));
-  const reviewersFor = (r: ReviewRound) => staff.filter((s) => s.role !== 'HR' && canDecideRound({ role: s.role as never, role_id: s.role_id }, r) && s.role !== 'SCHOOL_ADMIN');
+  const reviewersFor = (r: ReviewRound) => staff.filter((s) => reviewsRound({ roles: access.roles }, { role: s.role as UserRole, role_id: s.role_id, also_management: s.also_management }, r));
   const index = rounds.indexOf(round);
   const next = rounds[index + 1] ?? null;
 

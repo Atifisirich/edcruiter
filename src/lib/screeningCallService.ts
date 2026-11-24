@@ -41,6 +41,7 @@ function decideCall(callId: string, decision: Omit<ScreeningDecision, 'at'>) {
 
 /** The candidate is out of the running or already past the call: nothing automatic should happen to them. */
 function pastTheCall(schoolId: string, candidate: Candidate): string | null {
+  if (candidate.not_responding) return `${candidate.not_responding.by_name} moved them to Not responding.`;
   if (candidate.rejected_by_school_at || candidate.status === 'rejected') return 'They are not moving forward.';
   if (candidate.rejected_by_candidate_at) return 'They withdrew.';
   if (db.getStageResultsByCandidate(schoolId, candidate.id).length > 0) return 'They have already started the test.';
@@ -284,6 +285,8 @@ export async function actOnResult(callId: string): Promise<void> {
   if (!school || !candidate) return;
   const settings = screeningSettingsOf(school);
   const rules = settings.rules;
+  // Set aside as not responding while the call was out: nothing automatic follows.
+  if (candidate.not_responding) return decideCall(call.id, { action: 'none', detail: `Nothing sent: ${candidate.not_responding.by_name} moved them to Not responding.` });
   // People on a lead list are always acted on: that is what the list is for.
   if (candidate.lead && candidate.lead.status !== 'moved') return actOnLeadResult(call, candidate, school, settings);
   if (!rules.enabled) return;

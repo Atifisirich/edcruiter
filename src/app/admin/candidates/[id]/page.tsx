@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2, UserX } from 'lucide-react';
+import type { Candidate } from '@/lib/types';
 import CandidateProfileModal from '@/components/reviewer/CandidateProfileModal';
 import DeleteCandidatesDialog from '@/components/admin/DeleteCandidatesDialog';
 import ScreeningCallPanel from '@/components/admin/ScreeningCallPanel';
@@ -15,15 +16,63 @@ export default function CandidateReportPage() {
   const params = useParams();
   const router = useRouter();
   const id = (params.id as string) || '';
-  const { user, candidates } = useAdmin();
+  const { user, candidates, schoolId, refresh, toast } = useAdmin();
   const [confirming, setConfirming] = useState(false);
 
-  const candidate = candidates.find((c) => c.id === id);
+  // Someone set aside as "Not responding" is not in the main list, so they are looked up there.
+  const [setAside, setSetAside] = useState<Candidate | null>(null);
+  const inMain = candidates.find((c) => c.id === id);
+  const loadSetAside = useCallback(async () => {
+    if (!schoolId || !id) return;
+    const r = await fetch(`/api/candidates?school_id=${schoolId}&not_responding=only`).catch(() => null);
+    const d = r?.ok ? await r.json().catch(() => ({})) : {};
+    setSetAside(((d.candidates ?? []) as Candidate[]).find((c) => c.id === id) ?? null);
+  }, [schoolId, id]);
+  useEffect(() => {
+    if (inMain) return;
+    const start = window.setTimeout(() => void loadSetAside(), 0);
+    return () => window.clearTimeout(start);
+  }, [inMain, loadSetAside]);
+  const candidate = inMain ?? setAside ?? undefined;
+  const nr = !inMain ? setAside?.not_responding : null;
+  const [movingBack, setMovingBack] = useState(false);
+  const moveBack = async () => {
+    if (!candidate) return;
+    setMovingBack(true);
+    try {
+      const r = await fetch('/api/candidates/not-responding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId, action: 'move_back', candidate_ids: [candidate.id] }),
+      }).catch(() => null);
+      const d = r ? await r.json().catch(() => ({})) : {};
+      if (d.moved) { await refresh(); setSetAside(null); toast(`${candidate.name} is back in the main list.`, 'success'); }
+      else toast(d.skipped?.[0]?.reason || d.error || 'That could not be saved. Try again.', 'error');
+    } finally {
+      setMovingBack(false);
+    }
+  };
   // Only the school admin (or Edcruiter support) removes a candidate.
   const canDelete = isHiringTeam(user?.role) && !!candidate;
 
   return (
     <>
+      {nr && candidate && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 print:hidden">
+          <p className="flex items-start gap-2 text-sm text-amber-950">
+            <UserX className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />
+            <span>
+              In <strong>Not responding</strong> since {new Date(nr.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}, moved by {nr.by_name}.
+              No automatic calls or messages go to them. Nothing was deleted.
+            </span>
+          </p>
+          {isHiringTeam(user?.role) && (
+            <button type="button" disabled={movingBack} onClick={() => void moveBack()} className={buttonClass('secondary', 'sm')}>
+              <RotateCcw className="w-4 h-4" /> {movingBack ? 'Moving…' : 'Move back to Candidates'}
+            </button>
+          )}
+        </div>
+      )}
       <CandidateProfileModal
         layout="page"
         isOpen

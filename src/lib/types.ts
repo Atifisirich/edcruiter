@@ -744,6 +744,12 @@ export interface User {
   invited_by?: string;
   /** Stamped on every successful sign-in, by password or Google. Absent means never signed in. */
   last_login_at?: string;
+  /**
+   * A school admin who is also the school's management (final decision), so a
+   * small school can run with one person. Only an admin sets it, on an admin.
+   * Uses the admin seat only. See actsAsManagement in permissions.ts.
+   */
+  also_management?: boolean;
 }
 
 /**
@@ -803,6 +809,12 @@ export interface ResumeAnalysisReport {
   form_vs_cv_discrepancies?: string[];
 }
 
+export interface NotResponding {
+  at: string;
+  by_id: string;
+  by_name: string;
+}
+
 export interface Candidate {
   id: string;
   school_id: string;
@@ -848,6 +860,13 @@ export interface Candidate {
    * list, counts and dashboards, and shown only on their list. See leadLists.ts.
    */
   lead?: LeadState;
+  /**
+   * Set when HR or the admin moved this person to "Not responding" (no reply, no
+   * pick-up, never started). They are kept out of the main list, its counts and
+   * the dashboard, and nothing automatic is sent to them, until moved back.
+   * Nothing is deleted. See notResponding.ts.
+   */
+  not_responding?: NotResponding | null;
   status: 'in_progress' | 'passed' | 'rejected' | 'hired';
   shortlist_status?: 'pending' | 'shortlisted' | 'rejected' | 'hold';
   total_ai_score?: number; // 0 - 100 aggregate score

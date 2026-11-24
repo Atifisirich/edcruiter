@@ -7,7 +7,7 @@
 
 import { ROLE_LABEL, TEAM_ROLES } from './team';
 import { MAX_ROLE_NAMES } from './planLimits';
-import { accessOf } from './permissions';
+import { accessOf, actsAsManagement } from './permissions';
 import type { RoleDef, School, User, UserRole } from './types';
 
 /** The standard roles, used until a school defines its own. Their id is their level, which is also what older members carry. */
@@ -37,6 +37,23 @@ export function roleDefFor(school: Pick<School, 'roles'> | null | undefined, use
     roles.find((r) => r.level === user.role) ??
     { id: user.role, name: ROLE_LABEL[user.role] ?? user.role, level: user.role }
   );
+}
+
+/** The ids of the school's management roles (the final-decision level). The bare level is kept for older rounds. */
+export function managementRoleIds(school: Pick<School, 'roles'> | null | undefined): string[] {
+  return [...new Set(['FINAL_DECISION_MAKER', ...rolesOf(school).filter((r) => r.level === 'FINAL_DECISION_MAKER').map((r) => r.id)])];
+}
+
+/**
+ * Every role id a person holds: their own, and the management roles too when
+ * they are an admin who also acts as management.
+ */
+export function heldRoleIds(
+  school: Pick<School, 'roles'> | null | undefined,
+  user: Pick<User, 'role' | 'role_id' | 'also_management'>
+): string[] {
+  const own = user.role_id ?? user.role;
+  return actsAsManagement(user) ? [...new Set([own, ...managementRoleIds(school)])] : [own];
 }
 
 function cleanName(value: unknown): string {

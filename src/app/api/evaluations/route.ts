@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { EvaluationRecord } from '@/lib/types';
 import { assertSchoolActive, authErrorResponse, requireSchoolAccess } from '@/lib/auth';
+import { actsAsManagement } from '@/lib/permissions';
 
 export async function GET(req: NextRequest) {
   try {
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     if (decision === 'reject') {
       newStatus = 'rejected';
-    } else if (ctx.role === 'FINAL_DECISION_MAKER' && (decision === 'hire' || decision === 'approve')) {
+    } else if ((ctx.role === 'FINAL_DECISION_MAKER' || actsAsManagement(ctx.user)) && (decision === 'hire' || decision === 'approve')) {
       newStatus = 'hired';
     } else if (decision === 'approve') {
       newStatus = 'passed';

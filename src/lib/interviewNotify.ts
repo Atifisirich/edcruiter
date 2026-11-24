@@ -17,6 +17,7 @@ import { escapeHtml } from './escapeHtml';
 import { signInLinkFor } from './assessmentInvite';
 import { appOrigin } from './googleOAuth';
 import { accessOf } from './permissions';
+import { reviewsRound } from './reviewRounds';
 import { sendFreeformMessage, sendTemplateMessage } from './whatsappClient';
 import { createCandidateMagicLinkToken } from './session';
 import type { Candidate, ReviewRound, School, ScheduledInterview, User } from './types';
@@ -34,10 +35,11 @@ const realEmail = (e: string | undefined) => !!e && e.includes('@') && !e.endsWi
  * round's roles; `hr` is HR (and admins when there is no HR). Each person is in
  * one list only, and `skipId` (whoever did the action) is in none.
  */
-export function roundAudience(users: User[], round: ReviewRound, opts: { assignedId?: string; skipId?: string } = {}) {
+export function roundAudience(users: User[], round: ReviewRound, opts: { assignedId?: string; skipId?: string; school?: Pick<School, 'roles'> } = {}) {
   const usable = users.filter((u) => u.id !== opts.skipId && realEmail(u.email));
   const assigned = usable.find((u) => u.id === opts.assignedId);
-  const team = usable.filter((u) => u.id !== assigned?.id && round.role_ids.includes(u.role_id ?? u.role));
+  // The round's reviewers, and an admin who also acts as management for a round management reviews.
+  const team = usable.filter((u) => u.id !== assigned?.id && (round.role_ids.includes(u.role_id ?? u.role) || reviewsRound(opts.school, u, round)));
   const taken = new Set([assigned?.id, ...team.map((u) => u.id)]);
   const hrPeople = usable.filter((u) => accessOf(u.role) === 'hr' && !taken.has(u.id));
   const hr = hrPeople.length ? hrPeople : usable.filter((u) => accessOf(u.role) === 'admin' && u.role !== 'SUPER_ADMIN' && !taken.has(u.id));
@@ -138,7 +140,7 @@ export async function notifyInterviewScheduled(input: {
   }
 
   // --- The school's people: in the app only (the bell), never WhatsApp or email ---
-  const { assigned, team } = roundAudience(db.getUsersBySchool(school.id), round, { assignedId: interview.assigned_user_id, skipId: scheduledBy.id });
+  const { assigned, team } = roundAudience(db.getUsersBySchool(school.id), round, { assignedId: interview.assigned_user_id, skipId: scheduledBy.id, school });
   const staff: string[] = [];
   const notice = (person: User, title: string, body: string) => {
     db.addNotification({
@@ -184,8 +186,8 @@ export async function notifyRoundCleared(input: {
   const users = db.getUsersBySchool(school.id);
   const page = next ? `${appOrigin()}/admin/interviews?round=${encodeURIComponent(next.id)}&candidate=${encodeURIComponent(candidate.id)}` : `${appOrigin()}/admin/candidates/${candidate.id}`;
   const people = next
-    ? (() => { const a = roundAudience(users, next, { skipId: decidedBy.id }); return [...a.team, ...a.hr]; })()
-    : (() => { const a = roundAudience(users, round, { skipId: decidedBy.id }); return a.hr; })();
+    ? (() => { const a = roundAudience(users, next, { skipId: decidedBy.id, school }); return [...a.team, ...a.hr]; })()
+    : (() => { const a = roundAudience(users, round, { skipId: decidedBy.id, school }); return a.hr; })();
   const told: string[] = [];
   for (const person of people) {
     const subject = next

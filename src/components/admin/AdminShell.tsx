@@ -18,7 +18,7 @@ import { workspaceBlockReason } from '@/lib/schoolStatus';
 import { exitSupportMode } from '@/lib/supportMode';
 import { countByTab } from '@/lib/candidateProgress';
 import type { Candidate, School } from '@/lib/types';
-import { accessOf, type Access } from '@/lib/permissions';
+import { accessOf, actsAsManagement, type Access } from '@/lib/permissions';
 
 interface NavItem {
   href: string;
@@ -28,6 +28,8 @@ interface NavItem {
   for: Access[];
   /** HR sees this only when the school admin has switched on policy editing for HR. */
   hrNeedsPolicySwitch?: boolean;
+  /** Also shown to a school admin who acts as management. */
+  managementToo?: boolean;
 }
 
 const NAV: { title: string; items: NavItem[] }[] = [
@@ -37,7 +39,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { href: '/admin', label: 'Overview', Icon: LayoutDashboard, for: ['admin', 'hr', 'reviewer'] },
       { href: '/admin/candidates', label: 'Candidates', Icon: Users, for: ['admin', 'hr', 'reviewer'] },
       { href: '/admin/leads', label: 'Lead screening', Icon: PhoneCall, for: ['admin', 'hr'] },
-      { href: '/reviewer/me', label: 'My reviews', Icon: ClipboardCheck, for: ['reviewer'] },
+      { href: '/reviewer/me', label: 'My reviews', Icon: ClipboardCheck, for: ['reviewer'], managementToo: true },
       { href: '/admin/jobs', label: 'Vacancies', Icon: Briefcase, for: ['admin', 'hr'] },
       { href: '/admin/interviews', label: 'Interviews', Icon: CalendarCheck2, for: ['admin', 'hr'] },
       { href: '/admin/reports', label: 'Reports', Icon: BarChart3, for: ['admin'] },
@@ -124,7 +126,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     const start = window.setTimeout(() => void refresh(), 0);
     fetch('/api/auth/me')
       .then((r) => (r.ok ? r.json() : null))
-      .then((me) => { if (me) setUser({ name: me.name, email: me.email, role: me.role }); })
+      .then((me) => { if (me) setUser({ name: me.name, email: me.email, role: me.role, also_management: me.also_management === true }); })
       .catch(() => { /* the pages handle being signed out */ });
     return () => window.clearTimeout(start);
   }, [refresh]);
@@ -167,7 +169,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // Until we know who is signed in, show only what everyone sees.
   const access = accessOf(user?.role);
   const nav = NAV
-    .map((g) => ({ ...g, items: g.items.filter((i) => (access ? i.for.includes(access) && !(access === 'hr' && i.hrNeedsPolicySwitch && !school?.hr_can_edit_policies) : i.for.length === 3)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => (access ? (i.for.includes(access) || (!!i.managementToo && actsAsManagement(user))) && !(access === 'hr' && i.hrNeedsPolicySwitch && !school?.hr_can_edit_policies) : i.for.length === 3)) }))
     .filter((g) => g.items.length > 0);
 
   const Sidebar = (

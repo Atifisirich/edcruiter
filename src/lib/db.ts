@@ -275,7 +275,7 @@ class DB {
     return user;
   }
 
-  updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'role' | 'role_id' | 'last_login_at' | 'invited_at'>>): User | undefined {
+  updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'role' | 'role_id' | 'last_login_at' | 'invited_at' | 'also_management'>>): User | undefined {
     const user = this.data.users.find(u => u.id === userId);
     if (!user) return undefined;
     Object.assign(user, updates);
@@ -364,10 +364,17 @@ class DB {
    * into Candidates yet) are left out unless `leads` asks for them: they must
    * never show in the candidate list, its counts, dashboards or pay figures.
    */
-  getCandidatesBySchool(schoolId: string, filters?: { branchId?: string; subject?: string; segment?: string; status?: string; leads?: 'only' | 'include' }): Candidate[] {
+  /**
+   * A school's candidates. Lead-list people and those set aside as "Not
+   * responding" are left out unless asked for, so lists, counts and dashboards
+   * show only the people being worked on.
+   */
+  getCandidatesBySchool(schoolId: string, filters?: { branchId?: string; subject?: string; segment?: string; status?: string; leads?: 'only' | 'include'; notResponding?: 'only' | 'include' }): Candidate[] {
     const isLead = (c: Candidate) => !!c.lead && c.lead.status !== 'moved';
+    const setAside = (c: Candidate) => !!c.not_responding;
     let list = this.data.candidates.filter(c => c.school_id === schoolId
-      && (filters?.leads === 'include' ? true : filters?.leads === 'only' ? isLead(c) : !isLead(c)));
+      && (filters?.leads === 'include' ? true : filters?.leads === 'only' ? isLead(c) : !isLead(c))
+      && (filters?.notResponding === 'include' ? true : filters?.notResponding === 'only' ? setAside(c) : !setAside(c)));
     if (filters?.branchId) {
       const bId = filters.branchId;
       list = list.filter(c => c.target_branch_id === bId || c.relocation_branches.includes(bId));

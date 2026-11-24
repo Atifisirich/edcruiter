@@ -103,6 +103,32 @@ describe('team members and seats', () => {
     expect(updateUser).toHaveBeenCalledWith('u_ravi', { role: 'INSTITUTE_HEAD', role_id: 'INSTITUTE_HEAD' });
   });
 
+  it('lets an admin also act as management, on their admin seat only', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN')];
+    const res = await PATCH(req('PATCH', { id: 'u_admin', also_management: true }));
+    expect(res.status).toBe(200);
+    expect(updateUser).toHaveBeenCalledWith('u_admin', { also_management: true });
+    expect((await res.json()).member).toMatchObject({ also_management: true, role: 'SCHOOL_ADMIN' });
+    members = [person('u_admin', 'SCHOOL_ADMIN', { also_management: true })];
+    const seats = (await (await GET(req('GET'))).json()).seats as { level: string; used: number }[];
+    expect(seats.find((s) => s.level === 'SCHOOL_ADMIN')?.used).toBe(1);
+    expect(seats.find((s) => s.level === 'FINAL_DECISION_MAKER')?.used).toBe(0);
+  });
+
+  it('refuses "also management" for anyone but an admin', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN'), person('u_hr', 'HR')];
+    const res = await PATCH(req('PATCH', { id: 'u_hr', also_management: true }));
+    expect(res.status).toBe(400);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it('takes "also management" away when an admin is moved to another role', async () => {
+    members = [person('u_admin', 'SCHOOL_ADMIN'), person('u_two', 'SCHOOL_ADMIN', { also_management: true })];
+    const res = await PATCH(req('PATCH', { id: 'u_two', role_id: 'HR' }));
+    expect(res.status).toBe(200);
+    expect(updateUser).toHaveBeenCalledWith('u_two', { role: 'HR', role_id: 'HR', also_management: false });
+  });
+
   it('keeps the last admin an admin', async () => {
     const res = await PATCH(req('PATCH', { id: 'u_admin', role_id: 'REPORTING_MANAGER' }));
     expect(res.status).toBe(400);

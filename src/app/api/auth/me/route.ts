@@ -18,6 +18,7 @@ export async function GET() {
       email: ctx.user.email,
       role: ctx.role,
       role_id: ctx.user.role_id ?? ctx.role,
+      also_management: ctx.user.also_management === true && ctx.role === 'SCHOOL_ADMIN',
       school_id: ctx.schoolId,
     });
   } catch (error) {

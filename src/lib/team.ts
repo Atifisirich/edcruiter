@@ -78,3 +78,14 @@ export function removalProblem(members: Pick<User, 'role'>[], target: Pick<User,
 export function memberStatus(user: Pick<User, 'invited_at' | 'last_login_at'>): 'invited' | 'active' {
   return user.invited_at && !user.last_login_at ? 'invited' : 'active';
 }
+
+/**
+ * Why this person cannot be made (or stop being) management alongside their
+ * admin role, or null when they can. Only a school admin can also act as
+ * management; it uses their admin seat, never a management seat.
+ */
+export function managementChangeProblem(target: Pick<User, 'role'>, on: boolean): string | null {
+  if (target.role === 'SUPER_ADMIN') return 'That account cannot be changed here.';
+  if (on && target.role !== 'SCHOOL_ADMIN') return 'Only a school admin can also act as management. Give them the management role instead.';
+  return null;
+}

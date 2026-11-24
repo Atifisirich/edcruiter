@@ -7,6 +7,8 @@ import { sendSetPasswordEmail } from '@/lib/accountEmails';
 import { memberStatus, parseTeamInput, removalProblem, roleChangeProblem, ROLE_LABEL } from '@/lib/team';
 import { roleDefFor, rolesOf } from '@/lib/roles';
 import { seatProblem, seatUse, totalSeats } from '@/lib/seats';
+import { actsAsManagement } from '@/lib/permissions';
+import { managementChangeProblem } from '@/lib/team';
 import type { School, User } from '@/lib/types';
 
 /**
@@ -30,6 +32,7 @@ function present(user: User, actorId: string, school: School | undefined) {
     invited_at: user.invited_at ?? null,
     last_login_at: user.last_login_at ?? null,
     is_you: user.id === actorId,
+    also_management: actsAsManagement(user),
   };
 }
 
@@ -143,6 +146,22 @@ export async function PATCH(req: NextRequest) {
     }
 
     const school = db.getSchoolById(ctx.schoolId);
+
+    // An admin who is also the school's management. Only an admin can set it (this route is admin only), and only on an admin.
+    if (typeof body?.also_management === 'boolean') {
+      const problem = managementChangeProblem(target, body.also_management);
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      const updated = db.updateUser(target.id, { also_management: body.also_management });
+      auditAsStaff(ctx, ctx.schoolId, {
+        action: 'TEAM_ROLE_CHANGED',
+        resource: `User: ${target.name} <${target.email}>`,
+        details: body.also_management
+          ? `${target.name} now also acts as management (final decision), on their admin seat.`
+          : `${target.name} no longer acts as management.`,
+      });
+      return NextResponse.json({ member: present(updated ?? target, ctx.user.id, school) });
+    }
+
     const newDef = typeof body?.role_id === 'string' ? rolesOf(school).find((r) => r.id === body.role_id) : undefined;
     if (typeof body?.role_id === 'string' && !newDef) return NextResponse.json({ error: 'Choose a role.' }, { status: 400 });
     const newRole = newDef?.level ?? (typeof body?.role === 'string' ? body.role : undefined);
@@ -153,7 +172,12 @@ export async function PATCH(req: NextRequest) {
       const full = seatProblem(school, members, newRole, target.id);
       if (full) return NextResponse.json({ error: full }, { status: 403 });
       const before = roleDefFor(school, target).name;
-      const updated = db.updateUser(target.id, newDef ? { role: newDef.level, role_id: newDef.id } : { role: newRole });
+      // Acting as management goes with the admin role: someone moved off admin loses it.
+      const keepsAdmin = (newDef?.level ?? newRole) === 'SCHOOL_ADMIN';
+      const updated = db.updateUser(target.id, {
+        ...(newDef ? { role: newDef.level, role_id: newDef.id } : { role: newRole }),
+        ...(keepsAdmin || !target.also_management ? {} : { also_management: false }),
+      });
       auditAsStaff(ctx, ctx.schoolId, {
         action: 'TEAM_ROLE_CHANGED',
         resource: `User: ${target.name} <${target.email}>`,

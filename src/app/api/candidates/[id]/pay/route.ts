@@ -92,7 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const monthly = validMonthly(body.monthly);
       if (monthly === null) return NextResponse.json({ error: 'Enter the salary as rupees a month, for example 32000.' }, { status: 400 });
       const range = rangeFor(role, candidate);
-      const pot = potOf(role, db.getCandidatesBySchool(ctx.schoolId), candidate.id);
+      const pot = potOf(role, db.getCandidatesBySchool(ctx.schoolId, { notResponding: 'include' }), candidate.id);
       const { offer, check } = buildFinalOffer({ monthly, reason: body.reason, role, range, years: yearsOf(candidate).years, pot, by: ctx.user, previous: candidate.final_offer });
       if ((check.over_range || check.over_pot) && (offer.reason ?? '').length < 5) {
         return NextResponse.json({ error: `This is outside what the Pay Guide allows. ${check.needs_approval.join(' ')} Write why, and the school admin will be asked to approve it.` }, { status: 400 });

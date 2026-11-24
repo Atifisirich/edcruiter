@@ -27,7 +27,7 @@ export interface ImportResult {
  */
 export function importLeads(list: LeadList, rows: LeadRow[], branchId: string | undefined, now = new Date()): ImportResult {
   const known = new Map<string, string>();
-  for (const c of db.getCandidatesBySchool(list.school_id, { leads: 'include' })) {
+  for (const c of db.getCandidatesBySchool(list.school_id, { leads: 'include', notResponding: 'include' })) {
     const k = phoneKey(c.phone);
     if (k) known.set(k, c.lead && c.lead.status !== 'moved' ? `already on a lead list` : 'already a candidate');
   }

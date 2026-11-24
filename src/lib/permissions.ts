@@ -45,3 +45,14 @@ export function isHiringTeam(role: UserRole | string | undefined): boolean {
 export function isReviewer(role: UserRole | string | undefined): boolean {
   return accessOf(role) === 'reviewer';
 }
+
+/**
+ * A school admin who is also the school's management (the final decision), so
+ * a small school can run with one person. The admin already has every power;
+ * this makes them count as management wherever management is asked for: the
+ * management review round, the reviewer lists, the Pay Guide decision-maker.
+ * Only a school admin can carry it, and only an admin can set it (team route).
+ */
+export function actsAsManagement(user: { role?: UserRole | string; also_management?: boolean } | null | undefined): boolean {
+  return !!user && user.role === 'SCHOOL_ADMIN' && user.also_management === true;
+}

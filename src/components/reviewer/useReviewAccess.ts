@@ -8,7 +8,7 @@ export interface ReviewAccess {
   /** A campus's own review flow, by branch id. See reviewRounds.ts. */
   branch_rounds?: Record<string, ReviewRound[]>;
   roles: RoleDef[];
-  me: { id: string; name: string; role: UserRole; role_id: string; role_name: string };
+  me: { id: string; name: string; role: UserRole; role_id: string; role_name: string; also_management?: boolean };
 }
 
 /**

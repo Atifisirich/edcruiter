@@ -4,7 +4,7 @@ import { authErrorResponse, requireSchoolAccess } from '@/lib/auth';
 import { buildReport, RANGE_DAYS, type ReportRange } from '@/lib/managementReport';
 import { roleDefFor } from '@/lib/roles';
 import { potOf } from '@/lib/payGuide';
-import { accessOf } from '@/lib/permissions';
+import { accessOf, actsAsManagement } from '@/lib/permissions';
 
 /**
  * The management report: what came in, what was sent, how far candidates got,
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     const users = db.getUsersBySchool(ctx.schoolId);
     const reviewers = users
-      .filter((u) => accessOf(u.role) === 'reviewer')
+      .filter((u) => accessOf(u.role) === 'reviewer' || actsAsManagement(u))
       .map((u) => ({ id: u.id, name: u.name, role_name: roleDefFor(school, u).name }));
 
     const report = buildReport({

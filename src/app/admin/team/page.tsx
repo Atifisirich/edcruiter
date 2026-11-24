@@ -16,6 +16,7 @@ type Member = {
   status: 'invited' | 'active';
   last_login_at: string | null;
   is_you: boolean;
+  also_management: boolean;
 };
 
 type Seat = { level: string; label: string; help: string; used: number; limit: number };
@@ -133,6 +134,25 @@ export default function TeamPage() {
     }
   };
 
+  const setManagement = async (m: Member, on: boolean) => {
+    setBusyId(m.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await call('PATCH', `/api/team${schoolQuery()}`, { id: m.id, also_management: on });
+      setNotice(on
+        ? `${m.name} now also acts as management: the management round, final decisions and pay approvals. No extra seat is used.`
+        : `${m.name} no longer acts as management.`);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change that.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+  // Admins who also act as management: shown on the management seat, but they use their admin seat.
+  const adminsAsManagement = members.filter((m) => m.role === 'SCHOOL_ADMIN' && m.also_management);
+
   const resend = async (m: Member) => {
     setBusyId(m.id);
     setError(null);
@@ -212,6 +232,11 @@ export default function TeamPage() {
                           <span className={`text-sm font-black ${full ? 'text-amber-700' : 'text-indigo-700'}`}>{s.used} of {s.limit}</span>
                         </p>
                         <p className="text-[11px] text-slate-500 mt-1">{s.help}</p>
+                        {s.level === 'FINAL_DECISION_MAKER' && adminsAsManagement.length > 0 && (
+                          <p className="text-[11px] font-semibold text-indigo-700 mt-1">
+                            Also {adminsAsManagement.map((m) => m.name).join(', ')} (admin, no extra seat)
+                          </p>
+                        )}
                       </li>
                     );
                   })}
@@ -276,6 +301,21 @@ export default function TeamPage() {
                         {m.name} {m.is_you ? <span className="text-[11px] font-semibold text-slate-400">(you)</span> : null}
                       </p>
                       <p className="text-xs text-slate-500 truncate">{m.email}</p>
+                      {m.role === 'SCHOOL_ADMIN' && (
+                        <label className="mt-2 inline-flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={m.also_management}
+                            disabled={busyId === m.id}
+                            onChange={(e) => setManagement(m, e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-indigo-600 cursor-pointer"
+                          />
+                          <span>
+                            <span className="font-bold">Also acts as management</span>
+                            <span className="block text-[11px] text-slate-500">For a small school: one person runs the school and gives the final yes. Uses their admin seat only.</span>
+                          </span>
+                        </label>
+                      )}
                     </div>
                     <span className={`self-start sm:self-auto px-2.5 py-1 rounded-full text-[11px] font-bold ${m.status === 'invited' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                       {m.status === 'invited' ? 'Invited, not signed in yet' : 'Active'}

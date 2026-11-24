@@ -44,7 +44,7 @@ export function payInfoFor(school: School | undefined, candidate: Candidate, use
   const role = matchRole(school?.pay_guide, candidate);
   if (!role) return { matched: false, final_round };
 
-  const all = db.getCandidatesBySchool(candidate.school_id);
+  const all = db.getCandidatesBySchool(candidate.school_id, { notResponding: 'include' });
   const years = yearsOf(candidate);
   const asked = parseMonthly(candidate.expected_salary);
   const has = parseMonthly(candidate.current_salary);

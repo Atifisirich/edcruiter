@@ -14,6 +14,7 @@ import { authErrorResponse, auditAsStaff, getStaffContext, requireSchoolAccess, 
 import { HIRING_TEAM, isHiringTeam } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { CANDIDATE_COOKIE, createCandidateToken } from '@/lib/session';
+import { reachOf } from '@/lib/notResponding';
 
 /** Loosely-typed row shape a bulk-import spreadsheet row may arrive as. */
 type BulkImportRow = Partial<Candidate> & { school_id?: string };
@@ -25,14 +26,18 @@ export async function GET(req: NextRequest) {
     const subject = searchParams.get('subject') || undefined;
     const segment = searchParams.get('segment') || undefined;
     const status = searchParams.get('status') || undefined;
+    // ?not_responding=only lists the people set aside as "Not responding" instead of the main list.
+    const setAsideOnly = searchParams.get('not_responding') === 'only';
     // Staff of that school only. There used to be an unauthenticated
     // ?invite_code= branch here that returned the full candidate record
     // (phone, email, DOB, salary, resume link) to anyone holding a code, with
     // no rate limit — and the code plus the returned ID is a complete login.
     // Magic links and /candidate/login replaced every use of it.
     const ctx = await requireSchoolAccess(searchParams.get('school_id'));
-    const candidates = db.getCandidatesBySchool(ctx.schoolId, { branchId, subject, segment, status }).map((c) => ({
+    const candidates = db.getCandidatesBySchool(ctx.schoolId, { branchId, subject, segment, status, ...(setAsideOnly ? { notResponding: 'only' as const } : {}) }).map((c) => ({
       ...c,
+      // For the Not responding list: how the school could still reach them.
+      ...(setAsideOnly ? { reach: reachOf(c, !!db.getConsent(c.id, 'whatsapp')?.granted) } : {}),
       // How far through the five-stage test they are, for the dashboard.
       stages_completed: new Set(db.getStageResultsByCandidate(ctx.schoolId, c.id).map((r) => r.stage_key)).size,
       done_keys: [...new Set(db.getStageResultsByCandidate(ctx.schoolId, c.id).map((r) => r.stage_key))],
