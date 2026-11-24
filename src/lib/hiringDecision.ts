@@ -12,7 +12,7 @@
  */
 
 import { isAdmin, isHiringTeam } from './permissions';
-import { DEFAULT_ROUNDS, canDecideRound, currentRound as nextRound, isSelected } from './reviewRounds';
+import { DEFAULT_ROUNDS, currentRound as nextRound, isSelected } from './reviewRounds';
 import type { Candidate, InterviewDecision, InterviewRound, ReviewRound, RoundResult, User } from './types';
 
 export type DecisionAction =
@@ -34,7 +34,7 @@ export type DecisionAction =
 export function mayTake(
   action: DecisionAction | 'allow_retry',
   user: Pick<User, 'role' | 'role_id'>,
-  round?: ReviewRound
+  _round?: ReviewRound
 ): boolean {
   switch (action) {
     case 'reopen':
