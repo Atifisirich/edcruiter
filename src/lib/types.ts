@@ -214,6 +214,8 @@ export interface PayRole {
   grades: string[];
   /** Subjects it covers. Empty means any subject. */
   subjects: string[];
+  /** The campus this job is for. Absent means every campus. */
+  branch_id?: string;
   /** The one person who takes the final call for this role. Absent: the school admin. */
   decider_user_id?: string;
   tiers: PayTier[];
@@ -228,6 +230,8 @@ export interface PayRole {
 
 export interface PayGuide {
   roles: PayRole[];
+  /** Who takes the final call at each campus (user id by branch id), unless a job names someone else. */
+  campus_deciders?: Record<string, string>;
 }
 
 /** The final call on one candidate: the salary offered, against the Pay Guide, and who approved it. */

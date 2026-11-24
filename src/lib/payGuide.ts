@@ -70,7 +70,7 @@ function cleanTiers(input: unknown, where: string): { ok: true; tiers: PayTier[]
 
 /** Checks the admin's Pay Guide before it is saved. Returns the cleaned guide, or a plain-language reason. */
 export function parsePayGuide(input: unknown, ctx: GuideContext): { ok: true; guide: PayGuide } | { ok: false; error: string } {
-  const raw = (input && typeof input === 'object' ? input : {}) as { roles?: unknown };
+  const raw = (input && typeof input === 'object' ? input : {}) as { roles?: unknown; campus_deciders?: unknown };
   if (!Array.isArray(raw.roles)) return { ok: false, error: 'The Pay Guide was not in the right form.' };
   if (raw.roles.length > MAX_ROLES) return { ok: false, error: `A school can have up to ${MAX_ROLES} pay roles.` };
 
@@ -83,8 +83,11 @@ export function parsePayGuide(input: unknown, ctx: GuideContext): { ok: true; gu
     const name = typeof r?.name === 'string' ? r.name.replace(/\s+/g, ' ').trim() : '';
     if (name.length < 2 || name.length > 60) return { ok: false, error: 'Each role needs a name of 2 to 60 characters.' };
     if (/[<>]/.test(name)) return { ok: false, error: 'Role names cannot contain < or >.' };
-    if (names.has(name.toLowerCase())) return { ok: false, error: `You have two roles called "${name}".` };
-    names.add(name.toLowerCase());
+    const branchId = typeof r?.branch_id === 'string' && r.branch_id ? r.branch_id : undefined;
+    if (branchId && !ctx.branchIds.includes(branchId)) return { ok: false, error: `${name}: that campus was not found.` };
+    const nameKey = `${branchId ?? ''}|${name.toLowerCase()}`;
+    if (names.has(nameKey)) return { ok: false, error: `You have two jobs called "${name}"${branchId ? ' at the same campus' : ''}.` };
+    names.add(nameKey);
 
     const grades = cleanGrades(r?.grades);
     if (grades.length === 0 || !grades.every((g) => gradeIds.has(g))) return { ok: false, error: `${name}: choose the grades this role teaches.` };
@@ -133,6 +136,7 @@ export function parsePayGuide(input: unknown, ctx: GuideContext): { ok: true; gu
     roles.push({
       id: typeof r?.id === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(r.id) ? r.id : newId('role'),
       name, grades, subjects, tiers: base.tiers,
+      ...(branchId ? { branch_id: branchId } : {}),
       ...(Object.keys(branchTiers).length ? { branch_tiers: branchTiers } : {}),
       ...(bed ? { bed_topup: bed } : {}),
       ...(masters ? { masters_topup: masters } : {}),
@@ -140,7 +144,16 @@ export function parsePayGuide(input: unknown, ctx: GuideContext): { ok: true; gu
       ...(pot ? { pot } : {}),
     });
   }
-  return { ok: true, guide: { roles } };
+  // Who decides at each campus unless a job names someone else.
+  const campus_deciders: Record<string, string> = {};
+  const cd = (raw.campus_deciders && typeof raw.campus_deciders === 'object' ? raw.campus_deciders : {}) as Record<string, unknown>;
+  for (const [branchId, userId] of Object.entries(cd)) {
+    if (!userId) continue;
+    if (!ctx.branchIds.includes(branchId)) return { ok: false, error: 'A campus decision-maker was set for a campus that was not found.' };
+    if (typeof userId !== 'string' || !ctx.deciderIds.includes(userId)) return { ok: false, error: 'The decision-maker for a campus must be a reviewer or the school admin.' };
+    campus_deciders[branchId] = userId;
+  }
+  return { ok: true, guide: { roles, ...(Object.keys(campus_deciders).length ? { campus_deciders } : {}) } };
 }
 
 // ---------------------------------------------------------------------------
@@ -158,20 +171,75 @@ function gradesOf(c: Pick<Candidate, 'applied_grades' | 'applied_segment'>): str
  * role that names the subject beats one that covers any subject; after that,
  * the role sharing the most grades wins. Null when nothing fits.
  */
-export function matchRole(guide: PayGuide | undefined, c: Pick<Candidate, 'applied_grades' | 'applied_segment' | 'applied_subject'>): PayRole | null {
+export function matchRole(guide: PayGuide | undefined, c: Pick<Candidate, 'applied_grades' | 'applied_segment' | 'applied_subject'> & { target_branch_id?: string }): PayRole | null {
   if (!guide?.roles.length) return null;
   const grades = gradesOf(c);
   const subject = normalizeSubject(c.applied_subject);
   let best: { role: PayRole; score: number } | null = null;
   for (const role of guide.roles) {
+    // A job set for one campus is only for teachers who applied to that campus.
+    if (role.branch_id && role.branch_id !== c.target_branch_id) continue;
     const shared = role.grades.filter((g) => grades.includes(g)).length;
     if (shared === 0) continue;
     const named = role.subjects.length > 0;
     if (named && !role.subjects.some((s) => normalizeSubject(s) === subject)) continue;
-    const score = (named ? 1000 : 0) + shared * 10 - role.grades.length / 100;
+    // The campus's own job beats a job for every campus; then the one naming the subject; then the most grades shared.
+    const score = (role.branch_id ? 5000 : 0) + (named ? 1000 : 0) + shared * 10 - role.grades.length / 100;
     if (!best || score > best.score) best = { role, score };
   }
-  return best?.role ?? null;
+  return best ? withDecider(guide, best.role) : null;
+}
+
+/** The person who takes the final call for a job: the one named on the job, else the one named for its campus. */
+export function effectiveDecider(guide: Pick<PayGuide, 'campus_deciders'> | undefined, role: Pick<PayRole, 'decider_user_id' | 'branch_id'>): string | undefined {
+  return role.decider_user_id || (role.branch_id ? guide?.campus_deciders?.[role.branch_id] : undefined) || undefined;
+}
+
+/** The role with its decision-maker worked out, so everything downstream reads one field. */
+export function withDecider(guide: Pick<PayGuide, 'campus_deciders'> | undefined, role: PayRole): PayRole {
+  const decider = effectiveDecider(guide, role);
+  return decider === role.decider_user_id ? role : { ...role, ...(decider ? { decider_user_id: decider } : {}) };
+}
+
+// ---------------------------------------------------------------------------
+// Names and starting points, so the admin types as little as possible
+// ---------------------------------------------------------------------------
+
+const GRADE_LABEL = new Map(GRADES.map((g) => [g.id, g.label]));
+
+/** "Nursery to UKG", "Grades 1 to 5", "Grades 1, 2 and 5". */
+export function gradeSummary(grades: string[]): string {
+  const ordered = GRADES.filter((g) => grades.includes(g.id));
+  if (ordered.length === 0) return 'No grades';
+  const runs: typeof ordered[] = [];
+  for (const g of ordered) {
+    const run = runs[runs.length - 1];
+    if (run && g.order === run[run.length - 1].order + 1) run.push(g); else runs.push([g]);
+  }
+  const numericAll = ordered.every((g) => /^\d+$/.test(g.id));
+  const named = (g: { id: string; label: string }) => (/^\d+$/.test(g.id) && !numericAll ? `Grade ${g.label}` : g.label);
+  const parts = runs.map((r) => (r.length === 1 ? named(r[0]) : `${named(r[0])} to ${named(r[r.length - 1])}`));
+  const text = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
+  return numericAll ? `Grade${ordered.length === 1 ? '' : 's'} ${text}` : text;
+}
+
+/** A name for a job from what it covers, for when the admin does not type one. */
+export function suggestRoleName(grades: string[], subjects: string[]): string {
+  const who = subjects.length === 0 ? 'teacher' : subjects.length <= 2 ? `${subjects.join(' and ')} teacher` : `${subjects.slice(0, 2).join(', ')} and more teacher`;
+  return `${gradeSummary(grades)} · ${who}`;
+}
+
+/** The usual stages of a school, to start from. The admin only has to fill in the pay. */
+export const TYPICAL_JOBS: { name: string; grades: string[] }[] = [
+  { name: 'Pre-primary teacher', grades: ['nursery', 'lkg', 'ukg'] },
+  { name: 'Primary teacher', grades: ['1', '2', '3', '4', '5'] },
+  { name: 'Middle school teacher', grades: ['6', '7', '8'] },
+  { name: 'Secondary teacher', grades: ['9', '10'] },
+  { name: 'Senior secondary teacher', grades: ['11', '12'] },
+];
+
+export function labelOfGrade(id: string): string {
+  return GRADE_LABEL.get(id) ?? id;
 }
 
 // ---------------------------------------------------------------------------

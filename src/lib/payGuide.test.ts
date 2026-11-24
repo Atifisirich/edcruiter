@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkOffer, matchRole, parseMonthly, parsePayGuide, potOf, rangeFor, tiersFor, yearsOf } from './payGuide';
+import { checkOffer, effectiveDecider, gradeSummary, matchRole, parseMonthly, parsePayGuide, potOf, rangeFor, suggestRoleName, tiersFor, TYPICAL_JOBS, yearsOf } from './payGuide';
 import type { Candidate, PayGuide, PayRole } from './types';
 
 const ctx = { subjects: ['Social Studies', 'Physics', 'English'], branchIds: ['b1', 'b2'], deciderIds: ['u1', 'admin'] };
@@ -177,5 +177,75 @@ describe('the pot and checking an offer', () => {
     const r = checkOffer(22000, { min: 25000, max: 33000 }, null);
     expect(r.below_min).toBe(true);
     expect(r.needs_approval).toEqual([]);
+  });
+});
+
+describe('jobs set campus by campus', () => {
+  const guideFor = (roles: unknown[], campus_deciders?: Record<string, string>) => {
+    const r = parsePayGuide({ roles, campus_deciders }, ctx);
+    if (!r.ok) throw new Error(r.error);
+    return r.guide;
+  };
+  const middle = (over: Record<string, unknown> = {}) => ({ name: 'Middle school teacher', grades: ['6', '7', '8'], subjects: [], tiers: tiers(), ...over });
+  const teacher = (campus: string) => ({ id: 'c', applied_subject: 'English', applied_segment: 'Middle school (Grades 6–8)', applied_grades: ['7'], experience_band: '2-4 years', qualification: 'Graduation', target_branch_id: campus }) as unknown as Candidate;
+
+  it('matches a teacher only to the jobs of the campus they applied to', () => {
+    const g = guideFor([middle({ name: 'Manneguda middle', branch_id: 'b1' }), middle({ name: 'Vikarabad middle', branch_id: 'b2', tiers: tiers(30000, 35000, 40000) })]);
+    expect(matchRole(g, teacher('b1'))?.name).toBe('Manneguda middle');
+    expect(matchRole(g, teacher('b2'))?.name).toBe('Vikarabad middle');
+  });
+
+  it('finds nothing for a campus that has no job set up', () => {
+    const g = guideFor([middle({ branch_id: 'b1' })]);
+    expect(matchRole(g, teacher('b2'))).toBeNull();
+  });
+
+  it('lets a campus job beat a job for every campus, and still serves campuses without their own', () => {
+    const g = guideFor([middle({ name: 'Every campus' }), middle({ name: 'Only Manneguda', branch_id: 'b1' })]);
+    expect(matchRole(g, teacher('b1'))?.name).toBe('Only Manneguda');
+    expect(matchRole(g, teacher('b2'))?.name).toBe('Every campus');
+  });
+
+  it('allows the same job name at two campuses, but not twice at one', () => {
+    expect(parsePayGuide({ roles: [middle({ branch_id: 'b1' }), middle({ branch_id: 'b2' })] }, ctx).ok).toBe(true);
+    expect(parsePayGuide({ roles: [middle({ branch_id: 'b1' }), middle({ branch_id: 'b1' })] }, ctx).ok).toBe(false);
+    expect(parsePayGuide({ roles: [middle({ branch_id: 'nowhere' })] }, ctx)).toMatchObject({ ok: false });
+  });
+
+  it('uses the campus decision-maker unless the job names someone else', () => {
+    const g = guideFor([middle({ name: 'Middle school', branch_id: 'b1' }), middle({ name: 'Secondary school', branch_id: 'b1', grades: ['9'], decider_user_id: 'admin' })], { b1: 'u1' });
+    expect(effectiveDecider(g, g.roles[0])).toBe('u1');
+    expect(effectiveDecider(g, g.roles[1])).toBe('admin');
+    expect(matchRole(g, { ...teacher('b1') })?.decider_user_id).toBe('u1');
+    expect(effectiveDecider(g, { branch_id: undefined, decider_user_id: undefined })).toBeUndefined();
+  });
+
+  it('checks the campus decision-maker', () => {
+    expect(parsePayGuide({ roles: [], campus_deciders: { b1: 'stranger' } }, ctx)).toMatchObject({ ok: false });
+    expect(parsePayGuide({ roles: [], campus_deciders: { nowhere: 'u1' } }, ctx)).toMatchObject({ ok: false });
+    expect(parsePayGuide({ roles: [], campus_deciders: { b1: '' } }, ctx)).toMatchObject({ ok: true });
+  });
+});
+
+describe('names and starting points', () => {
+  it('writes grades the way a person would', () => {
+    expect(gradeSummary(['6', '7', '8'])).toBe('Grades 6 to 8');
+    expect(gradeSummary(['nursery', 'lkg', 'ukg'])).toBe('Nursery to UKG');
+    expect(gradeSummary(['1', '2', '5'])).toBe('Grades 1 to 2 and 5');
+    expect(gradeSummary(['7'])).toBe('Grade 7');
+    expect(gradeSummary(['ukg', '1', '2'])).toBe('UKG to Grade 2');
+    expect(gradeSummary([])).toBe('No grades');
+  });
+
+  it('suggests a job name from what it covers', () => {
+    expect(suggestRoleName(['6', '7', '8'], [])).toBe('Grades 6 to 8 · teacher');
+    expect(suggestRoleName(['6', '7', '8'], ['Social Studies'])).toBe('Grades 6 to 8 · Social Studies teacher');
+    expect(suggestRoleName(['9', '10'], ['Physics', 'Chemistry', 'Biology'])).toBe('Grades 9 to 10 · Physics, Chemistry and more teacher');
+  });
+
+  it('starts from the usual stages of a school, with real grades', () => {
+    expect(TYPICAL_JOBS.map((j) => j.name)).toContain('Primary teacher');
+    expect(TYPICAL_JOBS.flatMap((j) => j.grades).length).toBe(15);
+    expect(new Set(TYPICAL_JOBS.flatMap((j) => j.grades)).size).toBe(15);
   });
 });
