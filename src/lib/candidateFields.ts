@@ -28,6 +28,22 @@ export function pickAllowed(updates: Record<string, unknown>, allowed: Set<keyof
   return out;
 }
 
+/**
+ * Fields only the school's staff may read: reviewers' opinions and ratings,
+ * who a teacher was given to, the interview questions, the decisions and the
+ * reasons. Taken off before a candidate's own browser is sent their record.
+ */
+export const STAFF_ONLY_FIELDS = [
+  'round_assignments', 'round_reviews', 'round_questions', 'round_results', 'interview_decisions',
+  'rm_clearance', 'ih_clearance', 'coo_clearance', 'rejected_by_school_reason', 'resume_analysis', 'resume_text', 'total_ai_score',
+] as const;
+
+export function candidateSelfView<T extends Partial<Candidate>>(candidate: T): T {
+  const view = { ...candidateView(candidate) } as Record<string, unknown>;
+  for (const key of STAFF_ONLY_FIELDS) delete view[key];
+  return view as T;
+}
+
 /** What a candidate's own browser is allowed to see: no face measurements, no question ids. */
 export function candidateView<T extends Partial<Candidate>>(candidate: T): T {
   const { face_reference, test_set: _testSet, ai_interview, ...rest } = candidate;

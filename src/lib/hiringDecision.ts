@@ -26,9 +26,10 @@ export type DecisionAction =
   | 'candidate_declined';
 
 /**
- * Who may take an action. HR and the admin run the shortlist and the offer;
- * only the admin may undo a decision; a round's yes or no belongs to the roles
- * the admin assigned to that round (and to the admin).
+ * Who may take an action. HR and the admin run the shortlist, the offer, and
+ * passing a teacher from one round to the next (or stopping them). A reviewer
+ * never passes or stops anyone: they give their report card (roundReview.ts)
+ * and HR decides. Only the admin may undo a decision.
  */
 export function mayTake(
   action: DecisionAction | 'allow_retry',
@@ -40,7 +41,7 @@ export function mayTake(
       return isAdmin(user.role);
     case 'round_pass':
     case 'round_reject':
-      return !!round && canDecideRound(user, round);
+      return isHiringTeam(user.role);
     default:
       return isHiringTeam(user.role);
   }

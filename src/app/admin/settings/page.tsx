@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Building2, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
+import { MAX_RUBRIC_ITEMS, rubricFor } from '@/lib/roundReview';
 import { Badge, Card, CardHeader, PageHeader, SaveBar, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
 import type { ReviewRound, RoleDef } from '@/lib/types';
 import { accessOf } from '@/lib/permissions';
@@ -185,6 +186,10 @@ function RoundsCard() {
   const update = (id: string, patch: Partial<ReviewRound>) => rounds && change(rounds.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const toggleRole = (round: ReviewRound, roleId: string) =>
     update(round.id, { role_ids: round.role_ids.includes(roleId) ? round.role_ids.filter((x) => x !== roleId) : [...round.role_ids, roleId] });
+  // What the reviewer rates in a round. Until the admin edits it, the ready-made list for the round is used.
+  const setRubric = (round: ReviewRound, items: { key: string; label: string }[] | undefined) => update(round.id, { rubric: items });
+  const editRubric = (round: ReviewRound, at: number, label: string) =>
+    setRubric(round, rubricFor(round).map((it, i) => (i === at ? { ...it, label } : it)));
   const move = (index: number, by: -1 | 1) => {
     if (!rounds) return;
     const next = [...rounds];
@@ -231,7 +236,7 @@ function RoundsCard() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         // A round added here has a temporary id; the server gives it a real one.
-        body: JSON.stringify({ ...(scope ? { branch_id: scope } : {}), rounds: rounds.map((r) => (r.id.startsWith('new_') ? { name: r.name, role_ids: r.role_ids } : r)) }),
+        body: JSON.stringify({ ...(scope ? { branch_id: scope } : {}), rounds: rounds.map((r) => (r.id.startsWith('new_') ? { name: r.name, role_ids: r.role_ids, rubric: r.rubric } : r)) }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -313,6 +318,28 @@ function RoundsCard() {
                   ))}
                 </div>
               </fieldset>
+              <details className="rounded-lg border border-slate-200 bg-slate-50">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">
+                  What the reviewer rates ({rubricFor(r).length}) {r.rubric?.length ? <span className="text-indigo-700">· your own list</span> : <span className="text-slate-400">· ready-made list</span>}
+                </summary>
+                <div className="px-3 pb-3 space-y-2">
+                  <p className="text-sm text-slate-500">The reviewer gives each one from 1 to 5 stars, then approves or does not approve this teacher. HR reads it and decides.</p>
+                  {rubricFor(r).map((it, at) => (
+                    <div key={`${it.key}-${at}`} className="flex items-center gap-2">
+                      <input value={it.label} onChange={(e) => editRubric(r, at, e.target.value)} maxLength={80} aria-label={`${r.name || 'Round'} item ${at + 1}`} className={`${inputClass} flex-1`} />
+                      <button type="button" onClick={() => setRubric(r, rubricFor(r).filter((_, i) => i !== at))} disabled={rubricFor(r).length <= 1} aria-label={`Remove ${it.label}`} className={buttonClass('ghost', 'sm')}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setRubric(r, [...rubricFor(r), { key: `item_${Date.now().toString(36)}`, label: '' }])} disabled={rubricFor(r).length >= MAX_RUBRIC_ITEMS} className={buttonClass('secondary', 'sm')}>
+                      <Plus className="w-4 h-4" /> Add something to rate
+                    </button>
+                    {r.rubric?.length ? <button type="button" onClick={() => setRubric(r, undefined)} className={buttonClass('ghost', 'sm')}>Use the ready-made list</button> : null}
+                  </div>
+                </div>
+              </details>
             </div>
           ))}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">

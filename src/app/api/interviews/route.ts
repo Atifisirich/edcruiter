@@ -180,6 +180,15 @@ export async function POST(req: NextRequest) {
     };
     db.createScheduledInterview(interview);
     if (slot) db.updateAvailabilitySlot(slot.id, { status: 'booked', interview_id: interview.id });
+    // Booking someone for the round also allocates the teacher to them, unless they have already been reviewed.
+    if (!candidate.round_reviews?.[round]) {
+      db.updateCandidate(ctx.schoolId, candidate.id, {
+        round_assignments: {
+          ...(candidate.round_assignments ?? {}),
+          [round]: { user_id: assignedUser.id, user_name: assignedUser.name, assigned_at: new Date().toISOString(), assigned_by_name: ctx.user.name },
+        },
+      });
+    }
 
     // The candidate on WhatsApp and email, the interviewer, the rest of the round's reviewers, and HR.
     const notified = school

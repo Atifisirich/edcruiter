@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { evaluateStageWithAI, isMisappliedHrPolicyScore } from '@/lib/aiScoringEngine';
 import { isScoredStage } from '@/lib/scoredStages';
 import { Candidate, StageResult } from '@/lib/types';
-import { CANDIDATE_SELF_FIELDS, candidateView, pickAllowed } from '@/lib/candidateFields';
+import { CANDIDATE_SELF_FIELDS, candidateSelfView, candidateView, pickAllowed } from '@/lib/candidateFields';
 import { ageFromDob } from '@/lib/age';
 import { assertSchoolActive, authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // The questions of a school's own test carry their answer key, so they stay on the server.
     const stageAttempts = db.getStageAttempts(candidate.school_id, candidate.id).map(({ own_questions: _own, ...rest }) => rest);
-    return NextResponse.json({ candidate: candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
+    return NextResponse.json({ candidate: access.kind === 'candidate' ? candidateSelfView(candidate) : candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidate profile' }, { status: 500 });
   }

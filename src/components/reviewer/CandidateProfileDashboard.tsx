@@ -14,6 +14,7 @@ import { describeEducation } from '@/lib/teacherProfile';
 import { candidateState } from '@/lib/candidateProgress';
 import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
 import HiringDecision from './HiringDecision';
+import RoundReviewCard from './RoundReviewCard';
 import { isScoredStage } from '@/lib/scoredStages';
 import { cleanResumeReport, dedupeSimilar } from '@/lib/reportText';
 import TeachingProfilePanel, { type ProfileResponse } from './TeachingProfilePanel';
@@ -365,6 +366,8 @@ export default function CandidateProfileDashboard({
           <div className="py-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">Candidate not found.</div>
         ) : (
           <>
+            <RoundReviewCard candidate={candidate} onChanged={(next) => { setCandidate(next); onCandidateUpdated?.(next); }} />
+
             <ReportVerdict
               score={overallScore}
               scoreLabel={overallIsProfile ? 'Overall score' : 'Test average'}

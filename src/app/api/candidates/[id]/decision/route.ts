@@ -4,8 +4,11 @@ import { assertSchoolActive, auditAsStaff, authErrorResponse, requireSchoolAcces
 import { decide, mayTake, type DecisionAction, type DecisionInput } from '@/lib/hiringDecision';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { roundsFor } from '@/lib/reviewRounds';
-import { notifyRoundCleared } from '@/lib/interviewNotify';
+import { canDecideRound, roundsFor } from '@/lib/reviewRounds';
+import { reviewStillOwed } from '@/lib/roundReview';
+import { notifyPassedTo } from '@/lib/reviewNotify';
+import { isAdmin } from '@/lib/permissions';
+import type { ReviewRound, RoundAssignment } from '@/lib/types';
 import { ATTEMPT_STAGES } from '@/lib/stageAttempts';
 import type { StageKey } from '@/lib/types';
 
@@ -14,9 +17,11 @@ const ACTIONS = new Set<DecisionAction>(['shortlist', 'hold', 'reject', 'reopen'
 function refusal(action: unknown, roundName?: string): string {
   if (action === 'reopen') return 'Only the school admin can reopen a decision.';
   if (action === 'round_pass' || action === 'round_reject') {
-    return roundName ? `Your role does not review the ${roundName} round.` : 'Choose an interview round.';
+    return roundName
+      ? 'Only HR or the school admin can pass a teacher to the next round or stop them. Reviewers give their rating and opinion on the report, and HR decides.'
+      : 'Choose an interview round.';
   }
-  return 'Only HR or the school admin can do this. Reviewers give their yes or no in their own round.';
+  return 'Only HR or the school admin can do this.';
 }
 
 /**
@@ -73,6 +78,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const candidate = db.getCandidateById(ctx.schoolId, id);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
 
+    // A reviewer was given this teacher: HR waits for their report card before passing or stopping.
+    if ((input.action === 'round_pass' || input.action === 'round_reject') && round && reviewStillOwed(candidate, round.id) && !isAdmin(ctx.role)) {
+      return NextResponse.json({ error: `Wait for ${candidate.round_assignments?.[round.id]?.user_name ?? 'the reviewer'} to give their review of the ${round.name} round first.` }, { status: 409 });
+    }
+
     const outcome = decide(candidate, input, { id: ctx.user.id, name: ctx.user.name }, undefined, rounds);
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: 400 });
 
@@ -86,7 +96,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
 
     // A yes moves the teacher on: whoever runs the next round (and HR) is told to book it.
-    let nextUp: { id: string; name: string } | null | undefined;
+    let nextUp: ReviewRound | null | undefined;
     let toldNext: string[] = [];
     const passedRound = rounds.find((r) => r.id === round?.id);
     if ((input.action === 'round_pass' || input.action === 'round_reject') && passedRound) {
@@ -98,9 +108,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (input.action === 'round_pass' && passedRound) {
       const at = rounds.findIndex((r) => r.id === passedRound.id);
       nextUp = rounds[at + 1] ?? null;
-      const school = db.getSchoolById(ctx.schoolId);
-      if (school) {
-        toldNext = await notifyRoundCleared({ school, candidate, round: passedRound, next: rounds[at + 1] ?? null, decidedBy: ctx.user, note: (input.note ?? '').trim() }).catch(() => []);
+      // HR passes the teacher on and, in the same step, can hand them to the next round's reviewer.
+      if (nextUp && typeof body.next_user_id === 'string' && body.next_user_id) {
+        const next = db.getUsersBySchool(ctx.schoolId).find((u) => u.id === body.next_user_id);
+        if (next && next.role !== 'HR' && canDecideRound(next, nextUp)) {
+          const assignment: RoundAssignment = { user_id: next.id, user_name: next.name, assigned_at: new Date().toISOString(), assigned_by_name: ctx.user.name };
+          const fresh = db.getCandidateById(ctx.schoolId, id);
+          db.updateCandidate(ctx.schoolId, id, { round_assignments: { ...(fresh?.round_assignments ?? {}), [nextUp.id]: assignment } });
+          notifyPassedTo({ schoolId: ctx.schoolId, reviewer: next, candidate, round: nextUp, byName: ctx.user.name });
+          toldNext = [next.name];
+        }
       }
     }
 

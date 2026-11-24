@@ -77,6 +77,11 @@ export default function LeadershipInterviewsPage() {
   // The reviewer's own free times, and the one HR picked (empty means a time typed by hand).
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [slotId, setSlotId] = useState('');
+  // Teachers HR ticked to give to one reviewer in one go.
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [bulkUser, setBulkUser] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState('');
 
   // Decision form
   const [reason, setReason] = useState('');
@@ -221,6 +226,31 @@ export default function LeadershipInterviewsPage() {
     }
   };
 
+  const allocateTicked = async () => {
+    if (!bulkUser || ticked.size === 0) return;
+    setBulkBusy(true);
+    setBulkMsg('');
+    setError('');
+    try {
+      const res = await fetch('/api/review-assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId, candidate_ids: [...ticked], round, user_id: bulkUser }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not allocate.');
+      const who = staff.find((s) => s.id === bulkUser)?.name ?? 'the reviewer';
+      const skipped = (data.skipped ?? []) as { name: string; reason: string }[];
+      setBulkMsg(`${data.allocated} ${data.allocated === 1 ? 'teacher' : 'teachers'} allocated to ${who}. They are told in the app.${skipped.length ? ` Skipped: ${skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join('; ')}${skipped.length > 3 ? ' and more' : ''}.` : ''}`);
+      setTicked(new Set());
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not allocate.');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const decide = async (decision: 'accepted' | 'rejected') => {
     if (!selected || !selectedInterview) return;
     if (!reason.trim()) {
@@ -284,12 +314,44 @@ export default function LeadershipInterviewsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <ul className="lg:col-span-5 space-y-2">
+            {view === 'queue' && list.length > 0 && (
+              <li className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-900">Give teachers to a {currentRoundDef?.name ?? 'round'} reviewer</p>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => setTicked(new Set(list.filter((c) => !interviewFor(c.id, round)).map((c) => c.id)))} className="text-[11px] font-bold text-indigo-700 hover:underline cursor-pointer">Tick all not yet scheduled</button>
+                    {ticked.size > 0 && <button type="button" onClick={() => setTicked(new Set())} className="text-[11px] font-bold text-slate-500 hover:underline cursor-pointer">Clear</button>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select value={bulkUser} onChange={(e) => setBulkUser(e.target.value)} aria-label="Reviewer to give the ticked teachers to" className="flex-1 min-w-[10rem] p-2 rounded-xl border border-slate-200 bg-white text-xs">
+                    <option value="">Choose a reviewer…</option>
+                    {roundStaff.map((s) => <option key={s.id} value={s.id}>{s.name} — {roleName(s.role_id)}</option>)}
+                  </select>
+                  <button type="button" disabled={bulkBusy || !bulkUser || ticked.size === 0} onClick={() => void allocateTicked()} className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5">
+                    {bulkBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Allocate {ticked.size > 0 ? `${ticked.size} ticked` : ''}
+                  </button>
+                </div>
+                {bulkMsg && <p role="status" className="text-[11px] font-semibold text-emerald-800">{bulkMsg}</p>}
+              </li>
+            )}
             {list.length === 0 && <li className="text-xs text-slate-500 bg-white border border-slate-200 rounded-2xl p-6">No teachers in this list.</li>}
             {list.map((c) => {
               const intv = interviewFor(c.id, round);
               return (
-                <li key={c.id}>
-                  <button type="button" onClick={() => selectCandidate(c)} className={`w-full text-left p-4 rounded-2xl border bg-white ${selected?.id === c.id ? 'border-indigo-300' : 'border-slate-200'}`}>
+                <li key={c.id} className="flex items-stretch gap-2">
+                  {view === 'queue' && (
+                    <label className="flex items-center px-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ticked.has(c.id)}
+                        onChange={(e) => setTicked((prev) => { const next = new Set(prev); if (e.target.checked) next.add(c.id); else next.delete(c.id); return next; })}
+                        aria-label={`Tick ${c.name}`}
+                        className="w-4 h-4 accent-indigo-600"
+                      />
+                    </label>
+                  )}
+                  <button type="button" onClick={() => selectCandidate(c)} className={`flex-1 text-left p-4 rounded-2xl border bg-white ${selected?.id === c.id ? 'border-indigo-300' : 'border-slate-200'}`}>
                     <p className="text-sm font-bold">{c.name}</p>
                     <p className="text-xs text-slate-500">{c.applied_subject} · {c.applied_segment}</p>
                     {intv ? (
@@ -299,6 +361,13 @@ export default function LeadershipInterviewsPage() {
                     ) : (
                       <p className="text-[11px] text-amber-700 font-bold mt-1.5">Not scheduled yet</p>
                     )}
+                    {(() => {
+                      const given = c.round_reviews?.[round];
+                      const owner = c.round_assignments?.[round];
+                      if (given) return <p className={`text-[11px] font-bold mt-1 ${given.recommendation === 'approve' ? 'text-emerald-700' : 'text-rose-700'}`}>Review in · {given.recommendation === 'approve' ? 'Approved' : 'Did not approve'} · {given.average}/100</p>;
+                      if (owner) return <p className="text-[11px] text-slate-600 font-semibold mt-1">Allocated to {owner.user_name}</p>;
+                      return <p className="text-[11px] text-slate-400 mt-1">Not allocated</p>;
+                    })()}
                   </button>
                 </li>
               );

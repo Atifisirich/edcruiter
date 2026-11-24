@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import {
   Video, CheckCircle2, XCircle, Clock, Sparkles, Calendar, ExternalLink, Loader2, ClipboardCheck,
-  History, RefreshCw, Search, LogOut, Globe, ChevronDown, AlertCircle, ThumbsUp, ThumbsDown,
+  History, RefreshCw, Search, LogOut, Globe, ChevronDown, AlertCircle,
 } from 'lucide-react';
 import { Candidate, ScheduledInterview } from '@/lib/types';
 import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
@@ -53,9 +53,6 @@ export default function ReviewerHomePage() {
 
   // HR-scheduled interviews assigned to whoever is signed in right now.
   const [myInterviews, setMyInterviews] = useState<ScheduledInterview[]>([]);
-  const [opinions, setOpinions] = useState<Record<string, string>>({});
-  const [decidingId, setDecidingId] = useState<string | null>(null);
-  const [interviewError, setInterviewError] = useState<{ id: string; message: string } | null>(null);
 
   const schoolId =
     (typeof window !== 'undefined' && localStorage.getItem('edcruiter_school_id')) || SLOKA_SCHOOL_ID;
@@ -105,7 +102,8 @@ export default function ReviewerHomePage() {
     return candidates
       .filter((c) => c.status !== 'rejected' && !c.rejected_by_school_at && !c.selected_at && (c.shortlist_status === 'shortlisted' || c.status === 'passed'))
       .map((c) => ({ c, round: currentRound(c, roundsForCandidate(rounds, access?.branch_rounds, c)) }))
-      .filter((x) => x.round && canDecideRound(me, x.round));
+      // Only the teachers HR gave to this person, for the round they are on, who still need a review.
+      .filter((x) => x.round && canDecideRound(me, x.round) && x.c.round_assignments?.[x.round.id]?.user_id === me.id && !x.c.round_reviews?.[x.round.id]);
   }, [candidates, rounds, access, me]);
 
   const filteredWaiting = useMemo(() => {
@@ -114,11 +112,20 @@ export default function ReviewerHomePage() {
     return waiting.filter(({ c }) => `${c.name} ${c.applied_subject} ${c.applied_segment}`.toLowerCase().includes(q));
   }, [waiting, search]);
 
+  // Everything this reviewer has said: report cards, and the older yes or no answers.
   const decidedByMe = useMemo(() => {
     if (!me) return [];
-    return candidates
-      .flatMap((c) => (c.interview_decisions || []).filter((d) => d.reviewer_id === me.id).map((d) => ({ c, d })))
-      .sort((a, b) => b.d.decided_at.localeCompare(a.d.decided_at));
+    type Row = { key: string; c: Candidate; round: string; approved: boolean; opinion: string; at: string; score?: number };
+    const rows: Row[] = [];
+    for (const c of candidates) {
+      for (const [roundId, rv] of Object.entries(c.round_reviews ?? {})) {
+        if (rv.reviewer_id === me.id) rows.push({ key: `${c.id}-${roundId}`, c, round: roundId, approved: rv.recommendation === 'approve', opinion: rv.opinion, at: rv.submitted_at, score: rv.average });
+      }
+      for (const d of c.interview_decisions ?? []) {
+        if (d.reviewer_id === me.id) rows.push({ key: `${c.id}-${d.decided_at}`, c, round: d.round, approved: d.decision === 'accepted', opinion: d.reason, at: d.decided_at });
+      }
+    }
+    return rows.sort((x, y) => y.at.localeCompare(x.at));
   }, [candidates, me]);
 
   const sortedInterviews = useMemo(
@@ -128,32 +135,6 @@ export default function ReviewerHomePage() {
 
   const candidateFor = (id: string) => candidates.find((c) => c.id === id);
   const roundName = (id: string) => everyRound.find((r) => r.id === id)?.name ?? id;
-
-  const recordInterview = async (interview: ScheduledInterview, decision: 'accepted' | 'rejected') => {
-    const reason = (opinions[interview.id] || '').trim();
-    if (!reason) {
-      setInterviewError({ id: interview.id, message: 'Write your opinion of this teacher before giving your yes or no.' });
-      return;
-    }
-    setDecidingId(interview.id);
-    setInterviewError(null);
-    try {
-      const res = await fetch(`/api/interviews/${interview.id}/decision`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, reason }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not record the decision.');
-      setMyInterviews((prev) => prev.filter((i) => i.id !== interview.id));
-      setOpinions((prev) => { const next = { ...prev }; delete next[interview.id]; return next; });
-      if (data.candidate) setCandidates((prev) => prev.map((c) => (c.id === data.candidate.id ? data.candidate : c)));
-    } catch (e) {
-      setInterviewError({ id: interview.id, message: e instanceof Error ? e.message : 'Could not record the decision.' });
-    } finally {
-      setDecidingId(null);
-    }
-  };
 
   const initial = (me?.name || email || 'R').trim().charAt(0).toUpperCase();
 
@@ -250,16 +231,16 @@ export default function ReviewerHomePage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Waiting for you" value={waiting.length} hint="Teachers needing your yes or no" Icon={ClipboardCheck} tone="amber" />
+        <StatCard label="Allocated to you" value={waiting.length} hint="Teachers waiting for your review" Icon={ClipboardCheck} tone="amber" />
         <StatCard label="Interviews" value={myInterviews.length} hint="Scheduled with you" Icon={Calendar} tone="indigo" />
-        <StatCard label="Decided" value={decidedByMe.length} hint="Your yes and no answers" Icon={CheckCircle2} tone="emerald" />
+        <StatCard label="Reviews given" value={decidedByMe.length} hint="Your ratings and opinions" Icon={CheckCircle2} tone="emerald" />
       </div>
 
       {/* Waiting for this reviewer */}
       <Card>
         <CardHeader
-          title={`Waiting for your yes or no (${waiting.length})`}
-          description="Open a report, read it, then give your decision."
+          title={`Allocated to you (${waiting.length})`}
+          description="HR gave you these teachers. Interview them, then open the report to rate them and give your opinion."
           action={waiting.length > 4 ? (
             <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -275,7 +256,7 @@ export default function ReviewerHomePage() {
           ) : undefined}
         />
         {waiting.length === 0 ? (
-          <EmptyState Icon={ClipboardCheck} title="You are all caught up" description="No teachers are waiting for you right now. New ones appear here as soon as they reach your round." />
+          <EmptyState Icon={ClipboardCheck} title="You are all caught up" description="No teachers are allocated to you right now. When HR gives you one, you are told in the bell and it shows here." />
         ) : filteredWaiting.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">No one matches “{search}”.</p>
         ) : (
@@ -289,7 +270,7 @@ export default function ReviewerHomePage() {
                 <div className="flex items-center gap-3">
                   <Badge tone="amber">{round?.name} round</Badge>
                   <button type="button" onClick={() => setReportId(c.id)} className={buttonClass('primary', 'sm')}>
-                    <Sparkles className="w-4 h-4" /> Open report and decide
+                    <Sparkles className="w-4 h-4" /> Open report and review
                   </button>
                 </div>
               </li>
@@ -302,7 +283,7 @@ export default function ReviewerHomePage() {
       <Card>
         <CardHeader
           title={`My scheduled interviews (${myInterviews.length})`}
-          description="When HR books an interview with you, it shows here with the meeting link. After it, write your opinion and give your yes or no."
+          description="When HR books an interview with you, it shows here with the meeting link. After it, open the report and give your rating and opinion."
         />
         {sortedInterviews.length === 0 ? (
           <EmptyState Icon={Calendar} title="Nothing scheduled" description="No interviews are booked with you right now." />
@@ -311,8 +292,6 @@ export default function ReviewerHomePage() {
             {sortedInterviews.map((intv) => {
               const c = candidateFor(intv.candidate_id);
               const soon = startsIn(intv.scheduled_at);
-              const busy = decidingId === intv.id;
-              const err = interviewError?.id === intv.id ? interviewError.message : '';
               return (
                 <div key={intv.id} className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -340,36 +319,11 @@ export default function ReviewerHomePage() {
                     </div>
                   </div>
                   {intv.notes && <p className="text-xs text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2">Note from HR: {intv.notes}</p>}
-                  <textarea
-                    value={opinions[intv.id] || ''}
-                    onChange={(e) => {
-                      setOpinions((prev) => ({ ...prev, [intv.id]: e.target.value }));
-                      if (err) setInterviewError(null);
-                    }}
-                    rows={3}
-                    aria-label={`Your opinion of ${c?.name || 'this teacher'}`}
-                    placeholder="After the interview: your opinion of this teacher (required)"
-                    className={inputClass}
-                  />
-                  {err && <p role="alert" className="text-sm font-semibold text-rose-700">{err}</p>}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => recordInterview(intv, 'accepted')}
-                      className="inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer"
-                    >
-                      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />} Yes, move ahead
+                  {c && (
+                    <button type="button" onClick={() => setReportId(c.id)} className={`${buttonClass('primary')} w-full`}>
+                      <Sparkles className="w-4 h-4" /> After the interview: give your rating and opinion
                     </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => recordInterview(intv, 'rejected')}
-                      className="inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 disabled:opacity-50 cursor-pointer"
-                    >
-                      <ThumbsDown className="w-4 h-4" /> No
-                    </button>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -382,21 +336,21 @@ export default function ReviewerHomePage() {
 
       {/* What this reviewer has decided */}
       <Card>
-        <CardHeader title="Your recent decisions" description="Your latest yes and no answers, with your own words." />
+        <CardHeader title="Your reviews" description="Your latest ratings and opinions. HR decides what happens next." />
         {decidedByMe.length === 0 ? (
-          <EmptyState Icon={History} title="No decisions yet" description="Once you give a yes or no, it is kept here." />
+          <EmptyState Icon={History} title="No reviews yet" description="Once you send a review, it is kept here." />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {decidedByMe.slice(0, 15).map(({ c, d }) => (
-              <li key={`${c.id}-${d.decided_at}`} className="py-3">
+            {decidedByMe.slice(0, 15).map((row) => (
+              <li key={row.key} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">· {d.round_label}</span></span>
-                  {d.decision === 'accepted'
-                    ? <Badge tone="emerald"><CheckCircle2 className="w-3.5 h-3.5" /> Yes</Badge>
-                    : <Badge tone="rose"><XCircle className="w-3.5 h-3.5" /> No</Badge>}
+                  <span className="text-sm font-semibold text-slate-900">{row.c.name} <span className="font-normal text-slate-500">· {roundName(row.round)}{row.score !== undefined ? ` · ${row.score}/100` : ''}</span></span>
+                  {row.approved
+                    ? <Badge tone="emerald"><CheckCircle2 className="w-3.5 h-3.5" /> Approved</Badge>
+                    : <Badge tone="rose"><XCircle className="w-3.5 h-3.5" /> Did not approve</Badge>}
                 </div>
-                {d.reason && <p className="text-sm text-slate-600 mt-1">{d.reason}</p>}
-                <p className="text-xs text-slate-400 mt-1">{new Date(d.decided_at).toLocaleString('en-IN')}</p>
+                {row.opinion && <p className="text-sm text-slate-600 mt-1">{row.opinion}</p>}
+                <p className="text-xs text-slate-400 mt-1">{new Date(row.at).toLocaleString('en-IN')}</p>
               </li>
             ))}
           </ul>

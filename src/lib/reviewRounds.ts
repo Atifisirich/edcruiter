@@ -10,6 +10,7 @@
 
 import { accessOf, isAdmin } from './permissions';
 import { rolesOf } from './roles';
+import { parseRubric } from './roundReview';
 import type { Candidate, ReviewRound, RoleDef, RoundResult, School, User } from './types';
 
 export const MAX_ROUNDS = 6;
@@ -141,7 +142,9 @@ export function parseRounds(
     let id = typeof raw?.id === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(raw.id) ? raw.id : newId();
     if (seenIds.has(id)) id = newId();
     seenIds.add(id);
-    rounds.push({ id, name, role_ids });
+    const rb = parseRubric(raw?.rubric);
+    if (!rb.ok) return { ok: false, error: `${name}: ${rb.error}` };
+    rounds.push({ id, name, role_ids, ...(rb.rubric ? { rubric: rb.rubric } : {}) });
   }
 
   return { ok: true, rounds };

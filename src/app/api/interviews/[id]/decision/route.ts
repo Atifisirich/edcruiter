@@ -4,9 +4,11 @@ import { auditAsStaff, authErrorResponse, requireSchoolAccess } from '@/lib/auth
 import { checkRateLimit } from '@/lib/rateLimit';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { decide } from '@/lib/hiringDecision';
-import { isAdmin } from '@/lib/permissions';
+import { HIRING_TEAM } from '@/lib/permissions';
 import { roundsFor } from '@/lib/reviewRounds';
-import { notifyRoundCleared } from '@/lib/interviewNotify';
+import type { ReviewRound } from '@/lib/types';
+import { reviewStillOwed } from '@/lib/roundReview';
+import { isAdmin } from '@/lib/permissions';
 
 /**
  * Records the outcome of a scheduled interview: the reviewer's yes or no and
@@ -22,13 +24,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const interview = db.getScheduledInterviewById(id);
     if (!interview) return NextResponse.json({ error: 'Interview not found' }, { status: 404 });
 
-    const ctx = await requireSchoolAccess(interview.school_id);
-
-    // Only the assigned reviewer, or the school admin, may record this
-    // particular interview's outcome — not any other reviewer at the school.
-    if (ctx.user.id !== interview.assigned_user_id && !isAdmin(ctx.role)) {
-      return NextResponse.json({ error: 'Only the assigned reviewer or the school admin can record this outcome.' }, { status: 403 });
-    }
+    // Passing a teacher on or stopping them is HR's job (or the admin's). The
+    // reviewer gives a report card on the candidate's report instead.
+    const ctx = await requireSchoolAccess(interview.school_id, { anyOf: HIRING_TEAM });
     if (interview.status !== 'scheduled') {
       return NextResponse.json({ error: 'This interview is no longer open.' }, { status: 409 });
     }
@@ -50,6 +48,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const rounds = roundsFor(db.getSchoolById(ctx.schoolId), candidate);
     const round = rounds.find((r) => r.id === interview.round);
     if (!round) return NextResponse.json({ error: 'This round is no longer one of your school’s review rounds.' }, { status: 409 });
+
+    if (reviewStillOwed(candidate, round.id) && !isAdmin(ctx.role)) {
+      return NextResponse.json({ error: `Wait for ${candidate.round_assignments?.[round.id]?.user_name ?? 'the reviewer'} to give their review of the ${round.name} round first.` }, { status: 409 });
+    }
 
     const outcome = decide(
       candidate,
@@ -73,18 +75,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? await notifyCandidateDeclined(ctx.schoolId, candidate.id)
       : undefined;
 
-    // A yes moves the teacher on: whoever runs the next round (and HR) is told to book it.
-    let nextUp: { id: string; name: string } | null | undefined;
-    let toldNext: string[] = [];
-    const passedRound = rounds.find((r) => r.id === round?.id);
-    if (passedRound && decision === 'accepted') {
-      const at = rounds.findIndex((r) => r.id === passedRound.id);
-      nextUp = rounds[at + 1] ?? null;
-      const school = db.getSchoolById(ctx.schoolId);
-      if (school) {
-        toldNext = await notifyRoundCleared({ school, candidate: candidate, round: passedRound, next: rounds[at + 1] ?? null, decidedBy: ctx.user, note: String(reason).trim() }).catch(() => []);
-      }
-    }
+    // A yes moves the teacher to the next round, and HR (who just recorded it) allocates the next reviewer.
+    const at = rounds.findIndex((r) => r.id === round.id);
+    const nextUp: ReviewRound | null | undefined = decision === 'accepted' ? rounds[at + 1] ?? null : undefined;
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: 'INTERVIEW_DECISION_RECORDED',
@@ -97,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       message: outcome.message,
       candidate: db.getCandidateById(ctx.schoolId, candidate.id) || updated,
       candidate_notified: candidateNotified,
-      ...(nextUp !== undefined ? { next_round: nextUp, next_round_told: toldNext } : {}),
+      ...(nextUp !== undefined ? { next_round: nextUp, next_round_told: [] as string[] } : {}),
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to record decision' }, { status: 500 });

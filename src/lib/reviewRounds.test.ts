@@ -24,20 +24,20 @@ const custom: ReviewRound[] = [
 ];
 
 describe('who may do what', () => {
-  it('lets HR run the shortlist and the offer, but not undo a decision or give a round yes or no', () => {
+  it('lets HR run the shortlist, the offer and passing a teacher on, but not undo a decision', () => {
     const hr = { role: 'HR' as const, role_id: 'HR' };
     expect(mayTake('shortlist', hr)).toBe(true);
     expect(mayTake('reject', hr)).toBe(true);
     expect(mayTake('offer_sent', hr)).toBe(true);
     expect(mayTake('reopen', hr)).toBe(false);
-    expect(mayTake('round_pass', hr, custom[0])).toBe(false);
+    expect(mayTake('round_pass', hr, custom[0])).toBe(true);
+    expect(mayTake('round_reject', hr, custom[0])).toBe(true);
   });
 
-  it('lets a reviewer decide only the rounds their role is assigned to', () => {
+  it('never lets a reviewer pass or stop a teacher, whatever round their role is assigned to', () => {
     const sciHod = { role: 'REPORTING_MANAGER' as const, role_id: 'role_sci' };
-    expect(mayTake('round_pass', sciHod, custom[0])).toBe(true);
-    expect(mayTake('round_reject', sciHod, custom[1])).toBe(true);
-    expect(mayTake('round_pass', sciHod, custom[2])).toBe(false);
+    expect(mayTake('round_pass', sciHod, custom[0])).toBe(false);
+    expect(mayTake('round_reject', sciHod, custom[1])).toBe(false);
     expect(mayTake('shortlist', sciHod)).toBe(false);
     expect(mayTake('offer_sent', sciHod)).toBe(false);
     expect(mayTake('reopen', sciHod)).toBe(false);

@@ -439,8 +439,48 @@ export interface PolicyAnswer {
 export interface ReviewRound {
   id: string;
   name: string;
-  /** Ids of the school's roles (RoleDef.id) whose holders may decide this round. */
+  /** Ids of the school's roles (RoleDef.id) whose holders may review this round. */
   role_ids: string[];
+  /** What the reviewer rates this teacher on, one to five stars each. Absent means the ready-made list for the round. See roundReview.ts. */
+  rubric?: RubricItem[];
+}
+
+/** One thing a reviewer rates. */
+export interface RubricItem {
+  key: string;
+  label: string;
+}
+
+/** HR gave this teacher to a reviewer for one round. */
+export interface RoundAssignment {
+  user_id: string;
+  user_name: string;
+  assigned_at: string;
+  assigned_by_name: string;
+}
+
+/**
+ * A reviewer's report card for one round: a rating on each item, an overall
+ * approve or do not approve, and their opinion. It never moves the teacher on
+ * or stops them; HR reads it and decides.
+ */
+export interface RoundReview {
+  reviewer_id: string;
+  reviewer_name: string;
+  recommendation: 'approve' | 'not_approve';
+  ratings: { key: string; label: string; score: number }[];
+  /** The ratings as a percentage, 0 to 100. */
+  average: number;
+  opinion: string;
+  submitted_at: string;
+}
+
+/** Questions suggested to the person interviewing, kept so they are made once. */
+export interface RoundQuestions {
+  subject: string[];
+  other: string[];
+  generated_at: string;
+  source: 'ai' | 'standard';
 }
 
 /** What a reviewer decided at one round. */
@@ -722,6 +762,12 @@ export interface Candidate {
   interview_decisions?: InterviewDecision[];
   /** Each review round's outcome, by round id. Older candidates also carry rm/ih/coo_clearance; see reviewRounds.ts. */
   round_results?: Record<string, RoundResult>;
+  /** Who HR gave this teacher to, by round id. */
+  round_assignments?: Record<string, RoundAssignment>;
+  /** What the reviewer said at each round, by round id. */
+  round_reviews?: Record<string, RoundReview>;
+  /** Suggested interview questions, by round id. */
+  round_questions?: Record<string, RoundQuestions>;
   created_at: string;
   updated_at: string;
 }
@@ -776,7 +822,7 @@ export interface AppNotification {
   id: string;
   school_id: string;
   user_id: string;
-  kind: 'interview_scheduled' | 'interview_cancelled';
+  kind: 'interview_scheduled' | 'interview_cancelled' | 'review_allocated' | 'review_submitted';
   title: string;
   body: string;
   /** Where the notice takes them. */

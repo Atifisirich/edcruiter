@@ -177,7 +177,6 @@ export default function HiringDecision({
             const cleared = result?.status === 'cleared';
             const isCurrent = !selected && round?.id === r.id;
             const last = i === rounds.length - 1;
-            const mine = !!me && mayTake('round_pass', me, r);
             return (
               <div key={r.id} className={`p-4 rounded-2xl border space-y-2.5 ${cleared ? 'border-emerald-200 bg-emerald-50/40' : isCurrent ? 'border-indigo-300 bg-white ring-2 ring-indigo-100' : 'border-slate-200 bg-slate-50/60'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -193,30 +192,14 @@ export default function HiringDecision({
                     {result.notes}
                   </p>
                 )}
-                {isCurrent && mine && (
-                  <div className="space-y-2.5">
-                    <textarea
-                      value={panel === 'stop' ? '' : note}
-                      onChange={(e) => setNote(e.target.value)}
-                      disabled={panel === 'stop'}
-                      rows={2}
-                      placeholder="Your opinion of this teacher (required). Only your school sees it."
-                      className="w-full text-sm p-2.5 rounded-xl border border-slate-200 bg-white focus:border-indigo-500 focus:outline-none disabled:opacity-50"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" disabled={busy} onClick={() => send('round_pass', { round: r.id, note })} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
-                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        {last ? 'Final yes: select this teacher' : `Yes: pass to ${rounds[i + 1].name}`}
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => { setPanel('stop'); setNote(''); setError(''); }} className="px-4 py-2 rounded-xl bg-white border border-rose-300 text-rose-800 text-xs font-bold cursor-pointer disabled:opacity-50">
-                        No: stop here
-                      </button>
-                    </div>
-                    {panel === 'stop' && reasonBox('Why are you stopping here? Only your school sees this.', 'Confirm: stop here', 'round_reject', { round: r.id }, true)}
-                  </div>
-                )}
-                {isCurrent && !mine && me && (
-                  <p className="text-xs text-slate-500">Waiting for {r.role_ids.map(roleName).join(' or ')} to give their yes or no.</p>
+                {isCurrent && (
+                  <p className="text-xs text-slate-600">
+                    {candidate.round_reviews?.[r.id]
+                      ? `${candidate.round_reviews[r.id].reviewer_name}'s review is in. HR passes the teacher on from the card at the top of the page.`
+                      : candidate.round_assignments?.[r.id]
+                      ? `With ${candidate.round_assignments[r.id].user_name}, waiting for their rating and opinion.`
+                      : 'Not allocated yet. HR gives the teacher to a reviewer from the card at the top of the page.'}
+                  </p>
                 )}
               </div>
             );
