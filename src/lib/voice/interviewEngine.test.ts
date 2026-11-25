@@ -106,9 +106,9 @@ describe('one turn', () => {
 
 describe('Asha’s voice', () => {
   it('is a female voice in each language, unless the server picks another', () => {
-    expect(voiceFor({ speaker: '' }, 'English', {})).toBe('aparna_en_companion');
-    expect(voiceFor({ speaker: '' }, 'Hindi', {})).toBe('aparna_hi_customer');
-    expect(voiceFor({ speaker: '' }, 'Telugu', {})).toBe('kavitha_te_conversation');
+    expect(voiceFor({ speaker: '' }, 'English', {})).toBe('aparna_en_edtech');
+    expect(voiceFor({ speaker: '' }, 'Hindi', {})).toBe('sanchita_hi_interview');
+    expect(voiceFor({ speaker: '' }, 'Telugu', {})).toBe('kavitha_te_narration');
     expect(voiceFor({ speaker: '' }, 'English', { VOICE_TTS_SPEAKER_ENGLISH: 'sanchita_en_companion' })).toBe('sanchita_en_companion');
   });
 

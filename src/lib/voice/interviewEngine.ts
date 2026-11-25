@@ -127,12 +127,12 @@ ${brief.claims_to_verify}`;
 // --- Speaking and listening ----------------------------------------------------------
 
 /**
- * Asha's voice in each language: Sarvam's own picks for a warm, natural female
- * voice in a conversation (bulbul:v4-flash). Without a speaker Sarvam uses a
+ * Asha's voice in each language: a steady, professional female voice for an
+ * interview (bulbul:v4-flash; the "companion" voices sound too personal). Without a speaker Sarvam uses a
  * male advert voice. VOICE_TTS_SPEAKER_ENGLISH / _HINDI / _TELUGU, or
  * VOICE_TTS_SPEAKER for all, choose another.
  */
-const FEMALE_VOICE: Record<string, string> = { English: 'aparna_en_companion', Hindi: 'aparna_hi_customer', Telugu: 'kavitha_te_conversation' };
+const FEMALE_VOICE: Record<string, string> = { English: 'aparna_en_edtech', Hindi: 'sanchita_hi_interview', Telugu: 'kavitha_te_narration' };
 const refusedVoices = new Set<string>();
 
 export function voiceFor(engine: Pick<Engine, 'speaker'>, language: string, env: Record<string, string | undefined> = process.env): string {
