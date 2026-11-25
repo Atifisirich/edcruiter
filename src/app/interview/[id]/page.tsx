@@ -115,6 +115,7 @@ export default function VoiceInterviewPage() {
   const [seconds, setSeconds] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const agentRef = useRef<AgentLike | null>(null);
   const linesRef = useRef<Line[]>([]);
@@ -191,6 +192,31 @@ export default function VoiceInterviewPage() {
       const start = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(start.error || 'Could not start the interview.');
       interviewRef.current = start.interview_id;
+
+      if (start.engine === 'own') {
+        // Our own pipeline: the browser listens and plays; our server hears, thinks and speaks through Sarvam.
+        const { OwnInterviewClient } = await import('@/lib/voice/browserInterview');
+        const client = new OwnInterviewClient({ candidateId: id, interviewId: start.interview_id }, {
+          onState: (s) => setAgentState(s),
+          onLine: (l) => { linesRef.current = [...linesRef.current, l]; setLines(linesRef.current); setNotice(''); },
+          onAgentLevel: (l) => setAgentLevel(l),
+          onMicLevel: () => undefined,
+          onEnd: () => { if (!finishing.current) void finish(); },
+          onError: (m) => setNotice(m),
+        });
+        agentRef.current = {
+          start: () => client.start(),
+          waitForConnect: async () => true,
+          stop: () => client.stop(),
+          mute: () => client.setMuted(true),
+          unmute: () => client.setMuted(false),
+        };
+        startedAt.current = Date.now();
+        setSeconds(0);
+        setPhase('live');
+        await client.start();
+        return;
+      }
 
       const sdk = await import('sarvam-conv-ai-sdk/browser');
       const audio = new sdk.BrowserAudioInterface(16000, {
@@ -383,6 +409,7 @@ export default function VoiceInterviewPage() {
               <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">{stateLabel}</p>
               <p className="text-lg sm:text-xl font-semibold leading-snug">{caption}</p>
               {lastUser && <p className="text-sm text-emerald-300">You: {lastUser}</p>}
+              {notice && <p className="text-xs text-amber-300">{notice}</p>}
             </div>
 
             {showTranscript && (

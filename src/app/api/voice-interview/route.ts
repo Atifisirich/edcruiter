@@ -8,6 +8,7 @@ import {
 } from '@/lib/aiInterview';
 import { notifyAiInterviewInvite } from '@/lib/interviewNotify';
 import type { AiInterview, Candidate } from '@/lib/types';
+import { ownEngine, ownEngineOn } from '@/lib/voice/interviewEngine';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     const access = await requireCandidateOrStaff(candidateId);
     const candidate = db.getCandidateById(access.schoolId, candidateId);
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
-    const configured = interviewRuntime() !== null;
+    const configured = ownEngineOn() || interviewRuntime() !== null;
     const i = candidate.ai_interview;
     if (access.kind === 'candidate') {
       return NextResponse.json({ configured, viewer: 'candidate', name: candidate.name, interview: i ? { id: i.id, status: i.status, language: i.language } : null });
@@ -83,8 +84,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'start') {
-      const runtime = interviewRuntime();
-      if (!runtime) return NextResponse.json({ error: 'The AI interview is not switched on yet. Edcruiter is setting it up.' }, { status: 503 });
+      const own = ownEngineOn() ? ownEngine() : null;
+      const runtime = own ? null : interviewRuntime();
+      if (!own && !runtime) return NextResponse.json({ error: 'The AI interview is not switched on yet. Edcruiter is setting it up.' }, { status: 503 });
       const prev = candidate.ai_interview;
       const byStaff = access.kind === 'staff';
       if (!byStaff) {
@@ -101,10 +103,14 @@ export async function POST(req: NextRequest) {
         ...(byStaff ? { by_staff: true } : {}),
         ...(prev?.invited_at ? { invited_at: prev.invited_at } : {}),
         started_at: new Date().toISOString(),
+        engine: own ? 'own' : 'sarvam_agent',
       };
       db.updateCandidate(candidate.school_id, candidate.id, { ai_interview: interview });
       audit('AI_INTERVIEW_STARTED', byStaff ? 'Started a demo interview.' : 'Candidate started the interview.');
+      if (own) return NextResponse.json({ engine: 'own', interview_id: interview.id });
+      if (!runtime) return NextResponse.json({ error: 'The AI interview is not switched on yet.' }, { status: 503 });
       return NextResponse.json({
+        engine: 'sarvam_agent',
         interview_id: interview.id,
         variables: interviewVariables(candidate, school?.name || 'the school', interview.plan, language),
         runtime: { org_id: runtime.orgId, workspace_id: runtime.workspaceId, app_id: runtime.appId, ...(runtime.version ? { version: runtime.version } : {}) },
@@ -115,7 +121,7 @@ export async function POST(req: NextRequest) {
       const current = candidate.ai_interview;
       if (!current || current.id !== body.interview_id) return NextResponse.json({ error: 'This interview is no longer current.' }, { status: 409 });
       if (current.status === 'completed') return NextResponse.json({ status: 'completed' });
-      const runtime = interviewRuntime();
+      const runtime = current.engine === 'own' ? null : interviewRuntime();
       const fromBrowser: TranscriptTurn[] = cleanTurns(body.transcript);
       const seconds = Math.max(0, Math.min(3600, Math.round(Number(body.duration_sec) || 0)));
 
@@ -127,7 +133,9 @@ export async function POST(req: NextRequest) {
           verified = await fetchSarvamTranscript(runtime, current.id);
         }
       }
-      const turns = verified?.turns ?? fromBrowser;
+      // Our own pipeline wrote the conversation on the server as it happened; the browser's copy is not needed.
+      const serverTurns = current.engine === 'own' ? current.transcript : null;
+      const turns = serverTurns ?? verified?.turns ?? fromBrowser;
       const report = await analyseInterview(current.plan, turns, candidate);
       const interview: AiInterview = {
         ...current,
@@ -135,7 +143,7 @@ export async function POST(req: NextRequest) {
         ended_at: new Date().toISOString(),
         duration_sec: seconds,
         transcript: turns,
-        transcript_source: verified ? 'sarvam' : 'browser',
+        transcript_source: serverTurns ? 'server' : verified ? 'sarvam' : 'browser',
         report,
       };
       // When the interview is the assessment (no scored stages), its score is the candidate's score in the list.
