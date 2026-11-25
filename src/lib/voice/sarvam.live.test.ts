@@ -49,8 +49,8 @@ describe.skipIf(!live)('Sarvam, for real', () => {
     for (let i = 0; i <= answers.length; i++) {
       let audio: Int16Array | undefined;
       if (i > 0) {
-        const { pcm } = unwrapWav(await speak(engine, answers[i - 1], 'English'));
-        audio = resample(pcm, PLAY_RATE, 16_000);
+        // The candidate's answer as raw 16 kHz samples, as the browser sends it.
+        audio = await engine.tts.synthesize(answers[i - 1], { language: 'en-IN', speaker: 'shubh_enhi_ads', rate: 16_000 });
       }
       const t = Date.now();
       let firstSay = 0;

@@ -126,19 +126,41 @@ ${brief.claims_to_verify}`;
 
 // --- Speaking and listening ----------------------------------------------------------
 
-/** A sentence as WAV audio, made fresh by Sarvam's voice. */
+/**
+ * Asha's voice in each language: Sarvam's own picks for a warm, natural female
+ * voice in a conversation (bulbul:v4-flash). Without a speaker Sarvam uses a
+ * male advert voice. VOICE_TTS_SPEAKER_ENGLISH / _HINDI / _TELUGU, or
+ * VOICE_TTS_SPEAKER for all, choose another.
+ */
+const FEMALE_VOICE: Record<string, string> = { English: 'aparna_en_companion', Hindi: 'aparna_hi_customer', Telugu: 'kavitha_te_conversation' };
+const refusedVoices = new Set<string>();
+
+export function voiceFor(engine: Pick<Engine, 'speaker'>, language: string, env: Record<string, string | undefined> = process.env): string {
+  const chosen = env[`VOICE_TTS_SPEAKER_${language.toUpperCase()}`] || engine.speaker || FEMALE_VOICE[language] || FEMALE_VOICE.English;
+  return refusedVoices.has(chosen) ? (FEMALE_VOICE[language] && !refusedVoices.has(FEMALE_VOICE[language]) ? FEMALE_VOICE[language] : '') : chosen;
+}
+
+/**
+ * A sentence as audio, made fresh by Sarvam's voice: mp3 (about a tenth of the
+ * size of WAV, so it reaches the browser quickly), or WAV from a voice that
+ * gives only samples.
+ */
 export async function speak(engine: Engine, text: string, language: string, signal?: AbortSignal): Promise<Uint8Array> {
-  let pcm: Pcm;
+  const make = (speaker: string): Promise<Uint8Array> => {
+    const opts = { language: langCode(language), speaker, rate: PLAY_RATE };
+    if (typeof engine.tts.synthesizeEncoded === 'function') return engine.tts.synthesizeEncoded(text, opts, 'mp3', signal);
+    return engine.tts.synthesize(text, opts, signal).then((pcm: Pcm) => new Uint8Array(wavWrap(pcm, PLAY_RATE)));
+  };
+  const speaker = voiceFor(engine, language);
   try {
-    pcm = await engine.tts.synthesize(text, { language: langCode(language), speaker: engine.speaker, rate: PLAY_RATE }, signal);
+    return await make(speaker);
   } catch (e) {
-    // A speaker name the model does not know: fall back to the model's own default voice.
-    if (!engine.speaker || !/speaker/i.test(e instanceof Error ? e.message : '')) throw e;
-    console.warn(`Voice "${engine.speaker}" refused; using the default voice.`);
-    engine.speaker = '';
-    pcm = await engine.tts.synthesize(text, { language: langCode(language), speaker: '', rate: PLAY_RATE }, signal);
+    // A voice the model does not know: never again this run; fall back to Asha's usual voice, or Sarvam's default.
+    if (!speaker || !/speaker/i.test(e instanceof Error ? e.message : '')) throw e;
+    console.warn(`Voice "${speaker}" refused; using another.`);
+    refusedVoices.add(speaker);
+    return make(voiceFor(engine, language));
   }
-  return new Uint8Array(wavWrap(pcm, PLAY_RATE));
 }
 
 /** Cuts a long answer into pieces of at most 25 seconds, at the quietest moment near each cut. */
@@ -248,11 +270,21 @@ export async function runTurn(input: TurnInput, emit: (e: TurnEvent) => void): P
   const usage: TurnUsage = { sttSec: 0, ttsChars: 0, llm: [] };
   const said: string[] = [];
 
-  const say = async (text: string) => {
-    const wav = await speak(engine, text, language, signal);
-    usage.ttsChars += text.length;
-    said.push(text);
-    emit({ type: 'say', text, audio: Buffer.from(wav).toString('base64') });
+  // Each sentence's voice starts being made the moment the sentence is written, while the
+  // model writes the next one; they are still sent to the browser in order.
+  let chain: Promise<void> = Promise.resolve();
+  let queued = 0;
+  const say = (text: string): Promise<void> => {
+    queued++;
+    const audio = speak(engine, text, language, signal);
+    audio.catch(() => undefined);
+    chain = chain.then(async () => {
+      const bytes = await audio;
+      usage.ttsChars += text.length;
+      said.push(text);
+      emit({ type: 'say', text, audio: Buffer.from(bytes).toString('base64') });
+    });
+    return chain;
   };
 
   let heard = '';
@@ -288,7 +320,7 @@ export async function runTurn(input: TurnInput, emit: (e: TurnEvent) => void): P
     const r = takeSpeakable(buffer, final);
     buffer = r.rest;
     if (r.ended) ended = true;
-    for (const s of r.sentences) await say(s);
+    for (const s of r.sentences) void say(s);
   };
   const think = async (chat: ChatProvider) => {
     for await (const d of chat.stream(messages, signal)) {
@@ -296,13 +328,14 @@ export async function runTurn(input: TurnInput, emit: (e: TurnEvent) => void): P
       if (d.text) { buffer += d.text; await handle(false); }
     }
     await handle(true);
+    await chain;
   };
   try {
     await think(engine.chat);
   } catch (e) {
     if (signal?.aborted) throw e;
     console.warn('Interview brain failed:', e instanceof Error ? e.message : e);
-    if (said.length || !engine.fallbackChat) throw e;
+    if (queued || !engine.fallbackChat) throw e;
     buffer = '';
     await think(engine.fallbackChat);
   }

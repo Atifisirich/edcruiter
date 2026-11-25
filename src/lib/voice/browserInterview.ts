@@ -48,7 +48,7 @@ export class OwnInterviewClient {
   private stream: MediaStream | null = null;
   private node: AudioWorkletNode | null = null;
   private analyser: AnalyserNode | null = null;
-  private vad = new TurnDetector({ rate: RATE, endSilenceMs: 1500, startMs: 150, minSpeechMs: 300, maxUtteranceMs: 120_000, preRollMs: 400 });
+  private vad = new TurnDetector({ rate: RATE, endSilenceMs: 1000, startMs: 150, minSpeechMs: 300, maxUtteranceMs: 120_000, preRollMs: 400 });
   private carry: number[] = [];
   private pos = 0;
   private state: ClientState = 'connecting';

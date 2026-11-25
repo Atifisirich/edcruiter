@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addUsage, ownEngineOn, runTurn, splitForStt, systemPrompt, takeSpeakable, type Engine, type TurnEvent } from './interviewEngine';
+import { addUsage, ownEngineOn, runTurn, voiceFor, splitForStt, systemPrompt, takeSpeakable, type Engine, type TurnEvent } from './interviewEngine';
 import { defaultPlan } from '../aiInterview';
 import type { AiInterview, Candidate } from '../types';
 import type { ChatDelta, ChatMessage } from './providers';
@@ -101,6 +101,25 @@ describe('one turn', () => {
     const { engine, asked } = fakeEngine(['Can you hear me?']);
     await runTurn({ engine, interview: interview({ transcript: [{ role: 'agent', text: 'Q' }] }), candidate, schoolName: 'S', silence: true }, () => undefined);
     expect(asked[0][asked[0].length - 1].content).toMatch(/said nothing for a while/);
+  });
+});
+
+describe('Asha’s voice', () => {
+  it('is a female voice in each language, unless the server picks another', () => {
+    expect(voiceFor({ speaker: '' }, 'English', {})).toBe('aparna_en_companion');
+    expect(voiceFor({ speaker: '' }, 'Hindi', {})).toBe('aparna_hi_customer');
+    expect(voiceFor({ speaker: '' }, 'Telugu', {})).toBe('kavitha_te_conversation');
+    expect(voiceFor({ speaker: '' }, 'English', { VOICE_TTS_SPEAKER_ENGLISH: 'sanchita_en_companion' })).toBe('sanchita_en_companion');
+  });
+
+  it('keeps sentences in order even when a later one is ready first', async () => {
+    const { engine } = fakeEngine(['First one is long and slow. ', 'Second. ', 'Third?']);
+    (engine.tts as unknown as { synthesize: (t: string) => Promise<Int16Array> }).synthesize = (t: string) =>
+      new Promise((r) => setTimeout(() => r(new Int16Array(10)), t.startsWith('First') ? 60 : 5));
+    const said: string[] = [];
+    const r = await runTurn({ engine, interview: interview({ transcript: [{ role: 'agent', text: 'Q' }] }), candidate, schoolName: 'S', audio: new Int16Array(1600) }, (e) => { if (e.type === 'say') said.push(e.text); });
+    expect(said).toEqual(['First one is long and slow.', 'Second.', 'Third?']);
+    expect(r.said).toEqual(said);
   });
 });
 

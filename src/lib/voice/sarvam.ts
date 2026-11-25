@@ -181,6 +181,34 @@ export class SarvamTts implements TtsProvider {
       }),
     }, signal);
     const body = (await res.json()) as { audios?: string[] };
+    return this.toPcm(body, asked, opts.rate);
+  }
+
+  /** The sentence as a ready-to-play file (mp3 by default): far smaller than raw samples, for sending to a browser. */
+  async synthesizeEncoded(text: string, opts: { language: string; speaker: string; rate: number }, codec: 'mp3' | 'wav' = 'mp3', signal?: AbortSignal): Promise<Uint8Array> {
+    const rate = TTS_RATES.includes(opts.rate) ? opts.rate : 24_000;
+    const res = await call(this.cfg, '/text-to-speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.slice(0, 2400),
+        target_language_code: opts.language,
+        ...(opts.speaker ? { speaker: opts.speaker } : {}),
+        model: this.cfg.model ?? 'bulbul:v4-flash',
+        speech_sample_rate: rate,
+        output_audio_codec: codec,
+        ...(this.cfg.pace ? { pace: this.cfg.pace } : {}),
+        ...(this.cfg.temperature ? { temperature: this.cfg.temperature } : {}),
+      }),
+    }, signal);
+    const body = (await res.json()) as { audios?: string[] };
+    const bytes = Buffer.concat((body.audios ?? []).map((b64) => Buffer.from(b64, 'base64')));
+    if (bytes.length === 0) throw new SarvamError('Sarvam text-to-speech returned no audio');
+    return new Uint8Array(bytes);
+  }
+
+  private toPcm(body: { audios?: string[] }, asked: number, rate: number): Pcm {
+    const opts = { rate };
     const parts = (body.audios ?? []).map((b64) => {
       const { pcm, rate } = unwrapWav(Buffer.from(b64, 'base64'));
       return rate && rate !== opts.rate ? resample(pcm, rate, opts.rate) : resample(pcm, asked, opts.rate);
