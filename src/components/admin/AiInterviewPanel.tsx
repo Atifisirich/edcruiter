@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ExternalLink, Loader2, Mic, Send, Sparkles } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Loader2, Mic, MessagesSquare, Send, Sparkles } from 'lucide-react';
 import AiInterviewReportView from '@/components/reviewer/report/AiInterviewReportView';
 import { useAdmin } from '@/components/admin/adminContext';
 import { buttonClass } from '@/components/admin/ui';
 import { isHiringTeam } from '@/lib/permissions';
-import type { AiInterview } from '@/lib/types';
+import type { AiInterview, InterviewMode } from '@/lib/types';
+import { MODE_LABEL } from '@/lib/interviewMode';
 
 /**
  * The optional spoken AI interview, for one candidate: invite them, run it
@@ -17,10 +18,15 @@ export default function AiInterviewPanel({
   candidateId,
   candidateName,
   onChange,
+  mode = 'five_stage',
+  onModeChange,
 }: {
   candidateId: string;
   candidateName: string;
   onChange?: (interview: AiInterview | null) => void;
+  /** What this candidate goes through. HR can switch one candidate to the AI interview only. */
+  mode?: InterviewMode;
+  onModeChange?: () => void | Promise<void>;
 }) {
   const { user, toast } = useAdmin();
   const canRun = isHiringTeam(user?.role);
@@ -62,6 +68,42 @@ export default function AiInterviewPanel({
     }
   };
 
+  const first = candidateName.split(' ')[0];
+  const setPath = async (interview_mode: InterviewMode | 'vacancy') => {
+    const res = await fetch(`/api/candidates/${encodeURIComponent(candidateId)}/interview-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interview_mode }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : { error: 'Could not reach the server.' };
+    if (!res?.ok) { toast(data.error || 'That did not work. Try again.', 'error'); return false; }
+    await onModeChange?.();
+    return true;
+  };
+  // Only the spoken interview for this one candidate: no written test or videos. What they already did is kept.
+  const giveOnlyInterview = async () => {
+    if (!window.confirm(`Give ${first} only the AI conversational interview?
+
+They skip the written test and the videos, and are invited to the spoken interview now. Anything they already finished is kept. You can change this back.`)) return;
+    setBusy('only');
+    try {
+      if (!(await setPath('ai'))) return;
+      const wasInvited = interview?.status === 'invited';
+      if (wasInvited) { toast(`${first} now has only the AI interview. Their invitation is still open.`, 'success'); return; }
+      await act('invite', 'only');
+    } finally {
+      setBusy('');
+    }
+  };
+  const changeBack = async () => {
+    setBusy('back');
+    try {
+      if (await setPath('vacancy')) toast(`${first} is back on the steps their vacancy asks for.`, 'success');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const link = typeof window !== 'undefined' ? `${window.location.origin}/interview/${candidateId}` : `/interview/${candidateId}`;
   const r = interview?.report;
 
@@ -71,9 +113,14 @@ export default function AiInterviewPanel({
         <p className="text-xs text-slate-500 max-w-md">An optional spoken interview with an AI interviewer. You get a scored report with quotes as evidence.</p>
         {canRun && (
           <div className="flex flex-wrap gap-2">
+            {mode !== 'ai' && interview?.status !== 'in_progress' && (
+              <button type="button" disabled={!!busy} onClick={() => void giveOnlyInterview()} className={buttonClass('primary', 'sm')} title="Skip the written test and videos for this candidate">
+                {busy === 'only' ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessagesSquare className="w-4 h-4" />} Give only the AI interview
+              </button>
+            )}
             {(!interview || interview.status === 'completed' || interview.status === 'abandoned') && (
-              <button type="button" disabled={!!busy} onClick={() => act('invite', 'invite')} className={buttonClass('primary', 'sm')}>
-                {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {interview ? 'Invite again' : 'Invite'} {candidateName.split(' ')[0]}
+              <button type="button" disabled={!!busy} onClick={() => act('invite', 'invite')} className={buttonClass(mode === 'ai' ? 'primary' : 'secondary', 'sm')} title={mode === 'ai' ? undefined : 'Adds the interview; their test stays as it is'}>
+                {busy === 'invite' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {interview ? `Invite ${first} again` : mode === 'ai' ? `Invite ${first}` : 'Add the AI interview to their test'}
               </button>
             )}
             <a href={link} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'sm')}><Mic className="w-4 h-4" /> Try it yourself <ExternalLink className="w-3 h-3" /></a>
@@ -83,6 +130,15 @@ export default function AiInterviewPanel({
           </div>
         )}
       </div>
+
+      {canRun && (
+        <p className="text-xs text-slate-600 print:hidden">
+          Goes through: <strong>{MODE_LABEL[mode]}</strong>
+          {mode === 'ai' && (
+            <> · <button type="button" disabled={!!busy} onClick={() => void changeBack()} className="font-semibold text-indigo-700 hover:underline cursor-pointer disabled:opacity-50">Change back</button></>
+          )}
+        </p>
+      )}
 
       {!configured && (
         <p className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> The live voice interview is not switched on for this site yet. You can still show a sample report.</p>

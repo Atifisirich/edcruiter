@@ -78,7 +78,7 @@ export default function CandidateReportPage() {
         isOpen
         candidateId={id}
         onClose={() => router.push('/admin/candidates')}
-        renderInterview={candidate ? (onChange) => <AiInterviewPanel candidateId={candidate.id} candidateName={candidate.name} onChange={onChange} /> : undefined}
+        renderInterview={candidate ? (onChange) => <AiInterviewPanel candidateId={candidate.id} candidateName={candidate.name} onChange={onChange} mode={candidate.interview_mode} onModeChange={async () => { await refresh(); if (!inMain) await loadSetAside(); }} /> : undefined}
       />
 
       {candidate && <ScreeningCallPanel candidateId={candidate.id} candidateName={candidate.name} />}

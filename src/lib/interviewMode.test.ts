@@ -52,3 +52,26 @@ describe('progress follows the choice', () => {
     expect(candidateState({ ...base, stages_completed: 5 }).tab).toBe('ready');
   });
 });
+
+describe('HR changing one candidate to the AI interview only', () => {
+  it('works whether or not they have taken an interview before', async () => {
+    const { pathChangeProblem } = await import('./interviewMode');
+    expect(pathChangeProblem({ status: 'in_progress' }, 'ai')).toBeNull();
+    expect(pathChangeProblem({ status: 'in_progress', interview_mode: 'both', ai_interview: { status: 'completed' } }, 'ai')).toBeNull();
+    expect(pathChangeProblem({ status: 'passed', ai_interview: { status: 'invited' } }, 'ai')).toBeNull();
+  });
+
+  it('can be changed back', async () => {
+    const { pathChangeProblem } = await import('./interviewMode');
+    expect(pathChangeProblem({ status: 'in_progress', interview_mode: 'ai' }, 'five_stage')).toBeNull();
+  });
+
+  it('refuses a selected teacher, an interview going on right now, and no change at all', async () => {
+    const { pathChangeProblem } = await import('./interviewMode');
+    expect(pathChangeProblem({ status: 'hired' }, 'ai')).toMatch(/selected/);
+    expect(pathChangeProblem({ status: 'in_progress', selected_at: '2026-11-01' }, 'ai')).toMatch(/selected/);
+    expect(pathChangeProblem({ status: 'in_progress', ai_interview: { status: 'in_progress' } }, 'ai')).toMatch(/right now/);
+    expect(pathChangeProblem({ status: 'in_progress', interview_mode: 'ai' }, 'ai')).toMatch(/already/);
+    expect(pathChangeProblem({ status: 'in_progress' }, 'five_stage')).toMatch(/already/);
+  });
+});

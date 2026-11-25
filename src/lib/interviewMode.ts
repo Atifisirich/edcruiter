@@ -40,3 +40,18 @@ export function stepsFor(mode: InterviewMode): string[] {
   if (mode === 'both') return [...five, 'ai_interview'];
   return five;
 }
+
+/**
+ * HR changing one candidate's path, for example to give them only the AI
+ * interview. Returns why it cannot be done, or null when it can. What they
+ * already finished is kept either way; only the steps still ahead change.
+ */
+export function pathChangeProblem(
+  c: { status?: string; selected_at?: string; interview_mode?: InterviewMode; ai_interview?: { status?: string } | null },
+  next: InterviewMode
+): string | null {
+  if (c.status === 'hired' || c.selected_at) return 'This teacher is already selected.';
+  if (c.ai_interview?.status === 'in_progress') return 'Their AI interview is going on right now. Try again when it ends.';
+  if (modeOf(c) === next) return `They are already on: ${MODE_LABEL[next]}.`;
+  return null;
+}

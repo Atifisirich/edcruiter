@@ -51,7 +51,7 @@ export default function PayGuidePage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [pots, setPots] = useState<Record<string, PotState | null>>({});
   const [pending, setPending] = useState<Pending[]>([]);
-  // Which campus is open. Null until the admin picks one; then the first campus is shown.
+  // Which campus is open. Null until the admin picks one; then the campus they last had open, else the first with jobs.
   const [campus, setCampus] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [view, setView] = useState<'jobs' | 'table'>('jobs');
@@ -69,6 +69,10 @@ export default function PayGuidePage() {
       if (!res.ok) { setLoadError(data.error || 'Could not load the Pay Guide.'); return; }
       const guide = data.guide as PayGuide;
       const loaded = guide.roles.map(fromServer);
+      // Reopen the campus they were working on, so a refresh never lands on an empty campus.
+      const remembered = (() => { try { return localStorage.getItem(`edcruiter_paycampus_${schoolId}`); } catch { return null; } })();
+      const known = (data.branches ?? []) as Branch[];
+      if (remembered && (known.some((b) => b.id === remembered) || remembered === ALL)) setCampus((c) => c ?? remembered);
       setRoles(loaded);
       setCampusDeciders(guide.campus_deciders ?? {});
       setSubjects(data.subjects ?? []);
@@ -92,7 +96,13 @@ export default function PayGuidePage() {
   const everyCampusJobs = useMemo(() => (roles ?? []).filter((r) => !r.branch), [roles]);
   // A school with one campus has no tabs; its jobs apply to every campus.
   const showAllTab = multi && everyCampusJobs.length > 0;
-  const current = multi ? campus ?? branches[0]?.id ?? ALL : ALL;
+  // Until a campus is picked: the first campus that has jobs, so saved jobs are what the admin sees.
+  const firstWithJobs = branches.find((b) => (roles ?? []).some((r) => r.branch === b.id))?.id;
+  const current = multi ? campus ?? firstWithJobs ?? branches[0]?.id ?? ALL : ALL;
+  const openCampus = (id: string) => {
+    setCampus(id);
+    try { localStorage.setItem(`edcruiter_paycampus_${schoolId}`, id); } catch { /* private mode: it just is not remembered */ }
+  };
   const jobs = useMemo(() => (roles ?? []).filter((r) => (multi ? r.branch === current : true)), [roles, multi, current]);
   const campusName = !multi ? 'your school' : current === ALL ? 'every campus' : branches.find((b) => b.id === current)?.name ?? 'this campus';
   const deciderFor = (branch: string) => campusDeciders[branch] ? people.find((p) => p.id === campusDeciders[branch])?.name ?? 'the school admin' : 'the school admin';
@@ -251,7 +261,7 @@ export default function PayGuidePage() {
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => { setCampus(b.id); setEditing(null); setView('jobs'); }}
+                      onClick={() => { openCampus(b.id); setEditing(null); setView('jobs'); }}
                       className={`text-left px-4 py-2.5 rounded-2xl border cursor-pointer ${active ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
                     >
                       <span className="flex items-center gap-1.5 text-sm font-semibold"><MapPin className="w-3.5 h-3.5" /> {b.name}</span>
@@ -262,7 +272,7 @@ export default function PayGuidePage() {
                   );
                 })}
                 {showAllTab && (
-                  <button type="button" role="tab" aria-selected={current === ALL} onClick={() => { setCampus(ALL); setEditing(null); setView('jobs'); }} className={`text-left px-4 py-2.5 rounded-2xl border cursor-pointer ${current === ALL ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                  <button type="button" role="tab" aria-selected={current === ALL} onClick={() => { openCampus(ALL); setEditing(null); setView('jobs'); }} className={`text-left px-4 py-2.5 rounded-2xl border cursor-pointer ${current === ALL ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
                     <span className="block text-sm font-semibold">Every campus</span>
                     <span className={`block text-xs ${current === ALL ? 'text-indigo-100' : 'text-slate-500'}`}>{everyCampusJobs.length} {everyCampusJobs.length === 1 ? 'job' : 'jobs'} set earlier</span>
                   </button>

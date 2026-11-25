@@ -18,7 +18,11 @@ import { credentialsFromCandidate } from './credentials';
 import { hasMastersCredential } from './hiringRequirements';
 import type { Candidate, PayGuide, PayRole, PayTier } from './types';
 
-export const MAX_ROLES = 30;
+/**
+ * Jobs in a school's Pay Guide, every campus together. A school with four campuses
+ * and 20 to 60 jobs at each needs a few hundred; this only guards against mistakes.
+ */
+export const MAX_ROLES = 500;
 export const MAX_TIERS = 8;
 export const MIN_MONTHLY = 1_000;
 export const MAX_MONTHLY = 1_000_000;

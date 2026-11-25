@@ -212,6 +212,13 @@ describe('jobs set campus by campus', () => {
     expect(parsePayGuide({ roles: [middle({ branch_id: 'nowhere' })] }, ctx)).toMatchObject({ ok: false });
   });
 
+  it('saves a large school: 25 jobs at one campus and 20 more at another (once refused at 30 in all)', () => {
+    const at = (branch_id: string, n: number) => Array.from({ length: n }, (_, i) => middle({ name: `Job ${branch_id} ${i + 1}`, branch_id }));
+    const r = parsePayGuide({ roles: [...at('b1', 25), ...at('b2', 20)] }, ctx);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.guide.roles).toHaveLength(45);
+  });
+
   it('uses the campus decision-maker unless the job names someone else', () => {
     const g = guideFor([middle({ name: 'Middle school', branch_id: 'b1' }), middle({ name: 'Secondary school', branch_id: 'b1', grades: ['9'], decider_user_id: 'admin' })], { b1: 'u1' });
     expect(effectiveDecider(g, g.roles[0])).toBe('u1');
