@@ -13,7 +13,20 @@ import { makeInviteCode } from './inviteCode';
 import { leadState, phoneKey } from './leadLists';
 import type { Candidate, LeadList } from './types';
 
-export interface LeadRow { name?: string; phone?: string; email?: string; subject?: string; segment?: string; qualification?: string; experience?: string; prior_org?: string; location?: string }
+export interface LeadRow { name?: string; phone?: string; email?: string; subject?: string; segment?: string; qualification?: string; experience?: string; prior_org?: string; location?: string; answers?: unknown }
+
+/** The form answers that came with a row, cleaned: up to 25, short, text only. */
+export function cleanAnswers(raw: unknown): { q: string; a: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { q: string; a: string }[] = [];
+  for (const x of raw as { q?: unknown; a?: unknown }[]) {
+    const q = typeof x?.q === 'string' ? x.q.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    const a = typeof x?.a === 'string' || typeof x?.a === 'number' ? String(x.a).replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    if (q && a) out.push({ q, a });
+    if (out.length >= 25) break;
+  }
+  return out;
+}
 
 export interface ImportResult {
   added: number;
@@ -65,7 +78,7 @@ export function importLeads(list: LeadList, rows: LeadRow[], branchId: string | 
       status: 'in_progress',
       current_stage_key: 'identity_verification',
       invite_code: makeInviteCode(subject || 'General'),
-      lead: leadState(list.id, 'waiting', undefined, now),
+      lead: (() => { const answers = cleanAnswers(row.answers); const base = leadState(list.id, 'waiting', undefined, now); return answers.length ? { ...base, answers } : base; })(),
       created_at: iso,
       updated_at: iso,
     });

@@ -12,7 +12,7 @@ import ScreeningSetup from '@/components/admin/leads/ScreeningSetup';
 import LeadUploadDialog from '@/components/admin/leads/LeadUploadDialog';
 import type { LeadList, LeadStatus } from '@/lib/types';
 
-type Row = { id: string; name: string; phone: string; email: string; subject: string; status: LeadStatus; status_label: string; reason?: string; invited?: boolean; summary?: string; called_at?: string; calls: number };
+type Row = { id: string; name: string; phone: string; email: string; subject: string; status: LeadStatus; status_label: string; reason?: string; invited?: boolean; summary?: string; called_at?: string; calls: number; answers?: { q: string; a: string }[] };
 type Report = { total: number; waiting: number; calling: number; good_fit: number; moved: number; invited: number; needs_look: number; set_aside: number; answered: number; called: number; reasons: { key: string; text: string; count: number; status: 'set_aside' | 'needs_look' }[]; spent_inr: number; minutes: number; progress: number };
 type View = { list: LeadList; rows: Row[]; report: Report; estimate: { calls: number; cost_inr: number; hours: number; days: number }; price_per_min_inr: number; mode: 'live' | 'demo' };
 
@@ -131,6 +131,9 @@ export default function LeadListPage() {
               <button type="button" onClick={() => void act('pause')} disabled={!!busy} className={buttonClass('secondary')}><Pause className="w-4 h-4" /> Pause calls</button>
             ) : waiting > 0 && (
               <button type="button" onClick={() => void act('resume')} disabled={!!busy} className={buttonClass('primary')}><Play className="w-4 h-4" /> {list.started_at ? 'Resume calls' : 'Start calls'}</button>
+            )}
+            {list.setup && (
+              <button type="button" onClick={() => { if (list.status === 'running') toast('Pause the calls first, then change what is screened.', 'error'); else setEditing(true); }} className={buttonClass('secondary')}><Settings2 className="w-4 h-4" /> What to screen</button>
             )}
             <button type="button" onClick={() => setAdding(true)} className={buttonClass('secondary')}><Upload className="w-4 h-4" /> Add people</button>
             <div className="relative">
@@ -269,6 +272,14 @@ export default function LeadListPage() {
                       </div>
                       {r.reason && <p className="text-sm text-slate-700 mt-0.5">{r.reason}</p>}
                       {r.summary && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{r.summary}</p>}
+                      {r.answers && r.answers.length > 0 && (
+                        <details className="mt-1 text-xs text-slate-600">
+                          <summary className="cursor-pointer font-semibold text-slate-500 hover:text-slate-800">Form answers ({r.answers.length})</summary>
+                          <dl className="mt-1 grid sm:grid-cols-2 gap-x-4 gap-y-0.5">
+                            {r.answers.map((a, i) => <div key={i} className="flex gap-1.5 min-w-0"><dt className="text-slate-500 truncate" title={a.q}>{a.q}:</dt><dd className="text-slate-900 font-medium truncate" title={a.a}>{a.a}</dd></div>)}
+                          </dl>
+                        </details>
+                      )}
                     </div>
                   </li>
                 ))}

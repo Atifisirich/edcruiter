@@ -345,6 +345,8 @@ export interface LeadState {
   /** When they were moved into Candidates, and whether the test link went out. */
   moved_at?: string;
   invited?: boolean;
+  /** Every other column of the uploaded sheet: the lead form's questions and answers ("Do you have B.Ed?": "Yes"). */
+  answers?: { q: string; a: string }[];
 }
 
 /** What HR wants to find out on the call, made from her own words and edited by her. */

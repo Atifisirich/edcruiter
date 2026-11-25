@@ -25,6 +25,8 @@ export interface LeadRowView {
   called_at?: string;
   call_status?: ScreeningCall['status'];
   calls: number;
+  /** What they wrote on the lead form, from the uploaded sheet. */
+  answers?: { q: string; a: string }[];
 }
 
 export interface LeadListView {
@@ -65,6 +67,7 @@ export function leadListView(schoolId: string, list: LeadList): LeadListView {
       id: l.id, name: l.name, phone: l.phone, email: l.email && !l.email.endsWith('.local') ? l.email : '', subject: l.applied_subject === 'General' ? '' : l.applied_subject,
       status, status_label: LEAD_STATUS_LABEL[status], reason: l.lead?.reason, invited: l.lead?.invited,
       summary: latest?.summary, called_at: latest?.started_at, call_status: latest?.status, calls: mine.length,
+      ...(l.lead?.answers?.length ? { answers: l.lead.answers } : {}),
     };
   });
   const report = listReport(leads, rowCalls, leads.map((l) => l.id));

@@ -244,7 +244,9 @@ export function callVariables(
   school: Pick<School, 'name'>,
   questions: string[],
   language = 'English',
-  script: CallScript = DEFAULT_SCRIPT
+  script: CallScript = DEFAULT_SCRIPT,
+  /** For a lead: what they already wrote on the lead form. The AI does not ask these again, only checks if unclear. */
+  formAnswers = ''
 ) {
   const values = variableValues(script, candidate, school);
   const fill = (t: string) => fillTemplate(t, values);
@@ -261,7 +263,10 @@ export function callVariables(
     greeting: fill(script.greeting),
     closing: fill(script.closing),
     school_info: schoolFactsText(script, values) || 'Nothing extra. If asked something you do not know, say the school team will answer it.',
-    instructions: rulesText(script, values) || 'None.',
+    instructions: [
+      rulesText(script, values),
+      formAnswers ? `What this person already told the school on the lead form (do not ask these again; only check one if it is unclear or matters for a question):\n${formAnswers}` : '',
+    ].filter(Boolean).join('\n\n') || 'None.',
     max_minutes: String(script.max_minutes),
   };
 }

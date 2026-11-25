@@ -28,6 +28,7 @@ import {
 import type { Candidate, LeadList, School, ScreeningCall, ScreeningDecision } from './types';
 import { verdictForCall } from './leadLists';
 import { moveLead, setLead } from './leadActions';
+import { answersText } from './leadSheet';
 
 /** A call still ringing after this long is treated as lost, so the candidate can be called again. */
 const STUCK_AFTER_MS = 20 * 60_000;
@@ -154,7 +155,7 @@ async function placeCall(call: ScreeningCall, school: School, candidate: Candida
   const phone = toCallNumber(candidate.phone);
   if (env && phone && call.mode === 'live') {
     try {
-      const attemptId = await placeSarvamCall(env, { callId: call.id, phone, variables: callVariables(candidate, school, call.questions, call.language, settings.script), appUrl });
+      const attemptId = await placeSarvamCall(env, { callId: call.id, phone, variables: callVariables(candidate, school, call.questions, call.language, settings.script, candidate.lead && candidate.lead.status !== 'moved' ? answersText(candidate.lead.answers) : ''), appUrl });
       return { ok: true, call: db.updateScreeningCall(call.id, { attempt_id: attemptId }) ?? call };
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'The call could not be placed.';
