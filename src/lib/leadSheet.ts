@@ -80,6 +80,10 @@ const looksLikeName = (cell: string) => {
   return words >= 1 && words <= 5;
 };
 
+const JOB_TITLE = /\b(teacher|teachers|faculty|lecturer|tutor|counsell?or|co-?ordinator|principal|librarian|trainer|assistant|accountant|clerk|receptionist|warden|headmistress|headmaster|pre[\s-]?primary|post graduate|pgt|tgt|prt)\b/i;
+/** A cell that names a job ("Pre primary teacher", "Counsellor"), not a person. */
+export const isJobTitle = (cell: string) => JOB_TITLE.test(cell);
+
 const norm = (h: string) => h.toLowerCase().replace(/[_/]+/g, ' ').replace(/[^a-z0-9.& ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const shortHeader = (h: string) => norm(h).split(' ').filter(Boolean).length <= 4 && !h.includes('?');
 
@@ -166,6 +170,8 @@ function guessMapping(columns: SheetColumn[], rows: string[][], hasHeadings: boo
       if (!vals.length) return 0;
       const multi = vals.filter((v) => v.trim().split(/\s+/).length >= 2).length / vals.length;
       const distinct = new Set(vals.map((v) => v.toLowerCase())).size / vals.length;
+      // A column of job titles reads like names ("Pre primary teacher") but is never the person.
+      if (share(rows, c.index, isJobTitle) >= 0.5) return 0;
       const names = share(rows, c.index, looksLikeName);
       return names >= 0.5 ? names * (0.6 + 0.4 * multi) * (0.5 + 0.5 * distinct) : 0;
     });

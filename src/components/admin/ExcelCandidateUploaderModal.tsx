@@ -11,6 +11,8 @@ import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { flagDuplicateLeads, type CvLead } from '@/lib/cvLead';
 import InterviewModePicker from '@/components/admin/InterviewModePicker';
 import type { InterviewMode } from '@/lib/types';
+import { csvMatrix, type LeadField } from '@/lib/leadSheet';
+import { CHOOSABLE_FIELDS, candidatesFrom, readCandidateSheet, rowProblem, type CandidateSheet } from '@/lib/candidateSheet';
 
 export interface ParsedCandidate {
   name: string;
@@ -37,143 +39,12 @@ Dr. Priya Nair,priya.science@gmail.com,+91 98765 11223,Physics,Senior Secondary 
 Sanjay Mukherjee,sanjay.math@gmail.com,+91 98765 22334,Mathematics,Secondary (Grades 9-10),M.Sc (Math) + B.Ed,3.0 Years,Oakridge International
 Kavita Deshmukh,kavita.bio@gmail.com,+91 98765 33445,Biology,Secondary (Grades 9-10),M.Sc (Botany) + B.Ed,5.0 Years,Chirec International`;
 
-type SheetField = Exclude<keyof ParsedCandidate, 'source' | 'warnings'>;
-
-const HEADER_ALIASES: Record<SheetField, string[]> = {
-  name: ['name', 'full name', 'candidate', 'teacher', 'teacher name', 'applicant'],
-  email: ['email', 'e-mail', 'mail', 'email id', 'email address'],
-  phone: ['phone', 'mobile', 'whatsapp', 'contact', 'phone number', 'mobile number', 'number', 'cell'],
-  subject: ['subject', 'applied subject', 'subject applied', 'discipline', 'department'],
-  segment: ['segment', 'grade', 'grades', 'level', 'band', 'class'],
-  qualification: ['qualification', 'degree', 'degrees', 'degrees & b.ed', 'education', 'b.ed'],
-  experience: ['experience', 'exp', 'years', 'experience band', 'yrs'],
-  prior_org: ['previousschool', 'previous school', 'prior school', 'last school', 'organization', 'org', 'school']
-};
-
-function normalizeHeader(h: string): string {
-  return h.toLowerCase().replace(/[_/]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function splitCsvLine(line: string): string[] {
-  const cols: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (ch === ',' && !inQuotes) {
-      cols.push(cur.trim());
-      cur = '';
-      continue;
-    }
-    cur += ch;
-  }
-  cols.push(cur.trim());
-  return cols.map((c) => c.replace(/^["']|["']$/g, '').trim());
-}
-
-function mapHeaderIndex(headers: string[]): Partial<Record<SheetField, number>> {
-  const map: Partial<Record<SheetField, number>> = {};
-  headers.forEach((raw, idx) => {
-    const h = normalizeHeader(raw);
-    (Object.keys(HEADER_ALIASES) as (SheetField)[]).forEach((field) => {
-      if (map[field] !== undefined) return;
-      if (HEADER_ALIASES[field].some((alias) => h === alias || h.includes(alias))) {
-        map[field] = idx;
-      }
-    });
-  });
-  return map;
-}
-
-function rowToCandidate(
-  cols: string[],
-  map: Partial<Record<SheetField, number>>,
-  rowIndex: number,
-  positional: boolean
-): ParsedCandidate | null {
-  const get = (field: SheetField, positionalIdx: number, fallback: string) => {
-    if (!positional && map[field] !== undefined) {
-      return (cols[map[field]!] || '').trim() || fallback;
-    }
-    return (cols[positionalIdx] || '').trim() || fallback;
-  };
-
-  const name = get('name', 0, '');
-  if (!name || normalizeHeader(name) === 'name' || name.toLowerCase() === 'full name') return null;
-
-  const phone = get('phone', 2, '');
-  const emailRaw = get('email', 1, '');
-  const subject = get('subject', 3, 'General');
-  const looksLikeEmail = emailRaw.includes('@');
-  // Spreadsheets with Name, Subject, Phone (no email column)
-  const phoneFromEmailSlot = !looksLikeEmail && /^[\d+\s()-]{8,}$/.test(emailRaw) ? emailRaw : '';
-  const subjectFromEmailSlot = !looksLikeEmail && !phoneFromEmailSlot && emailRaw && !phone ? emailRaw : '';
-
-  // A missing phone or email stays blank. The old placeholders ("+91 00000
-  // 00000", "lead.<digits>@school.local") looked real, so an invite was sent
-  // to a number that does not exist.
-  const resolvedPhone = phone || phoneFromEmailSlot || '';
-  const resolvedSubject = subject !== 'General' ? subject : (subjectFromEmailSlot || 'General');
-  const email = looksLikeEmail ? emailRaw : '';
-
-  return {
-    name,
-    email,
-    phone: resolvedPhone,
-    subject: resolvedSubject,
-    segment: get('segment', 4, 'Secondary (Grades 9-10)'),
-    qualification: get('qualification', 5, ''),
-    experience: get('experience', 6, ''),
-    prior_org: get('prior_org', 7, '')
-  };
-}
-
-function parseMatrix(rows: string[][]): ParsedCandidate[] {
-  if (!rows.length) return [];
-  const nonEmpty = rows
-    .map((r) => r.map((c) => String(c ?? '').trim()))
-    .filter((r) => r.some((c) => c));
-  if (!nonEmpty.length) return [];
-
-  const headerMap = mapHeaderIndex(nonEmpty[0]);
-  const hasNamedHeaders = headerMap.name !== undefined;
-  const dataRows = hasNamedHeaders ? nonEmpty.slice(1) : nonEmpty;
-  const positional = !hasNamedHeaders;
-
-  const out: ParsedCandidate[] = [];
-  dataRows.forEach((cols, i) => {
-    const cand = rowToCandidate(cols, headerMap, i + 1, positional);
-    if (cand) out.push(cand);
-  });
-  return out.slice(0, 200);
-}
-
-export function parseCsvText(text: string): ParsedCandidate[] {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
-  if (!lines.length) return [];
-  return parseMatrix(lines.map(splitCsvLine));
-}
-
-export function parseWorkbook(buffer: ArrayBuffer): ParsedCandidate[] {
+function matrixFromWorkbook(buffer: ArrayBuffer): unknown[][] {
   const workbook = XLSX.read(buffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return [];
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
-    header: 1,
-    raw: false,
-    defval: ''
-  }) as string[][];
-  return parseMatrix(rows);
+  // raw: true so a phone number Excel stored as a number stays whole (readSheet writes it out).
+  return XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, raw: true, defval: '' });
 }
 
 export default function ExcelCandidateUploaderModal({
@@ -184,6 +55,9 @@ export default function ExcelCandidateUploaderModal({
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedCandidate[]>([]);
+  // The sheet as read, so HR can change which column is which. Null for CVs.
+  const [sheet, setSheet] = useState<CandidateSheet | null>(null);
+  const [columns, setColumns] = useState<Partial<Record<LeadField, number>>>({});
   const [parseError, setParseError] = useState('');
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
@@ -219,6 +93,7 @@ export default function ExcelCandidateUploaderModal({
     const files = pdfs.slice(0, 50);
     setParseError(pdfs.length > files.length ? `Only the first 50 of ${pdfs.length} CVs were read. Import these, then add the rest.` : '');
     setParsedRows([]);
+    setSheet(null);
     setCvUnreadable([]);
     setFileName(`${files.length} CV${files.length === 1 ? '' : 's'}`);
     setCvProgress({ done: 0, total: files.length });
@@ -257,40 +132,55 @@ export default function ExcelCandidateUploaderModal({
   const updateRow = (idx: number, patch: Partial<ParsedCandidate>) =>
     setParsedRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   const removeRow = (idx: number) => setParsedRows((rows) => rows.filter((_, i) => i !== idx));
-  // A lead needs a name and some way to reach them.
-  const rowIsComplete = (r: ParsedCandidate) => Boolean(r.name.trim() && (r.phone.trim() || r.email.trim()));
-  const incompleteCount = parsedRows.filter((r) => !rowIsComplete(r)).length;
+  // A lead needs a name and a real way to reach them.
+  const incompleteCount = parsedRows.filter((r) => rowProblem(r) !== null).length;
+
+  const showSheet = (read: CandidateSheet) => {
+    setSheet(read);
+    setColumns(read.mapping);
+    setParsedRows(candidatesFrom(read));
+  };
+
+  /** HR changed a column. The rows are read again, so edits typed into the table are replaced. */
+  const chooseColumn = (field: LeadField, value: string) => {
+    if (!sheet) return;
+    const next = { ...columns };
+    if (value === '') delete next[field];
+    else next[field] = Number(value);
+    setColumns(next);
+    setParsedRows(candidatesFrom(sheet, next));
+  };
 
   const handleFile = async (file: File) => {
     setFileName(file.name);
     setParseError('');
     setParsedRows([]);
+    setSheet(null);
     const lower = file.name.toLowerCase();
 
     try {
-      let parsed: ParsedCandidate[] = [];
+      let matrix: unknown[][];
       if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
-        const text = await file.text();
-        parsed = parseCsvText(text);
+        matrix = csvMatrix(await file.text());
       } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-        const buffer = await file.arrayBuffer();
-        parsed = parseWorkbook(buffer);
+        matrix = matrixFromWorkbook(await file.arrayBuffer());
       } else {
         // Try Excel first, then CSV text
         try {
-          parsed = parseWorkbook(await file.arrayBuffer());
+          matrix = matrixFromWorkbook(await file.arrayBuffer());
         } catch {
-          parsed = parseCsvText(await file.text());
+          matrix = csvMatrix(await file.text());
         }
       }
 
-      if (parsed.length === 0) {
+      const read = readCandidateSheet(matrix);
+      if (candidatesFrom(read).length === 0) {
         setParseError(
           'No valid leads found. Use columns like Name, Phone, Subject (Email optional). Download the template or try CSV.'
         );
         return;
       }
-      setParsedRows(parsed);
+      showSheet(read);
     } catch {
       setParseError('Could not read this file. Save as .xlsx or .csv and try again.');
     }
@@ -324,7 +214,7 @@ export default function ExcelCandidateUploaderModal({
   const handleLoadSample = () => {
     setFileName('Sample_Teacher_Leads.csv');
     setParseError('');
-    setParsedRows(parseCsvText(SAMPLE_CSV_DATA));
+    showSheet(readCandidateSheet(csvMatrix(SAMPLE_CSV_DATA)));
   };
 
   const handleConfirmImport = async () => {
@@ -545,6 +435,7 @@ export default function ExcelCandidateUploaderModal({
                 type="button"
                 onClick={() => {
                   setParsedRows([]);
+                  setSheet(null);
                   setFileName(null);
                   setParseError('');
                   setCvUnreadable([]);
@@ -564,6 +455,36 @@ export default function ExcelCandidateUploaderModal({
               </div>
             )}
 
+            {sheet && (
+              <div className="p-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 space-y-2">
+                <p className="text-xs font-bold text-slate-900">
+                  Which column is which?{' '}
+                  <span className="font-normal text-slate-600">
+                    {sheet.read.headerRow === null ? 'Your file has no heading row, so we looked at what is in each column.' : 'Check these match your file.'}
+                  </span>
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {CHOOSABLE_FIELDS.map(({ field, label }) => (
+                    <label key={field} className="text-[11px] font-semibold text-slate-600">
+                      {label}
+                      <select
+                        value={columns[field] ?? ''}
+                        onChange={(e) => chooseColumn(field, e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-normal text-slate-900"
+                      >
+                        <option value="">Not in my file</option>
+                        {sheet.read.columns.map((c) => (
+                          <option key={c.index} value={c.index}>
+                            {sheet.read.headerRow === null ? c.header : c.header.slice(0, 30)}{c.sample[0] ? ` (e.g. ${c.sample[0].slice(0, 22)})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <p className="text-[11px] text-slate-500">Check each row. You can fix a name, phone, subject or email directly in the table.</p>
             <div className="rounded-2xl border border-slate-200 overflow-hidden max-h-72 overflow-y-auto">
               <table className="w-full text-left text-xs">
@@ -579,7 +500,8 @@ export default function ExcelCandidateUploaderModal({
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {parsedRows.map((row, idx) => {
                     const cell = 'w-full bg-transparent px-1.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:outline-none';
-                    const incomplete = !rowIsComplete(row);
+                    const problem = rowProblem(row);
+                    const incomplete = problem !== null;
                     return (
                       <React.Fragment key={idx}>
                         <tr className={incomplete ? 'bg-rose-50/60' : 'hover:bg-slate-50/70'}>
@@ -595,7 +517,7 @@ export default function ExcelCandidateUploaderModal({
                           <tr className={incomplete ? 'bg-rose-50/60' : ''}>
                             <td colSpan={5} className="px-3 pb-2 text-[11px] text-amber-800">
                               {row.source && <span className="font-mono text-slate-400 mr-2">{row.source}</span>}
-                              {incomplete && <span className="text-rose-700 font-semibold mr-2">Needs a name and a phone or email.</span>}
+                              {problem && <span className="text-rose-700 font-semibold mr-2">{problem}</span>}
                               {row.warnings?.join(' · ')}
                             </td>
                           </tr>
@@ -608,7 +530,7 @@ export default function ExcelCandidateUploaderModal({
             </div>
             {incompleteCount > 0 && (
               <p className="text-xs text-rose-700 font-semibold">
-                {incompleteCount} row{incompleteCount === 1 ? '' : 's'} need a name and a phone or email. Fix or remove {incompleteCount === 1 ? 'it' : 'them'} to import.
+                {incompleteCount} row{incompleteCount === 1 ? ' needs' : 's need'} a fix: a name, and a real phone number or an email. Fix or remove {incompleteCount === 1 ? 'it' : 'them'} to import.
               </p>
             )}
 
