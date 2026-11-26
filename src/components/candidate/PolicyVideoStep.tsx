@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { CheckCircle2, Film, Lock, ThumbsDown, ThumbsUp } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Film, Lock, RotateCw, ThumbsDown, ThumbsUp } from 'lucide-react';
 import type { PolicyQuestion } from '@/lib/types';
 import { MAX_REASON_CHARS } from '@/lib/policyVideo';
 
@@ -11,6 +11,11 @@ export type PolicyAnswerDraft = { agreed?: boolean; reason: string };
  * Stage 5, candidate side: the school's policy video, which must play to the
  * end (no skipping ahead), then a "Do you agree…?" question for each policy.
  * A "don't agree" is allowed, with an optional reason; the school sees it.
+ *
+ * If the video will not load, it is usually because the school replaced it
+ * while this page was open (the old link stops working). So on a failure the
+ * step asks for the school's current video once and plays that; if it still
+ * fails, the candidate sees why and a Reload button instead of a blank player.
  */
 export default function PolicyVideoStep({
   schoolId,
@@ -18,11 +23,14 @@ export default function PolicyVideoStep({
   questions,
   watched,
   onWatched,
+  onVideoChange,
   answers,
   onAnswer,
 }: {
   schoolId: string;
   video: { id: string; title: string } | null;
+  /** Called when the school's video changed or was removed while the page was open. */
+  onVideoChange?: (video: { id: string; title: string } | null) => void;
   questions: PolicyQuestion[];
   watched: boolean;
   onWatched: () => void;
@@ -32,19 +40,59 @@ export default function PolicyVideoStep({
   // The furthest point played so far. Seeking back is fine; seeking past it is undone.
   const furthest = useRef(0);
   const ref = useRef<HTMLVideoElement>(null);
-  const open = !video || watched;
+  // A newer video found after a failure replaces the one the page was given.
+  const [latest, setLatest] = useState<{ from: string | undefined; video: { id: string; title: string } | null } | null>(null);
+  const current = latest && latest.from === video?.id ? latest.video : video;
+  const [failedId, setFailedId] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const checkedFor = useRef<string | null>(null);
+  const failed = !!current && failedId === current.id;
+  const open = !current || watched;
+
+  async function onLoadError(id: string) {
+    if (checkedFor.current === id) { setFailedId(id); return; }
+    checkedFor.current = id;
+    setChecking(true);
+    try {
+      const res = await fetch(`/api/policy-video?school_id=${encodeURIComponent(schoolId)}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const fresh: { id: string; title: string } | null = data.video ? { id: data.video.id, title: data.video.title } : null;
+        if (fresh?.id !== id) {
+          furthest.current = 0;
+          setLatest({ from: video?.id, video: fresh });
+          setFailedId(null);
+          onVideoChange?.(fresh);
+          return;
+        }
+      }
+      setFailedId(id);
+    } catch {
+      setFailedId(id);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function reload() {
+    if (current) checkedFor.current = null;
+    setFailedId(null);
+    setAttempt((n) => n + 1);
+  }
   const answered = questions.filter((q) => typeof answers[q.id]?.agreed === 'boolean').length;
 
   return (
     <div className="space-y-5">
-      {video && (
+      {current && (
         <div className="space-y-2">
           <h4 className="font-black text-slate-900 flex items-center gap-2 text-sm">
-            <Film className="w-4 h-4 text-indigo-600" /> {video.title}
+            <Film className="w-4 h-4 text-indigo-600" /> {current.title}
           </h4>
           <video
+            key={`${current.id}:${attempt}`}
             ref={ref}
-            src={`/api/policy-video/stream?school_id=${encodeURIComponent(schoolId)}&v=${video.id}`}
+            src={`/api/policy-video/stream?school_id=${encodeURIComponent(schoolId)}&v=${current.id}`}
             controls
             controlsList="nodownload noplaybackrate"
             disablePictureInPicture
@@ -61,7 +109,22 @@ export default function PolicyVideoStep({
             }}
             onRateChange={(e) => { if (e.currentTarget.playbackRate > 1) e.currentTarget.playbackRate = 1; }}
             onEnded={() => onWatched()}
+            onError={() => { void onLoadError(current.id); }}
           />
+          {checking && <p className="text-xs text-slate-500">The video did not load. Checking for the school&apos;s latest video…</p>}
+          {failed && !checking && (
+            <div role="alert" className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-wrap items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="flex-1 min-w-[12rem]">The video could not load. Check your internet connection, then press Reload.</span>
+              <button
+                type="button"
+                onClick={reload}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer hover:bg-amber-700"
+              >
+                <RotateCw className="w-3.5 h-3.5" /> Reload
+              </button>
+            </div>
+          )}
           <p className={`text-xs flex items-center gap-1.5 ${watched ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
             {watched ? <CheckCircle2 className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
             {watched

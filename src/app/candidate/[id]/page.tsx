@@ -1414,6 +1414,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     <PolicyVideoStep
                       schoolId={candidate.school_id}
                       video={policyInfo.video}
+                      onVideoChange={(video) => setPolicyInfo((prev) => ({ ...prev, video }))}
                       questions={policyInfo.questions}
                       watched={policyWatched}
                       onWatched={() => setPolicyWatched(true)}
