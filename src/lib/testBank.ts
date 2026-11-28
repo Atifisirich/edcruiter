@@ -119,6 +119,26 @@ function forGrades(q: BankQuestion, grades: string[]): boolean {
   return q.g.some((g) => grades.includes(g));
 }
 
+/** Subjects a teaching-method question can name, with the banks each one suits. */
+const NAMED_SUBJECTS: [RegExp, string[]][] = [
+  [/\bcomputer( science)?\b/i, ['computer science']],
+  [/\bsocial (science|studies)\b|\bhistory\b|\bgeography\b|\bcivics\b/i, ['social studies']],
+  [/\benvironmental\b|\bevs\b/i, ['environmental studies']],
+  [/\benglish\b/i, ['english']],
+  [/\bhindi\b/i, ['hindi']],
+  [/\bmath(s|ematics|ematical)?\b/i, ['mathematics']],
+  [/\bphysics\b/i, ['physics', 'general science']],
+  [/\bchemistry\b/i, ['chemistry', 'general science']],
+  [/\bbiology\b/i, ['biology', 'general science']],
+  [/(?<!computer |social )\bscience\b/i, ['general science', 'physics', 'chemistry', 'biology']],
+];
+
+/** True when a teaching-method question names no subject, or names the one this teacher applied for. */
+export function suitsSubject(text: string, subject: string): boolean {
+  const named = NAMED_SUBJECTS.filter(([re]) => re.test(text));
+  return named.length === 0 || named.some(([, banks]) => banks.includes(subject));
+}
+
 /** Questions that may be used now: right grades, not retired, and not in `exclude`. */
 export function poolFor(bank: BankQuestion[], grades: string[], state: BankState, exclude: ReadonlySet<string> = new Set()): BankQuestion[] {
   const retired = new Set(state.retired);
@@ -190,10 +210,12 @@ export function drawTest(input: {
   const pedagogyCount = input.pedagogyCount ?? PEDAGOGY_QUESTIONS;
   const seen = new Set(input.seen ?? []);
   let subjectPool = poolFor(bank, input.grades, input.state, seen);
-  let pedagogyPool = poolFor(PEDAGOGY_BANK, input.grades, input.state, seen);
+  // A maths teacher must not get a question about an English lesson.
+  const pedagogyBank = PEDAGOGY_BANK.filter((q) => suitsSubject(q.q, input.subject));
+  let pedagogyPool = poolFor(pedagogyBank, input.grades, input.state, seen);
   // Fresh questions first. If a candidate has seen so many that too few are left, reuse the older ones.
   if (subjectPool.length < subjectCount) subjectPool = poolFor(bank, input.grades, input.state);
-  if (pedagogyPool.length < pedagogyCount) pedagogyPool = poolFor(PEDAGOGY_BANK, input.grades, input.state);
+  if (pedagogyPool.length < pedagogyCount) pedagogyPool = poolFor(pedagogyBank, input.grades, input.state);
   if (subjectPool.length < subjectCount || pedagogyPool.length < pedagogyCount) {
     return { ok: false, reason: 'pool_too_small', poolSize: subjectPool.length };
   }

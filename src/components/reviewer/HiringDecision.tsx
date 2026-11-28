@@ -9,6 +9,7 @@ import { currentRound, isSelected, roundResultOf, roundsForCandidate } from '@/l
 import { isHiringTeam } from '@/lib/permissions';
 import { useReviewAccess } from './useReviewAccess';
 import OfferDispatch from './OfferDispatch';
+import OfferLetterModal from './OfferLetterModal';
 
 type Panel = 'reject' | 'stop' | 'declined' | null;
 
@@ -30,6 +31,7 @@ export default function HiringDecision({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [viewLetter, setViewLetter] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [note, setNote] = useState('');
   const [notify, setNotify] = useState(true);
@@ -220,6 +222,37 @@ export default function HiringDecision({
               ? `The offer letter was sent on ${new Date(candidate.offer_letter_sent_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.`
               : hiringTeam ? 'This teacher has the final yes. Send the offer letter next.' : 'This teacher has the final yes. HR sends the offer letter.'}
           </p>
+          {offerSent && candidate.offer_letter && (
+            <button type="button" onClick={() => setViewLetter(true)} className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-800 text-sm font-bold cursor-pointer">
+              View the sent offer letter ({candidate.offer_letter.template_name})
+            </button>
+          )}
+          {offerSent && !candidate.offer_letter && (
+            <div className="space-y-2 p-3.5 rounded-2xl border border-amber-200 bg-amber-50">
+              <p className="text-sm text-amber-950">
+                No copy of this offer letter was saved when it was marked sent.
+                {can('offer_sent') ? ' Add the salary, campus and joining date from it, and it can be viewed and printed here.' : ' HR can add its details so it can be viewed here.'}
+              </p>
+              {can('offer_sent') && (
+                <OfferDispatch
+                  candidate={candidate}
+                  recordSentAt={candidate.offer_letter_sent_at}
+                  onSent={(next) => { if (next) onChanged(next); setMessage('Copy of the offer letter saved.'); }}
+                />
+              )}
+            </div>
+          )}
+          {viewLetter && candidate.offer_letter && (
+            <OfferLetterModal
+              candidate={candidate}
+              school={null}
+              details={candidate.offer_letter.details}
+              monthly={Number(candidate.offer_letter.details.monthly_salary.replace(/\D/g, '')) || 0}
+              sentText={candidate.offer_letter.text}
+              template={candidate.offer_letter.text ? { name: candidate.offer_letter.template_name, body: '' } : null}
+              onClose={() => setViewLetter(false)}
+            />
+          )}
           {can('offer_sent') && (
             <div className="flex flex-wrap gap-2">
               {!offerSent && (

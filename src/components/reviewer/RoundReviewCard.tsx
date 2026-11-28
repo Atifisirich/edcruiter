@@ -11,7 +11,6 @@ import { MAX_STARS, MIN_OPINION, roundStage, rubricFor } from '@/lib/roundReview
 import { canDecideRound, reviewsRound } from '@/lib/reviewRounds';
 import { isHiringTeam } from '@/lib/permissions';
 import { useReviewAccess } from './useReviewAccess';
-import PayPanel from './PayPanel';
 import type { PayInfo } from '@/lib/payFlow';
 
 type Staff = { id: string; name: string; role: string; role_id: string; also_management?: boolean };
@@ -153,7 +152,7 @@ function Questions({ candidateId, round }: { candidateId: string; round: ReviewR
  *    report card from each round, and the buttons to allocate a reviewer, pass
  *    the teacher to the next round, or stop here.
  */
-export default function RoundReviewCard({ candidate, onChanged }: { candidate: Candidate; onChanged: (next: Candidate) => void }) {
+export default function RoundReviewCard({ candidate, onChanged, payInfo = null }: { candidate: Candidate; onChanged: (next: Candidate) => void; /** From the Pay card at the top of the page. */ payInfo?: PayInfo | null }) {
   const access = useReviewAccess();
   const me = access?.me;
   const rounds = useMemo(() => roundsForCandidate(access?.rounds ?? [], access?.branch_rounds, candidate), [access, candidate]);
@@ -184,7 +183,6 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   // What the Pay Guide says about this teacher, once the pay panel has loaded it.
-  const [payInfo, setPayInfo] = useState<PayInfo | null>(null);
 
   if (!access || !me || !shortlisted || !round) return null;
 
@@ -301,7 +299,6 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
         </div>
         <div className="p-5 sm:p-6 space-y-6">
           {feedback}
-          <PayPanel candidate={candidate} reviewApproved={review?.recommendation === 'approve'} onChanged={onChanged} />
           {earlier.length > 0 && (
             <details className="rounded-2xl border border-slate-200 bg-slate-50">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">What the earlier rounds said ({earlier.length})</summary>
@@ -389,7 +386,6 @@ export default function RoundReviewCard({ candidate, onChanged }: { candidate: C
       <div className="p-5 sm:p-6 space-y-5">
         {pipeline}
         {feedback}
-        <PayPanel candidate={candidate} reviewApproved={review?.recommendation === 'approve'} onChanged={onChanged} onInfo={setPayInfo} />
 
         {earlier.length > 0 && (
           <details className="rounded-2xl border border-slate-200 bg-slate-50">

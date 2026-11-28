@@ -23,6 +23,7 @@ export default function ReportVerdict({
   strengths,
   concerns,
   areas = [],
+  salary = [],
 }: {
   score: number | null;
   scoreLabel: string;
@@ -36,6 +37,8 @@ export default function ReportVerdict({
   concerns: string[];
   /** The teaching areas from the profile, shown as a small bar chart. */
   areas?: { key: string; label: string; score: number | null }[];
+  /** Last and expected salary, shown right under the scores so both are weighed together. */
+  salary?: { label: string; value: string; note?: string }[];
 }) {
   const style = verdict ? VERDICT_STYLE[verdict.key] : null;
   return (
@@ -88,6 +91,18 @@ export default function ReportVerdict({
           </div>
           <p className="mt-2.5 text-[11px] text-slate-400 print:hidden">Tap a card to see what is behind it. Green good · amber worth a look · red read before deciding.</p>
         </div>
+      )}
+
+      {salary.length > 0 && (
+        <dl className="px-5 sm:px-6 py-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {salary.map((s) => (
+            <div key={s.label} className="report-card rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{s.label}</dt>
+              <dd className="mt-1 text-lg font-bold text-slate-900 tabular-nums">{s.value}</dd>
+              {s.note && <dd className="text-xs text-slate-500">{s.note}</dd>}
+            </div>
+          ))}
+        </dl>
       )}
 
       {areas.length > 0 && (

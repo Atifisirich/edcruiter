@@ -7,7 +7,8 @@
 import { db } from './db';
 import { accessOf, isAdmin } from './permissions';
 import { currentRound, roundsFor } from './reviewRounds';
-import { checkOffer, matchRole, parseMonthly, potOf, rangeFor, yearsOf, type OfferCheck, type PayRange, type PotState } from './payGuide';
+import { checkOffer, matchRole, potOf, rangeFor, yearsOf, type OfferCheck, type PayRange, type PotState } from './payGuide';
+import { salaryOf } from './salary';
 import type { Candidate, FinalOffer, PayRole, School, User } from './types';
 
 export interface PayInfo {
@@ -18,10 +19,13 @@ export interface PayInfo {
   role?: { id: string; name: string; decider_user_id?: string; decider_name?: string };
   range?: PayRange;
   years?: { value: number; source: 'cv' | 'application' };
-  expected?: { text: string; monthly: number | null; note?: string };
-  current?: { text: string; monthly: number | null; note?: string };
+  /** What the teacher asked for and earns now, in rupees a month. `from_text` when read from an older free-text answer (kept in `text`). Current 0 = not working now. */
+  expected?: { text: string; monthly: number | null; from_text?: boolean; note?: string };
+  current?: { text: string; monthly: number | null; from_text?: boolean; note?: string };
   pot?: PotState | null;
   offer?: FinalOffer;
+  /** The campus the teacher applied to, by name. */
+  campus_name?: string;
 }
 
 /** The person who takes the final call for a role: the one management named, else the school admin(s). */
@@ -37,6 +41,10 @@ export function mayDecidePay(user: Pick<User, 'id' | 'role'>, role: Pick<PayRole
   return !!role.decider_user_id && role.decider_user_id === user.id;
 }
 
+function campusName(school: School | undefined, branchId?: string): string | undefined {
+  return branchId ? school?.branches?.find((b) => b.id === branchId)?.name : undefined;
+}
+
 export function payInfoFor(school: School | undefined, candidate: Candidate, users: User[]): PayInfo {
   const rounds = roundsFor(school, candidate);
   const now = currentRound(candidate, rounds);
@@ -46,17 +54,18 @@ export function payInfoFor(school: School | undefined, candidate: Candidate, use
 
   const all = db.getCandidatesBySchool(candidate.school_id, { notResponding: 'include' });
   const years = yearsOf(candidate);
-  const asked = parseMonthly(candidate.expected_salary);
-  const has = parseMonthly(candidate.current_salary);
+  const asked = salaryOf(candidate, 'expected');
+  const has = salaryOf(candidate, 'current');
   return {
     matched: true,
     final_round,
     role: { id: role.id, name: role.name, decider_user_id: role.decider_user_id, decider_name: deciderOf(role, users).name },
     range: rangeFor(role, candidate),
     years: { value: years.years, source: years.source },
-    expected: { text: candidate.expected_salary || '', monthly: asked.monthly, ...(asked.note ? { note: asked.note } : {}) },
-    current: { text: candidate.current_salary || '', monthly: has.monthly, ...(has.note ? { note: has.note } : {}) },
+    expected: { text: asked.fromText ?? '', monthly: asked.monthly, ...(asked.fromText ? { from_text: true } : {}), ...(asked.note ? { note: asked.note } : {}) },
+    current: { text: has.fromText ?? '', monthly: has.monthly, ...(has.fromText ? { from_text: true } : {}), ...(has.note ? { note: has.note } : {}) },
     pot: potOf(role, all, candidate.id),
+    ...(campusName(school, candidate.target_branch_id) ? { campus_name: campusName(school, candidate.target_branch_id) } : {}),
     ...(candidate.final_offer ? { offer: candidate.final_offer } : {}),
   };
 }

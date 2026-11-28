@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
+import { candidateStageResults } from '@/lib/candidateResults';
 import { db } from '@/lib/db';
+import { salaryUpdates } from '@/lib/salary';
 import { evaluateStageWithAIAsync } from '@/lib/aiScoringEngine';
 import { StageResult, StageKey, PolicyAnswer } from '@/lib/types';
 import { asksPolicyQuestions, parsePolicyAnswers, policyAnswersText, policyQuestionsOf } from '@/lib/policyVideo';
@@ -87,6 +89,10 @@ export async function POST(req: NextRequest) {
     if (candidate_updates && typeof candidate_updates === 'object') {
       const safe: Record<string, unknown> = { ...pickAllowed(candidate_updates, CANDIDATE_SELF_FIELDS) };
       if (typeof safe.dob === 'string') safe.age = ageFromDob(safe.dob) ?? undefined;
+      // Salaries are rupees a month, digits only.
+      const salary = salaryUpdates(safe);
+      if (!salary.ok) return NextResponse.json({ error: salary.error }, { status: 400 });
+      Object.assign(safe, salary.updates);
       if (typeof candidate_updates.resume_url === 'string' && candidate_updates.resume_url.startsWith('/api/media/')) {
         const owner = db.findCandidateByMediaUrl(candidate_updates.resume_url);
         if (!owner || owner.candidateId === candidate_id) safe.resume_url = candidate_updates.resume_url;
@@ -251,8 +257,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      result: newResult,
-      stageResult: newResult,
+      // Only that the stage is saved: the marking stays on the server.
+      result: candidateStageResults([newResult])[0],
+      stageResult: candidateStageResults([newResult])[0],
       candidate_updated: true
     });
   } catch (error) {

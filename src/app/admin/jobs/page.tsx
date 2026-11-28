@@ -14,11 +14,15 @@ import { SLOKA_SCHOOL_ID } from '@/lib/defaultData';
 import { isHiringTeam } from '@/lib/permissions';
 import { inviteLength, MODE_LABEL, modeOf } from '@/lib/interviewMode';
 import { appliedTo } from '@/lib/vacancyCandidates';
+import SubjectCounts from '@/components/admin/SubjectCounts';
+import { countBySubject } from '@/lib/subjectGroups';
+import { useRouter } from 'next/navigation';
 import { countByTab } from '@/lib/candidateProgress';
 import type { PublicVacancy } from '@/lib/types';
 
 export default function SchoolJobsPage() {
   const { school, user, candidates, toast } = useAdmin();
+  const router = useRouter();
   // Starts empty rather than with demo listings: a school with no postings sees none.
   const [jobs, setJobs] = useState<PublicVacancy[]>([]);
   const [jobsLoaded, setJobsLoaded] = useState(false);
@@ -209,6 +213,9 @@ export default function SchoolJobsPage() {
             <span className="text-[11px] text-slate-500 font-medium">Shortlisted</span>
           </div>
         </div>
+
+        {/* Every candidate by subject, whether or not they came through a vacancy. */}
+        <SubjectCounts counts={countBySubject(candidates)} onPick={(key) => router.push(`/admin/candidates?subject=${encodeURIComponent(key)}`)} />
 
         {/* Filter & Search Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">

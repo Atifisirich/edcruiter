@@ -13,6 +13,8 @@ import { isHiringTeam } from '@/lib/permissions';
 import { candidateState, countByTab, TAB_LABEL, TAB_ORDER, type CandidateTab } from '@/lib/candidateProgress';
 import { normalizeBands } from '@/lib/shortlistBands';
 import { appliedTo } from '@/lib/vacancyCandidates';
+import SubjectCounts from '@/components/admin/SubjectCounts';
+import { countBySubject, subjectKey, subjectLabel } from '@/lib/subjectGroups';
 import type { PublicVacancy } from '@/lib/types';
 
 type TabKey = 'all' | CandidateTab | 'not_responding';
@@ -77,7 +79,8 @@ function CandidatesList() {
   }, [allCandidates, jobId, vacancy]);
 
   const [search, setSearch] = useState('');
-  const [subject, setSubject] = useState('ALL');
+  // A subject tile on the Vacancies page opens this list with ?subject=...
+  const [subject, setSubject] = useState(params.get('subject') || 'ALL');
   const [grade, setGrade] = useState('ALL');
   const [scoreFilter, setScoreFilter] = useState<'any' | 'yellow' | 'green'>('any');
 
@@ -87,10 +90,8 @@ function CandidatesList() {
 
   const counts = useMemo(() => countByTab(candidates), [candidates]);
 
-  const subjects = useMemo(
-    () => Array.from(new Set(candidates.map((c) => c.applied_subject).filter(Boolean))).sort(),
-    [candidates]
-  );
+  // The same subject typed different ways counts once.
+  const subjectCounts = useMemo(() => countBySubject(candidates), [candidates]);
   const grades = useMemo(
     () => Array.from(new Set(candidates.map((c) => c.applied_segment?.split('(')[0].trim()).filter(Boolean))).sort(),
     [candidates]
@@ -102,7 +103,7 @@ function CandidatesList() {
     return candidates
       .filter((c) => {
         if (tab !== 'all' && candidateState(c).tab !== tab) return false;
-        if (subject !== 'ALL' && c.applied_subject !== subject) return false;
+        if (subject !== 'ALL' && subjectKey(c.applied_subject) !== subject) return false;
         if (grade !== 'ALL' && (c.applied_segment?.split('(')[0].trim() ?? '') !== grade) return false;
         if (minScore > 0 && Number(c.total_ai_score || 0) < minScore) return false;
         if (q) {
@@ -255,6 +256,10 @@ function CandidatesList() {
         </div>
       )}
 
+      {tab !== 'not_responding' && (
+        <SubjectCounts counts={subjectCounts} selected={subject === 'ALL' ? '' : subject} onPick={(key) => setSubject(key || 'ALL')} />
+      )}
+
       <Card padded={false} className="overflow-hidden">
         <div className="border-b border-slate-200 px-2 sm:px-4 overflow-x-auto">
           <div ref={tabBar} role="tablist" className="flex gap-1 min-w-max">
@@ -312,7 +317,8 @@ function CandidatesList() {
           </div>
           <select value={subject} onChange={(e) => setSubject(e.target.value)} className={selectClass} aria-label="Filter by subject">
             <option value="ALL">All subjects</option>
-            {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            {subject !== 'ALL' && !subjectCounts.some((s) => s.key === subject) && <option value={subject}>{subjectLabel(subject)} (0)</option>}
+            {subjectCounts.map((s) => <option key={s.key} value={s.key}>{s.label} ({s.total})</option>)}
           </select>
           <select value={grade} onChange={(e) => setGrade(e.target.value)} className={selectClass} aria-label="Filter by grade level">
             <option value="ALL">All grade levels</option>

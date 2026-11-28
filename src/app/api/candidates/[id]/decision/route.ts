@@ -7,6 +7,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { canDecideRound, roundsFor } from '@/lib/reviewRounds';
 import { reviewStillOwed } from '@/lib/roundReview';
 import { matchRole } from '@/lib/payGuide';
+import { buildSentLetter } from '@/lib/offerTemplates';
 import { notifyPassedTo } from '@/lib/reviewNotify';
 import { isAdmin } from '@/lib/permissions';
 import type { ReviewRound, RoundAssignment } from '@/lib/types';
@@ -48,7 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const rounds = roundsFor(db.getSchoolById(ctx.schoolId), db.getCandidateById(ctx.schoolId, id));
     const round = rounds.find((r) => r.id === body.round);
     const me = { role: ctx.role, role_id: ctx.user.role_id };
-    if (!mayTake(body.action, me, round)) {
+    // Saving a copy of a letter needs the same permission as sending one.
+    if (!mayTake(body.action === 'offer_record' ? 'offer_sent' : body.action, me, round)) {
       return NextResponse.json({ error: refusal(body.action, round?.name) }, { status: 403 });
     }
 
@@ -67,6 +69,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         details: `Allowed one more go at ${stage.replace(/_/g, ' ')}.`,
       });
       return NextResponse.json({ success: true, message: 'One more go allowed. The candidate gets a new set of questions.', candidate: saved });
+    }
+
+    // An offer marked sent before copies were kept: HR enters what the letter said, and it is kept
+    // for viewing, dated to the day it was sent. The decision itself does not change.
+    if (body.action === 'offer_record') {
+      const target = db.getCandidateById(ctx.schoolId, id);
+      if (!target) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
+      if (!target.offer_letter_sent_at) return NextResponse.json({ error: 'No offer has been marked sent for this teacher yet.' }, { status: 400 });
+      if (target.offer_letter) return NextResponse.json({ error: 'A copy of this offer letter is already saved.' }, { status: 409 });
+      const built = buildSentLetter(body.letter, target, db.getSchoolById(ctx.schoolId) ?? null, ctx.user.name, new Date(target.offer_letter_sent_at));
+      if (!built.ok) return NextResponse.json({ error: built.error }, { status: 400 });
+      const saved = db.updateCandidate(ctx.schoolId, id, { offer_letter: built.letter });
+      if (!saved) return NextResponse.json({ error: 'Could not save the copy.' }, { status: 500 });
+      auditAsStaff(ctx, ctx.schoolId, {
+        action: 'DECISION_OFFER_RECORD',
+        resource: `Candidate: ${target.name}`,
+        details: `Saved a copy of the offer letter sent earlier: ${built.letter.details.monthly_salary} a month, joining ${built.letter.details.joining_date}.`,
+      });
+      return NextResponse.json({ success: true, message: 'Copy saved.', candidate: saved });
     }
 
     if (!ACTIONS.has(body.action)) return NextResponse.json({ error: 'That action is not recognised.' }, { status: 400 });
@@ -100,13 +121,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const outcome = decide(candidate, input, { id: ctx.user.id, name: ctx.user.name }, undefined, rounds);
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: 400 });
 
+    // The offer letter that went with "offer sent", when it was prepared here, is kept so it can be printed again.
+    // ("Offer already sent" sends no letter.)
+    let letterNote = '';
+    if (input.action === 'offer_sent' && body.letter) {
+      const built = buildSentLetter(body.letter, candidate, db.getSchoolById(ctx.schoolId) ?? null, ctx.user.name);
+      if (!built.ok) return NextResponse.json({ error: built.error }, { status: 400 });
+      (outcome.updates as Record<string, unknown>).offer_letter = built.letter;
+      letterNote = ` Letter: ${built.letter.template_name}, ${built.letter.details.monthly_salary} a month, joining ${built.letter.details.joining_date}.`;
+    }
+
     const updated = db.updateCandidate(ctx.schoolId, id, outcome.updates);
     if (!updated) return NextResponse.json({ error: 'Could not save the decision.' }, { status: 500 });
 
     auditAsStaff(ctx, ctx.schoolId, {
       action: `DECISION_${input.action.toUpperCase()}`,
       resource: `Candidate: ${candidate.name}`,
-      details: `${outcome.message}${input.note ? ` Note: ${input.note.trim()}` : ''}`,
+      details: `${outcome.message}${letterNote}${input.note ? ` Note: ${input.note.trim()}` : ''}`,
     });
 
     // A yes moves the teacher on: whoever runs the next round (and HR) is told to book it.

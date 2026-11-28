@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { digitsOnly } from '@/lib/salary';
 import { CheckCircle2, Circle, Plus, Trash2 } from 'lucide-react';
 import GradePicker from '@/components/admin/GradePicker';
 import { Card, buttonClass, inputClass, selectClass } from '@/components/admin/ui';
@@ -119,14 +120,15 @@ export default function JobEditor({
                 )}
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                   <label className="block text-sm font-medium text-slate-700">Usual pay (₹ a month)
-                    <input type="number" min={0} value={t.ideal} onChange={(e) => setTier(i, setUsual(t, e.target.value))} placeholder="e.g. 30000" className={`${inputClass} mt-1 !text-lg !font-semibold tabular-nums`} />
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={t.ideal} onChange={(e) => setTier(i, setUsual(t, digitsOnly(e.target.value)))} placeholder="e.g. 30000" className={`${inputClass} mt-1 !text-lg !font-semibold tabular-nums`} />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Monthly, in rupees, numbers only (e.g. 30000).</span>
                   </label>
                   <div className="grid grid-cols-2 gap-2 sm:w-72">
                     <label className="block text-xs font-medium text-slate-600">Lowest
-                      <input type="number" min={0} value={t.min} onChange={(e) => setTier(i, setEdge(t, 'min', e.target.value))} className={`${cell} mt-1`} />
+                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={t.min} onChange={(e) => setTier(i, setEdge(t, 'min', digitsOnly(e.target.value)))} className={`${cell} mt-1`} />
                     </label>
                     <label className="block text-xs font-medium text-slate-600">Highest
-                      <input type="number" min={0} value={t.max} onChange={(e) => setTier(i, setEdge(t, 'max', e.target.value))} className={`${cell} mt-1`} />
+                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={t.max} onChange={(e) => setTier(i, setEdge(t, 'max', digitsOnly(e.target.value)))} className={`${cell} mt-1`} />
                     </label>
                   </div>
                 </div>
@@ -155,10 +157,10 @@ export default function JobEditor({
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">Extra pay for a B.Ed or a master’s degree {(role.bed || role.masters) && <span className="text-indigo-700 font-medium">· set</span>}</summary>
             <div className="px-4 pb-4 grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium text-slate-700">With a B.Ed, add (₹ a month)
-                <input type="number" min={0} value={role.bed} onChange={(e) => patch({ bed: e.target.value })} placeholder="None" className={`${inputClass} mt-1`} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={role.bed} onChange={(e) => patch({ bed: digitsOnly(e.target.value) })} placeholder="None" className={`${inputClass} mt-1`} />
               </label>
               <label className="block text-sm font-medium text-slate-700">With a master’s degree, add (₹ a month)
-                <input type="number" min={0} value={role.masters} onChange={(e) => patch({ masters: e.target.value })} placeholder="None" className={`${inputClass} mt-1`} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={role.masters} onChange={(e) => patch({ masters: digitsOnly(e.target.value) })} placeholder="None" className={`${inputClass} mt-1`} />
               </label>
             </div>
           </details>
@@ -171,7 +173,7 @@ export default function JobEditor({
                   <input type="number" min={1} value={role.positions} onChange={(e) => patch({ positions: e.target.value })} placeholder="e.g. 3" className={`${inputClass} mt-1`} />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">The most you can spend a month in total (₹)
-                  <input type="number" min={0} value={role.budget} onChange={(e) => patch({ budget: e.target.value })} placeholder="e.g. 90000" className={`${inputClass} mt-1`} />
+                  <input type="text" inputMode="numeric" pattern="[0-9]*" value={role.budget} onChange={(e) => patch({ budget: digitsOnly(e.target.value) })} placeholder="e.g. 90000" className={`${inputClass} mt-1`} />
                 </label>
               </div>
               {pot && <p className="text-sm text-slate-600">So far: {pot.filled} of {pot.positions} posts filled, {inr(pot.used_monthly)} of {inr(pot.monthly_budget)} used.</p>}

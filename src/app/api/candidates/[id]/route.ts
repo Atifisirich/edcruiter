@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { salaryUpdates } from '@/lib/salary';
 import { evaluateStageWithAI, isMisappliedHrPolicyScore } from '@/lib/aiScoringEngine';
 import { isScoredStage } from '@/lib/scoredStages';
 import { Candidate, StageResult } from '@/lib/types';
@@ -8,6 +9,7 @@ import { ageFromDob } from '@/lib/age';
 import { assertSchoolActive, authErrorResponse, requireCandidateOrStaff } from '@/lib/auth';
 import { notifyCandidateDeclined } from '@/lib/candidateOutcome';
 import { isAdmin } from '@/lib/permissions';
+import { candidateScores, candidateStageResults } from '@/lib/candidateResults';
 
 function repairStageResults(schoolId: string, candidateId: string, results: StageResult[]): StageResult[] {
   const candidate = db.getCandidateById(schoolId, candidateId);
@@ -69,7 +71,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // The questions of a school's own test carry their answer key, so they stay on the server.
     const stageAttempts = db.getStageAttempts(candidate.school_id, candidate.id).map(({ own_questions: _own, ...rest }) => rest);
-    return NextResponse.json({ candidate: access.kind === 'candidate' ? candidateSelfView(candidate) : candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
+    // The candidate gets which stages are done and, at the end, their own marks. The AI's comments,
+    // the answer key, reviewers' notes and the camera checks stay with the school.
+    if (access.kind === 'candidate') {
+      return NextResponse.json({ candidate: candidateSelfView(candidate), stageResults: candidateStageResults(stageResults), my_scores: candidateScores(stageResults), proctoringEvents: [], evaluations: [], stageAttempts, schoolName, schoolSubjects, schoolSegments });
+    }
+    return NextResponse.json({ candidate: candidateView(candidate), stageResults, proctoringEvents, evaluations, stageAttempts, schoolName, schoolSubjects, schoolSegments });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Failed to fetch candidate profile' }, { status: 500 });
   }
@@ -97,6 +104,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No permitted fields in update.' }, { status: 400 });
     }
+
+    // Salaries are rupees a month, digits only; both forms of each figure are kept in step.
+    const salary = salaryUpdates(updates as Record<string, unknown>);
+    if (!salary.ok) return NextResponse.json({ error: salary.error }, { status: 400 });
+    Object.assign(updates, salary.updates);
 
     // Age follows the date of birth, never a typed number.
     if (typeof updates.dob === 'string') {

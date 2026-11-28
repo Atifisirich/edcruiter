@@ -81,10 +81,9 @@ export async function POST(req: NextRequest) {
       newStatus = 'passed';
     }
 
-    db.updateCandidate(ctx.schoolId, candidate_id, {
-      status: newStatus,
-      expected_salary: offered_salary || candidate.expected_salary
-    });
+    // The teacher's own expected salary is never overwritten by the school's offer:
+    // the Pay card compares the two. The offered figure stays on the decision below.
+    db.updateCandidate(ctx.schoolId, candidate_id, { status: newStatus });
 
     db.addAuditLog({
       id: `audit_${Date.now()}`,

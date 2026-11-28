@@ -1,5 +1,6 @@
 'use client';
 
+import OfferTermsCard from './OfferTermsCard';
 import React, { useEffect, useRef, useState } from 'react';
 import { copyApplicationMessage } from '@/components/admin/copyApplication';
 import {
@@ -15,6 +16,9 @@ import { candidateState } from '@/lib/candidateProgress';
 import { MAX_ATTEMPTS } from '@/lib/stageAttempts';
 import HiringDecision from './HiringDecision';
 import RoundReviewCard from './RoundReviewCard';
+import PayPanel from './PayPanel';
+import type { PayInfo } from '@/lib/payFlow';
+import { salaryLabel, salaryOf } from '@/lib/salary';
 import { isScoredStage } from '@/lib/scoredStages';
 import { cleanResumeReport, dedupeSimilar } from '@/lib/reportText';
 import TeachingProfilePanel, { type ProfileResponse } from './TeachingProfilePanel';
@@ -87,6 +91,8 @@ export default function CandidateProfileDashboard({
   renderInterview,
 }: CandidateProfileDashboardProps) {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  // What the Pay card loaded, so the review card knows who takes the final call.
+  const [payInfo, setPayInfo] = useState<PayInfo | null>(null);
   const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
   const [stageResults, setStageResults] = useState<StageResult[]>([]);
   const [proctoringEvents, setProctoringEvents] = useState<ProctoringEvent[]>([]);
@@ -218,6 +224,18 @@ export default function CandidateProfileDashboard({
     candidate.experience_band ? `Experience: ${candidate.experience_band}` : '',
     candidate.current_location ? candidate.current_location : '',
   ].filter(Boolean) : [];
+
+  // Last drawn and expected pay, with how big the jump is.
+  const last = candidate ? salaryOf(candidate, 'current').monthly : null;
+  const expected = candidate ? salaryOf(candidate, 'expected').monthly : null;
+  const jump = last && expected ? Math.round(((expected - last) / last) * 100) : null;
+  const salaryStrip = candidate
+    ? [
+        { label: 'Last salary', value: salaryLabel(candidate, 'current', 'Not given') },
+        { label: 'Expected salary', value: salaryLabel(candidate, 'expected', 'Not given') },
+        { label: 'Change asked', value: jump === null ? '—' : `${jump > 0 ? '+' : ''}${jump}%`, note: jump === null ? 'Needs both figures' : 'Expected compared with last' },
+      ]
+    : [];
 
   const metrics: Metric[] = [];
   for (const stg of SLOKA_DEFAULT_STAGES.filter((s) => isScoredStage(s.key))) {
@@ -363,7 +381,15 @@ export default function CandidateProfileDashboard({
           <div className="py-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">Candidate not found.</div>
         ) : (
           <>
-            <RoundReviewCard candidate={candidate} onChanged={(next) => { setCandidate(next); onCandidateUpdated?.(next); }} />
+            {/* Pay first: the decision-maker reads the ask against the Pay Guide before the report. */}
+            <PayPanel candidate={candidate} onChanged={(next) => { setCandidate(next); onCandidateUpdated?.(next); }} onInfo={setPayInfo} />
+
+            {(candidate.shortlist_status === 'shortlisted' || candidate.status === 'passed' || candidate.status === 'hired' || !!candidate.offer_terms) && (
+              // The letter preview reads the conditions off the candidate, so a save is passed back up.
+              <OfferTermsCard candidateId={candidate.id} onSaved={(offer_terms) => setCandidate((c) => (c ? { ...c, offer_terms } : c))} />
+            )}
+
+            <RoundReviewCard candidate={candidate} payInfo={payInfo} onChanged={(next) => { setCandidate(next); onCandidateUpdated?.(next); }} />
 
             <ReportVerdict
               score={overallScore}
@@ -373,6 +399,7 @@ export default function CandidateProfileDashboard({
               bandLabel={band?.label}
               summary={summary}
               facts={facts}
+              salary={salaryStrip}
               metrics={metrics}
               areas={areas}
               strengths={strengths}
@@ -529,8 +556,8 @@ export default function CandidateProfileDashboard({
                       ['Prior organisation', candidate.prior_org || '—'],
                       ['Location', candidate.current_location || '—'],
                       ['Notice period', candidate.notice_period || '—'],
-                      ['Current salary', candidate.current_salary || '—'],
-                      ['Expected salary', candidate.expected_salary || '—'],
+                      ['Current salary', salaryLabel(candidate, 'current')],
+                      ['Expected salary', salaryLabel(candidate, 'expected')],
                       ['Languages', candidate.languages?.length ? candidate.languages.join(', ') : '—'],
                       ['Application ID', candidate.invite_code || '—'],
                     ].map(([label, value]) => (

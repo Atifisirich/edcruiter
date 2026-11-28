@@ -385,3 +385,37 @@ export function checkOffer(monthly: number, range: Pick<PayRange, 'min' | 'max'>
 export function validMonthly(v: unknown): number | null {
   return money(v);
 }
+
+// ---------------------------------------------------------------------------
+// What the teacher asks, against the range, and what to offer
+// ---------------------------------------------------------------------------
+
+export interface AskPosition {
+  where: 'within' | 'above' | 'below' | 'unknown';
+  /** Rupees a month outside the range (0 when within or unknown). */
+  by: number;
+  /** The same as a share of the nearest edge of the range, rounded. */
+  percent: number;
+}
+
+/** Whether what the teacher asks sits within, above or below the range, and by how much. */
+export function askPosition(ask: number | null | undefined, range: Pick<PayRange, 'min' | 'max'>): AskPosition {
+  if (!ask || ask <= 0) return { where: 'unknown', by: 0, percent: 0 };
+  if (ask > range.max) return { where: 'above', by: ask - range.max, percent: Math.round(((ask - range.max) / range.max) * 100) };
+  if (ask < range.min) return { where: 'below', by: range.min - ask, percent: Math.round(((range.min - ask) / range.min) * 100) };
+  return { where: 'within', by: 0, percent: 0 };
+}
+
+/**
+ * The figure to suggest to the decision-maker: what the teacher asked when it
+ * is within the range; the top of the range when they ask more (the most that
+ * goes ahead without the admin); the bottom of the range when they ask less;
+ * the ideal when they did not say.
+ */
+export function suggestedOffer(ask: number | null | undefined, range: Pick<PayRange, 'min' | 'ideal' | 'max'>): { monthly: number; why: string } {
+  const at = askPosition(ask, range);
+  if (at.where === 'within') return { monthly: ask as number, why: 'What the teacher asked, inside the range.' };
+  if (at.where === 'above') return { monthly: range.max, why: 'The highest pay in the range. More needs the school admin.' };
+  if (at.where === 'below') return { monthly: range.min, why: 'The lowest pay in the range. The teacher asked for less.' };
+  return { monthly: range.ideal, why: 'The ideal pay for this tier. The teacher did not say what they expect.' };
+}

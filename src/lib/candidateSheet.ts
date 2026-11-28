@@ -3,10 +3,11 @@
  * same job as for leads (leadSheet.ts: names and phones by what is in the
  * cells, with or without headings). On top of that, a candidate needs a subject,
  * which schools often write as the post ("Pre primary teacher", "Counsellor"),
- * Pure, so it is tested without a browser.
+ * and salary columns. Pure, so it is tested without a browser.
  */
 import { isJobTitle, leadRowsFrom, phoneIn, readSheet, type LeadField, type SheetColumn, type SheetRead } from './leadSheet';
 import { segmentFromGrades } from './grades';
+import { salaryUpdates } from './salary';
 
 export const MAX_CANDIDATE_ROWS = 200;
 const DEFAULT_SEGMENT = 'Secondary (Grades 9-10)';
@@ -20,6 +21,8 @@ export interface SheetCandidate {
   qualification: string;
   experience: string;
   prior_org: string;
+  current_salary_monthly?: number;
+  expected_salary_monthly?: number;
   warnings?: string[];
 }
 
@@ -34,7 +37,7 @@ export const CHOOSABLE_FIELDS: { field: LeadField; label: string }[] = [
 
 const SUBJECT_HEADER = /\b(subject|position|post|designation|applied for|applying for|role|vacancy|job|department|discipline)\b/i;
 const SUBJECT_NAME = /\b(math(s|ematics)?|english|hindi|telugu|urdu|sanskrit|science|physics|chemistry|biology|social( studies)?|history|geography|computers?|economics|commerce|accounts|evs|music|dance|art|physical education|sports|yoga)\b/i;
-const PAY_HEADER = /salary|ctc|\bpay\b/i;
+const SALARY_HEADER = /salary|ctc|\bpay\b/i;
 
 export interface CandidateSheet {
   read: SheetRead;
@@ -43,7 +46,7 @@ export interface CandidateSheet {
 
 /** A column nobody has claimed whose heading or contents say it is the post or subject. */
 function findSubjectColumn(read: SheetRead, used: Set<number>): number | undefined {
-  const free = read.columns.filter((c) => !used.has(c.index) && !PAY_HEADER.test(c.header));
+  const free = read.columns.filter((c) => !used.has(c.index) && !SALARY_HEADER.test(c.header));
   const byHeading = read.headerRow === null ? undefined : free.find((c) => SUBJECT_HEADER.test(c.header) && !c.header.includes('?'));
   if (byHeading) return byHeading.index;
   const mostly = (c: SheetColumn) => {
@@ -71,11 +74,27 @@ function segmentFor(segment: string, subject: string): string {
   return DEFAULT_SEGMENT;
 }
 
+function salariesFrom(read: SheetRead, row: string[]): Pick<SheetCandidate, 'current_salary_monthly' | 'expected_salary_monthly' | 'warnings'> {
+  const cell = (test: RegExp) => {
+    const c = read.columns.find((col) => SALARY_HEADER.test(col.header) && test.test(col.header));
+    return c ? (row[c.index] ?? '').trim() : '';
+  };
+  const current = cell(/current|present|now|last|previous/i);
+  const expected = cell(/expect/i);
+  const r = salaryUpdates({ ...(current ? { current_salary: current } : {}), ...(expected ? { expected_salary: expected } : {}) }, { lenient: true });
+  if (!r.ok) return {};
+  return {
+    ...(typeof r.updates.current_salary_monthly === 'number' ? { current_salary_monthly: r.updates.current_salary_monthly } : {}),
+    ...(typeof r.updates.expected_salary_monthly === 'number' ? { expected_salary_monthly: r.updates.expected_salary_monthly } : {}),
+    ...(r.notes.length ? { warnings: r.notes } : {}),
+  };
+}
+
 /** The candidates, using the columns on the screen. */
 export function candidatesFrom(sheet: CandidateSheet, mapping: Partial<Record<LeadField, number>> = sheet.mapping): SheetCandidate[] {
   const rows = leadRowsFrom(sheet.read, mapping);
   const out: SheetCandidate[] = [];
-  rows.forEach((r) => {
+  rows.forEach((r, i) => {
     if (!r.name && !r.phone && !r.email) return;
     const subject = r.subject || 'General';
     out.push({
@@ -87,6 +106,7 @@ export function candidatesFrom(sheet: CandidateSheet, mapping: Partial<Record<Le
       qualification: r.qualification,
       experience: r.experience,
       prior_org: r.prior_org,
+      ...salariesFrom(sheet.read, sheet.read.rows[i] ?? []),
     });
   });
   return out.slice(0, MAX_CANDIDATE_ROWS);

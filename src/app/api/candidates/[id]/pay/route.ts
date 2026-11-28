@@ -52,6 +52,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       can_decide: !!role && mayDecidePay(ctx.user, role),
       can_approve: isAdmin(ctx.role),
       can_note: isHiringTeam(ctx.role) || (!!role && mayDecidePay(ctx.user, role)),
+      // The review at the final round, which the offer needs (see POST): approve, not approve, or none yet.
+      final_review: (final && candidate.round_reviews?.[final.id]?.recommendation) || null,
     });
   } catch (error) {
     return authErrorResponse(error) ?? NextResponse.json({ error: 'Could not load the pay details.' }, { status: 500 });

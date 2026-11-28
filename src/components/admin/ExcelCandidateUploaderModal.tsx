@@ -23,6 +23,9 @@ export interface ParsedCandidate {
   qualification: string;
   experience: string;
   prior_org: string;
+  /** Rupees a month, read from the sheet's salary columns. */
+  current_salary_monthly?: number;
+  expected_salary_monthly?: number;
   /** Set on rows read from a CV: the file name and what to check. */
   source?: string;
   warnings?: string[];
@@ -34,10 +37,10 @@ interface ExcelCandidateUploaderModalProps {
   onSuccess: () => void;
 }
 
-const SAMPLE_CSV_DATA = `Name,Email,Phone,Subject,Segment,Qualification,Experience,PreviousSchool
-Dr. Priya Nair,priya.science@gmail.com,+91 98765 11223,Physics,Senior Secondary (Grades 11-12),M.Sc (Physics) + B.Ed,4.5 Years,Delhi Public School
-Sanjay Mukherjee,sanjay.math@gmail.com,+91 98765 22334,Mathematics,Secondary (Grades 9-10),M.Sc (Math) + B.Ed,3.0 Years,Oakridge International
-Kavita Deshmukh,kavita.bio@gmail.com,+91 98765 33445,Biology,Secondary (Grades 9-10),M.Sc (Botany) + B.Ed,5.0 Years,Chirec International`;
+const SAMPLE_CSV_DATA = `Name,Email,Phone,Subject,Segment,Qualification,Experience,PreviousSchool,CurrentSalaryMonthly,ExpectedSalaryMonthly
+Dr. Priya Nair,priya.science@gmail.com,+91 98765 11223,Physics,Senior Secondary (Grades 11-12),M.Sc (Physics) + B.Ed,4.5 Years,Delhi Public School,42000,48000
+Sanjay Mukherjee,sanjay.math@gmail.com,+91 98765 22334,Mathematics,Secondary (Grades 9-10),M.Sc (Math) + B.Ed,3.0 Years,Oakridge International,35000,40000
+Kavita Deshmukh,kavita.bio@gmail.com,+91 98765 33445,Biology,Secondary (Grades 9-10),M.Sc (Botany) + B.Ed,5.0 Years,Chirec International,38000,45000`;
 
 function matrixFromWorkbook(buffer: ArrayBuffer): unknown[][] {
   const workbook = XLSX.read(buffer, { type: 'array' });
@@ -254,6 +257,8 @@ export default function ExcelCandidateUploaderModal({
             qualification: row.qualification || undefined,
             experience_band: row.experience || undefined,
             prior_org: row.prior_org || undefined,
+            ...(row.current_salary_monthly !== undefined ? { current_salary_monthly: row.current_salary_monthly } : {}),
+            ...(row.expected_salary_monthly !== undefined ? { expected_salary_monthly: row.expected_salary_monthly } : {}),
           })),
         }),
       });

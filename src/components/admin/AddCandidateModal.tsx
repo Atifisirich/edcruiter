@@ -1,6 +1,8 @@
 'use client';
 
+import { EXPERIENCE_OPTIONS } from '@/lib/experience';
 import React, { useEffect, useState } from 'react';
+import SalaryInput from '@/components/SalaryInput';
 import { CheckCircle2, Copy, Send, UserPlus, X } from 'lucide-react';
 import Link from 'next/link';
 import { buttonClass, inputClass, selectClass } from './ui';
@@ -27,7 +29,6 @@ import {
 /** The value of every "Other" choice; the typed text is sent instead. */
 const OTHER = OTHER_CHOICE;
 
-const EXPERIENCE = ['Fresher (0 - 1 Year)', '1 – 2 Years', '3 – 5 Years', '5 – 8 Years', '8+ Years (Senior Faculty / HOD)'];
 
 // Every field starts genuinely blank. A form that opens pre-filled with
 // realistic-looking values gets submitted with fabricated details when someone
@@ -41,6 +42,9 @@ const BLANK = {
   experience_band: '',
   prior_org: '',
   target_branch_id: '',
+  /** Rupees a month, digits only. */
+  current_salary: '',
+  expected_salary: '',
 };
 
 const BLANK_DEGREE: DegreeForm = { choice: '', other: '', subject: '' };
@@ -241,6 +245,8 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
           experience_band: form.experience_band,
           prior_org: form.prior_org,
           target_branch_id: form.target_branch_id,
+          ...(form.current_salary ? { current_salary_monthly: Number(form.current_salary) } : {}),
+          ...(form.expected_salary ? { expected_salary_monthly: Number(form.expected_salary) } : {}),
           boards_taught: boardsTaught,
           education: educationFromForm(edu),
           applied_segment: segmentFromGrades(grades),
@@ -424,7 +430,7 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
               <Field label="Experience">
                 <select value={form.experience_band} onChange={set('experience_band')} className={`${selectClass} w-full`}>
                   <option value="">Not known yet</option>
-                  {EXPERIENCE.map((x) => <option key={x} value={x}>{x}</option>)}
+                  {EXPERIENCE_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
                 </select>
               </Field>
               <div className="sm:col-span-2">
@@ -432,6 +438,8 @@ export default function AddCandidateModal({ isOpen, onClose }: { isOpen: boolean
                   <input type="text" placeholder="e.g. Oakridge International" value={form.prior_org} onChange={set('prior_org')} className={inputClass} />
                 </Field>
               </div>
+              <SalaryInput label="Current salary (optional)" value={form.current_salary} onChange={(v) => setForm((f) => ({ ...f, current_salary: v }))} hint="Monthly, in rupees, numbers only (e.g. 35000)" />
+              <SalaryInput label="Expected salary (optional)" value={form.expected_salary} onChange={(v) => setForm((f) => ({ ...f, expected_salary: v }))} hint="Monthly, in rupees, numbers only (e.g. 35000)" />
               <fieldset className="sm:col-span-2 space-y-2">
                 <legend className="text-sm font-medium text-slate-700">Boards they have taught</legend>
                 <p className="text-xs text-slate-500">Pick every one that applies.</p>

@@ -43,12 +43,12 @@ describe('candidate sheets as schools send them (Meridian: name, number, post)',
     expect(candidatesFrom(sheet, { name: 0, phone: 1 })[0].subject).toBe('General');
   });
 
-  it('still reads the template', () => {
+  it('still reads the template, salaries included', () => {
     const [row] = read([
-      ['Name', 'Email', 'Phone', 'Subject', 'Segment', 'Qualification', 'Experience', 'PreviousSchool'],
-      ['Priya Nair', 'priya@gmail.com', '+91 98765 11223', 'Physics', 'Senior Secondary (Grades 11-12)', 'M.Sc', '4 Years', 'DPS'],
+      ['Name', 'Email', 'Phone', 'Subject', 'Segment', 'Qualification', 'Experience', 'PreviousSchool', 'CurrentSalaryMonthly', 'ExpectedSalaryMonthly'],
+      ['Priya Nair', 'priya@gmail.com', '+91 98765 11223', 'Physics', 'Senior Secondary (Grades 11-12)', 'M.Sc', '4 Years', 'DPS', '42000', '48000'],
     ]);
-    expect(row).toMatchObject({ name: 'Priya Nair', email: 'priya@gmail.com', subject: 'Physics', segment: 'Senior Secondary (Grades 11-12)' });
+    expect(row).toMatchObject({ name: 'Priya Nair', email: 'priya@gmail.com', subject: 'Physics', segment: 'Senior Secondary (Grades 11-12)', current_salary_monthly: 42000, expected_salary_monthly: 48000 });
   });
 });
 

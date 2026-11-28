@@ -194,6 +194,8 @@ export interface School {
   hr_hourly_cost_inr?: number;
   /** What management lets the final decision-maker offer, by job role. See payGuide.ts. */
   pay_guide?: PayGuide;
+  /** The school's own offer letter templates, next to the standard letter. See offerTemplates.ts. */
+  offer_letter_templates?: OfferLetterTemplate[];
 }
 
 /** One experience band of a job role, with the monthly gross pay it may be offered. */
@@ -831,6 +833,10 @@ export interface Candidate {
   prior_org: string;
   current_salary: string;
   expected_salary: string;
+  /** Rupees a month, typed as digits (0 = not working now). Older records only have the text above. See salary.ts. */
+  current_salary_monthly?: number;
+  /** Rupees a month, typed as digits. Older records only have the text above. See salary.ts. */
+  expected_salary_monthly?: number;
   current_location: string;
   relocation_branches: string[]; // Manneguda, Tukkuguda, Vikarabad
   languages: string[];
@@ -876,6 +882,8 @@ export interface Candidate {
   selected_at?: string;
   /** When an offer letter was sent */
   offer_letter_sent_at?: string;
+  /** The letter that was sent, as filled in, so it can be opened and printed again. */
+  offer_letter?: SentOfferLetter;
   /** School rejected the candidate */
   rejected_by_school_at?: string;
   /** When the candidate was told their application was declined (sent at most once). */
@@ -929,6 +937,7 @@ export interface Candidate {
   round_reviews?: Record<string, RoundReview>;
   /** Suggested interview questions, by round id. */
   round_questions?: Record<string, RoundQuestions>;
+  offer_terms?: OfferTerms;
   /** The salary the decision-maker offered at the final round. See payGuide.ts. */
   final_offer?: FinalOffer;
   created_at: string;
@@ -1261,6 +1270,40 @@ export interface EvaluationRecord {
   timestamp: string;
 }
 
+/** A school's own offer letter: plain text with {tags} filled in for each teacher. See offerTemplates.ts. */
+export interface OfferLetterTemplate {
+  id: string;
+  name: string;
+  body: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+/** Agreed along with the salary. See offerTerms.ts. */
+export interface OfferTerms {
+  accommodation: 'yes' | 'no' | '';
+  accommodation_note: string;
+  pf: 'yes' | 'no' | '';
+  pf_note: string;
+  other: string;
+  /** Whether the teacher sees these in the offer letter. */
+  include_in_letter: boolean;
+  updated_by: string;
+  updated_at: string;
+}
+
+/** The offer letter as it went to the teacher. */
+export interface SentOfferLetter {
+  /** Unset for the standard Edcruiter letter. */
+  template_id?: string;
+  template_name: string;
+  details: OfferLetterDetails;
+  /** The filled-in text of a school template. The standard letter is drawn from `details`. */
+  text?: string;
+  sent_at: string;
+  sent_by: string;
+}
+
 export interface OfferLetterDetails {
   candidate_id: string;
   candidate_name: string;
@@ -1280,6 +1323,8 @@ export interface OfferLetterDetails {
   joining_date: string;
   reporting_authority: string;
   issue_date: string;
+  /** Agreed conditions printed in the letter, when the school chose to. */
+  terms?: string[];
 }
 
 export interface PublicVacancy {

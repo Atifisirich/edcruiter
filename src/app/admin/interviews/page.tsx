@@ -158,6 +158,14 @@ export default function LeadershipInterviewsPage() {
   };
 
   const list = candidates.filter(inRound);
+  // Teachers given to the person signed in and still waiting for their review, in any round.
+  // An admin who also acts as management has no reviewer page of their own, so it shows here.
+  const myId = access?.me.id;
+  const givenToMe = candidates.flatMap((c) =>
+    Object.entries(c.round_assignments ?? {})
+      .filter(([r, a]) => a?.user_id === myId && !c.round_reviews?.[r] && !roundResultOf(c, r) && c.status !== 'rejected')
+      .map(([r]) => ({ c, r }))
+  );
   const selectedInterview = selected ? interviewFor(selected.id, round) : undefined;
   // Once this round has a yes or no, there is nothing left to book or record here.
   const decidedHere = !!selected && !!roundResultOf(selected, round);
@@ -289,6 +297,22 @@ export default function LeadershipInterviewsPage() {
           title="Interviews"
           description="After the shortlist, your school meets the teacher in each review round, in order. Pick the reviewer and a time. The candidate and the reviewer are both told."
         />
+
+        {givenToMe.length > 0 && (
+          <section aria-label="Given to you" className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
+            <h2 className="text-sm font-bold text-slate-900">Given to you to review ({givenToMe.length})</h2>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {givenToMe.map(({ c, r }) => (
+                <li key={`${c.id}-${r}`}>
+                  <Link href={`/admin/candidates/${c.id}`} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 hover:border-indigo-500">
+                    {c.name}
+                    <span className="font-normal text-slate-500">{rounds.find((x) => x.id === r)?.name ?? r} round · give your review</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {rounds.map((r, i) => (

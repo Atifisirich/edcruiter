@@ -15,9 +15,23 @@ import { HIRING_TEAM, isHiringTeam } from '@/lib/permissions';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { CANDIDATE_COOKIE, createCandidateToken } from '@/lib/session';
 import { reachOf } from '@/lib/notResponding';
+import { salaryUpdates } from '@/lib/salary';
 
 /** Loosely-typed row shape a bulk-import spreadsheet row may arrive as. */
 type BulkImportRow = Partial<Candidate> & { school_id?: string };
+
+/** A spreadsheet row's salaries, as rupees a month. Unreadable cells are left blank rather than refusing the row. */
+function bulkSalary(item: BulkImportRow): Partial<Candidate> {
+  const pick: Record<string, unknown> = {};
+  for (const which of ['current', 'expected'] as const) {
+    const n = item[`${which}_salary_monthly`];
+    const t = item[`${which}_salary`];
+    if (n !== undefined && n !== null) pick[`${which}_salary_monthly`] = n;
+    else if (t) pick[`${which}_salary`] = String(t);
+  }
+  const r = salaryUpdates(pick, { lenient: true });
+  return r.ok ? r.updates : {};
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -105,8 +119,10 @@ export async function POST(req: NextRequest) {
           qualification: item.qualification || '',
           experience_band: item.experience_band || '',
           prior_org: item.prior_org || '',
-          current_salary: item.current_salary || '',
-          expected_salary: item.expected_salary || '',
+          current_salary: '',
+          expected_salary: '',
+          // Rupees a month. A cell such as "5 LPA" is converted; one that cannot be read is left blank.
+          ...bulkSalary(item),
           current_location: item.current_location || '',
           relocation_branches: item.relocation_branches || [],
           languages: item.languages || [],
@@ -194,6 +210,8 @@ export async function POST(req: NextRequest) {
       prior_org,
       current_salary,
       expected_salary,
+      current_salary_monthly,
+      expected_salary_monthly,
       current_location,
       relocation_branches,
       languages,
@@ -225,6 +243,13 @@ export async function POST(req: NextRequest) {
     // The older one-line qualification stays filled, so older screens and the
     // AI scoring keep working: from the separate degrees when they were given.
     const qualification = education ? summariseEducation(education) : cleanText(requestedQualification, 200);
+
+    // Salaries are rupees a month, digits only. Free text such as "5 LPA" is refused.
+    const salary = salaryUpdates({
+      ...(current_salary_monthly !== undefined ? { current_salary_monthly } : current_salary !== undefined ? { current_salary } : {}),
+      ...(expected_salary_monthly !== undefined ? { expected_salary_monthly } : expected_salary !== undefined ? { expected_salary } : {}),
+    });
+    if (!salary.ok) return NextResponse.json({ error: salary.error }, { status: 400 });
 
     if (!name || !email || !applied_subject || !applied_segment) {
       return NextResponse.json({ error: 'Name, email, subject and segment are required' }, { status: 400 });
@@ -269,8 +294,9 @@ export async function POST(req: NextRequest) {
       qualification,
       experience_band: experience_band || '',
       prior_org: prior_org || '',
-      current_salary: current_salary || '',
-      expected_salary: expected_salary || '',
+      current_salary: '',
+      expected_salary: '',
+      ...salary.updates,
       current_location: current_location || '',
       relocation_branches: relocation_branches || [],
       languages: languages || [],

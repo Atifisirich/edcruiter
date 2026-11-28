@@ -85,12 +85,18 @@ export function leadListView(schoolId: string, list: LeadList): LeadListView {
 }
 
 /** Counts for the lists overview, without every row. */
-export function leadListSummary(schoolId: string, list: LeadList): { id: string; name: string; status: LeadList['status']; total: number; good_fit: number; needs_look: number; set_aside: number; waiting: number; progress: number; created_at: string; has_setup: boolean; good_fit_text?: string; note?: string } {
+export function leadListSummary(schoolId: string, list: LeadList, calls = callsByCandidate(schoolId)): { called: number; answered: number; calls_made: number; created_by: string; id: string; name: string; status: LeadList['status']; total: number; good_fit: number; needs_look: number; set_aside: number; waiting: number; progress: number; created_at: string; has_setup: boolean; good_fit_text?: string; note?: string } {
   const leads = db.getLeadsOfList(schoolId, list.id);
   const count = (s: LeadStatus) => leads.filter((l) => l.lead?.status === s).length;
   const good = count('good_fit') + count('moved');
   const final = good + count('needs_look') + count('set_aside');
+  // Calls actually placed: a scheduled or skipped one never rang.
+  const placed = leads.map((l) => (calls.get(l.id) ?? []).filter((c) => c.status !== 'scheduled' && c.status !== 'skipped'));
   return {
+    called: placed.filter((p) => p.length > 0).length,
+    answered: placed.filter((p) => p.some((c) => c.status === 'completed')).length,
+    calls_made: placed.reduce((n, p) => n + p.length, 0),
+    created_by: list.created_by,
     id: list.id, name: list.name, status: list.status, total: leads.length, good_fit: good, needs_look: count('needs_look'),
     set_aside: count('set_aside'), waiting: count('waiting') + count('calling'), progress: leads.length ? Math.round((final / leads.length) * 100) : 0,
     created_at: list.created_at, has_setup: !!list.setup, good_fit_text: list.setup?.good_fit, note: list.note,

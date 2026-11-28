@@ -11,7 +11,7 @@ import type { Candidate } from './types';
  */
 export const CANDIDATE_SELF_FIELDS = new Set<keyof Candidate>([
   'name', 'email', 'phone', 'dob', 'qualification', 'experience_band',
-  'prior_org', 'current_salary', 'expected_salary', 'current_location',
+  'prior_org', 'current_salary', 'expected_salary', 'current_salary_monthly', 'expected_salary_monthly', 'current_location',
   'relocation_branches', 'languages', 'notice_period', 'applied_segment',
   'applied_subject', 'target_branch_id', 'video_intro_url',
   'reading_passage_text', 'reading_passage_score'
@@ -36,6 +36,8 @@ export function pickAllowed(updates: Record<string, unknown>, allowed: Set<keyof
 export const STAFF_ONLY_FIELDS = [
   'round_assignments', 'round_reviews', 'round_questions', 'round_results', 'interview_decisions',
   'rm_clearance', 'ih_clearance', 'coo_clearance', 'rejected_by_school_reason', 'resume_analysis', 'resume_text', 'total_ai_score',
+  // The school's pay discussion: the figure being considered, the reasons and the conditions. The teacher gets the offer letter.
+  'final_offer', 'offer_terms',
 ] as const;
 
 export function candidateSelfView<T extends Partial<Candidate>>(candidate: T): T {

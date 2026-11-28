@@ -1,5 +1,7 @@
 'use client';
 
+import CandidateScores from '@/components/candidate/CandidateScores';
+import { experienceChoices } from '@/lib/experience';
 import React, { useState, useEffect, useRef, use } from 'react';
 import Link from 'next/link';
 import {
@@ -44,6 +46,8 @@ import { MIN_LESSON_WORDS, countWords } from '@/lib/testRules';
 const SUBJECT_OPTIONS = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English', 'Social Studies'];
 const SEGMENT_OPTIONS = ['Secondary (Grades 9-10)', 'Senior Secondary (Grades 11-12)', 'Middle School (Grades 6-8)', 'Primary (Grades 1-5)'];
 import { OTHER_QUALIFICATION, QUALIFICATION_GROUPS, QUALIFICATION_OPTIONS } from '@/lib/qualifications';
+import SalaryInput from '@/components/SalaryInput';
+import { salaryOf } from '@/lib/salary';
 
 function canonicalOption(raw: string | undefined, options: string[]): string {
   if (!raw) return '';
@@ -138,6 +142,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
     applied_segment: '',
     applied_subject: ''
   });
+  // Salaries are rupees a month, digits only. "Not working now" stands in for a current salary.
+  const [notWorking, setNotWorking] = useState(false);
+  const [oldSalaryText, setOldSalaryText] = useState<{ current?: string; expected?: string }>({});
   const [resumePdfUrl, setResumePdfUrl] = useState<string>('');
   const [otherQualification, setOtherQualification] = useState('');
 
@@ -371,6 +378,12 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         setPhotoUrl(cData.candidate.face_reference?.photo_url || '');
         setPhotoLocked(Array.isArray(cData.stageAttempts) && cData.stageAttempts.length > 0);
 
+        {
+          const cur = salaryOf(cData.candidate, 'current');
+          const exp = salaryOf(cData.candidate, 'expected');
+          setNotWorking(cur.monthly === 0);
+          setOldSalaryText({ current: cur.fromText, expected: exp.fromText });
+        }
         setIdentityData({
           name: cData.candidate.name || '',
           dob: cData.candidate.dob || '',
@@ -386,8 +399,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
             : (cData.candidate.qualification || ''),
           experience_band: cData.candidate.experience_band || '',
           prior_org: cData.candidate.prior_org || '',
-          current_salary: cData.candidate.current_salary || '',
-          expected_salary: cData.candidate.expected_salary || '',
+          // Only a typed monthly number is put back in the box; older free text is shown beside it to retype.
+          current_salary: (() => { const r = salaryOf(cData.candidate, 'current'); return r.monthly && !r.fromText ? String(r.monthly) : ''; })(),
+          expected_salary: (() => { const r = salaryOf(cData.candidate, 'expected'); return r.monthly && !r.fromText ? String(r.monthly) : ''; })(),
           current_location: cData.candidate.current_location || '',
           relocation_branches: cData.candidate.relocation_branches || [],
           languages: cData.candidate.languages || [],
@@ -509,6 +523,11 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
       if (identityData.qualification === OTHER_QUALIFICATION && !otherQualification.trim()) {
         return fail('Please type your qualification.');
       }
+      if (!notWorking && !identityData.current_salary) return fail('Please type your current monthly salary in rupees (numbers only, e.g. 35000), or tick "I am not working now".');
+      if (!identityData.expected_salary) return fail('Please type the monthly salary you expect, in rupees (numbers only, e.g. 35000).');
+      if (Number(identityData.expected_salary) < 1000 || (!notWorking && Number(identityData.current_salary) < 1000)) {
+        return fail('Salaries are monthly, in rupees. Type the full monthly figure, for example 35000, not 35 or 3.5.');
+      }
       if (!resumePdfUrl && !candidate?.resume_url) {
         return fail('Please upload your CV as a PDF. It must be a proper CV with your name, qualifications and experience.');
       }
@@ -524,7 +543,9 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
         
         submissionData = {
           candidate_updates: {
-            ...identityData,
+            ...(() => { const { current_salary: _c, expected_salary: _e, ...rest } = identityData; void _c; void _e; return rest; })(),
+            current_salary_monthly: notWorking ? 0 : Number(identityData.current_salary),
+            expected_salary_monthly: Number(identityData.expected_salary),
             qualification: identityData.qualification === OTHER_QUALIFICATION ? otherQualification.trim() : identityData.qualification,
             name: identityData.name.trim(),
             phone: identityData.phone.trim(),
@@ -891,6 +912,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   <Link href={`/interview/${candidate.id}`} className="inline-block px-5 py-3 rounded-2xl bg-white text-indigo-700 text-sm font-black">Start the interview</Link>
                 </div>
               )}
+              <CandidateScores candidateId={candidate.id} />
               {candidate.invite_code && <ApplicationIdCard code={candidate.invite_code} />}
               <div className="pt-2">
                 <Link
@@ -1055,11 +1077,7 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="" disabled>Select your experience…</option>
-                    <option value="Fresher">Fresher (0 years)</option>
-                    <option value="1 – 2 years">1 – 2 years</option>
-                    <option value="2 – 4 years">2 – 4 years</option>
-                    <option value="4 – 6 years">4 – 6 years</option>
-                    <option value="6+ years">6+ years</option>
+                    {experienceChoices(identityData.experience_band).map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 </div>
 
@@ -1078,20 +1096,26 @@ export default function CandidateAssessmentPage({ params }: PageProps) {
                   <label className="block text-slate-600 font-bold mb-1.5">
                     Salary: current and expected <span className="text-indigo-600">*</span>
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Current, e.g. 5 LPA"
-                      value={identityData.current_salary}
-                      onChange={e => setIdentityData({...identityData, current_salary: e.target.value})}
-                      className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Expected, e.g. 7.5 LPA"
+                  <p className="text-xs text-slate-500 mb-2">Monthly, in rupees, numbers only (e.g. 35000). Not yearly, not in lakhs.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <SalaryInput
+                        label="Current monthly salary"
+                        value={notWorking ? '' : identityData.current_salary}
+                        disabled={notWorking}
+                        onChange={(v) => setIdentityData({ ...identityData, current_salary: v })}
+                        hint={oldSalaryText.current ? `You wrote “${oldSalaryText.current}” before. Type the monthly figure.` : undefined}
+                      />
+                      <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+                        <input type="checkbox" checked={notWorking} onChange={(e) => setNotWorking(e.target.checked)} className="accent-indigo-600" />
+                        I am not working now
+                      </label>
+                    </div>
+                    <SalaryInput
+                      label="Expected monthly salary"
                       value={identityData.expected_salary}
-                      onChange={e => setIdentityData({...identityData, expected_salary: e.target.value})}
-                      className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:border-indigo-500 focus:outline-none placeholder-slate-400"
+                      onChange={(v) => setIdentityData({ ...identityData, expected_salary: v })}
+                      hint={oldSalaryText.expected ? `You wrote “${oldSalaryText.expected}” before. Type the monthly figure.` : undefined}
                     />
                   </div>
                 </div>

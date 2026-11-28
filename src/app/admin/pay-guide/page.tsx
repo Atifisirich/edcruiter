@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { digitsOnly } from '@/lib/salary';
 import { AlertCircle, Check, CheckCircle2, ChevronRight, Copy, Loader2, MapPin, Pencil, Plus, Sparkles, Table2, Trash2, UploadCloud, Wallet, X } from 'lucide-react';
 import { useAdmin } from '@/components/admin/adminContext';
 import { Badge, Card, CardHeader, EmptyState, PageHeader, SaveBar, buttonClass, selectClass } from '@/components/admin/ui';
@@ -360,10 +361,11 @@ export default function PayGuidePage() {
                                     <div className="relative">
                                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">₹</span>
                                       <input
-                                        type="number"
-                                        min={0}
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
                                         value={t.ideal}
-                                        onChange={(e) => update(r.key, { ...r, tiers: r.tiers.map((x, at) => (at === i ? setUsual(x, e.target.value) : x)) })}
+                                        onChange={(e) => update(r.key, { ...r, tiers: r.tiers.map((x, at) => (at === i ? setUsual(x, digitsOnly(e.target.value)) : x)) })}
                                         aria-label={`${displayName(r)}, ${levelLabel(t)}, usual pay a month`}
                                         placeholder="Pay"
                                         className="w-28 pl-6 pr-2 py-2 rounded-lg border border-slate-300 bg-white text-sm tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"

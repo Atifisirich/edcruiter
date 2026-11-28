@@ -1,5 +1,6 @@
 'use client';
 
+import { EXPERIENCE_OPTIONS } from '@/lib/experience';
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -490,11 +491,7 @@ export default function PublicJobApplicationPage() {
                     className="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600 focus:outline-none"
                   >
                     <option value="" disabled>Select your experience…</option>
-                    <option value="Fresher (0 - 1 Year)">Fresher (0 - 1 Year)</option>
-                    <option value="1 – 2 Years">1 – 2 Years</option>
-                    <option value="3 – 5 Years">3 – 5 Years</option>
-                    <option value="5 – 8 Years">5 – 8 Years</option>
-                    <option value="8+ Years">8+ Years (Senior Faculty / HOD)</option>
+                    {EXPERIENCE_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 </div>
 
